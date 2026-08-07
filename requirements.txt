@@ -1,0 +1,13 @@
+# Install a CUDA-enabled PyTorch build separately from the official selector.
+numpy>=1.24
+PyYAML>=6.0
+tqdm>=4.66
+pytest>=8.0
+
+fastapi>=0.115
+uvicorn>=0.30
+
+# Required by Starlette TestClient for UI tests.
+httpx2>=2.0,<3
+
+tokenizers>=0.21,<1

@@ -1,0 +1,61 @@
+profile:
+  id: starter
+  title: Starter · 30M
+  method: Durchsatz zuerst
+  description: Kleiner echter Korpuslauf ohne Activation Checkpointing. Schnellster
+    Vergleich und sicherster Einstieg. v0.6 nutzt Tokenbudgets, feste Evaluation und
+    Early Stopping.
+  beginner_order: 1
+  recommended: false
+  risk: low
+  probe_vocab_size: 8192
+  probe_max_batch_size: 8
+model:
+  max_seq_len: 512
+  n_layers: 8
+  d_model: 512
+  n_heads: 8
+  d_ff: 1360
+  dropout: 0.05
+  rope_base: 10000.0
+  tie_embeddings: true
+  gradient_checkpointing: false
+train:
+  tokenizer_path: artifacts/tokenizer_bpe_godot.json
+  data_dir: data/processed/corpus_v06
+  output_dir: checkpoints/v06_starter
+  device: auto
+  dtype: float16
+  seed: 1337
+  batch_size: 2
+  gradient_accumulation_steps: 8
+  max_steps: null
+  learning_rate: 0.0003
+  min_learning_rate: 3.0e-05
+  warmup_steps: 150
+  weight_decay: 0.1
+  beta1: 0.9
+  beta2: 0.95
+  gradient_clip: 1.0
+  log_interval: 10
+  eval_interval: 100
+  eval_batches: 20
+  save_interval: 100
+  keep_last_checkpoints: 3
+  target_dataset_passes: 4.0
+  max_tokens: null
+  validation_interval_tokens: 500000
+  evaluation_mode: fixed
+  evaluation_seed: 7331
+  save_best_only: false
+  early_stopping:
+    enabled: true
+    patience: 4
+    min_delta: 0.01
+  max_dataset_passes_warning: 6.0
+  max_dataset_passes_block: 12.0
+  allow_excessive_dataset_passes: false
+  prefetch_batches: 1
+  compile:
+    enabled: false
+    mode: default

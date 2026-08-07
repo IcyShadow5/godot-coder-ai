@@ -1,0 +1,61 @@
+profile:
+  id: balanced
+  title: Balanced · 91M
+  method: Mehr Kapazität + Activation Checkpointing
+  description: Empfohlenes Hauptprofil. Längerer Kontext und deutlich mehr Parameter,
+    mit Rechenzeit-gegen-VRAM-Tausch. v0.6 nutzt Tokenbudgets, feste Evaluation und
+    Early Stopping.
+  beginner_order: 2
+  recommended: true
+  risk: medium
+  probe_vocab_size: 8192
+  probe_max_batch_size: 4
+model:
+  max_seq_len: 1024
+  n_layers: 12
+  d_model: 768
+  n_heads: 12
+  d_ff: 2048
+  dropout: 0.05
+  rope_base: 10000.0
+  tie_embeddings: true
+  gradient_checkpointing: false
+train:
+  tokenizer_path: artifacts/tokenizer_bpe_godot.json
+  data_dir: data/processed/corpus_v06
+  output_dir: checkpoints/v06_balanced
+  device: auto
+  dtype: bfloat16
+  seed: 1337
+  batch_size: 1
+  gradient_accumulation_steps: 8
+  max_steps: null
+  learning_rate: 0.00025
+  min_learning_rate: 2.5e-05
+  warmup_steps: 250
+  weight_decay: 0.1
+  beta1: 0.9
+  beta2: 0.95
+  gradient_clip: 1.0
+  log_interval: 10
+  eval_interval: 100
+  eval_batches: 16
+  save_interval: 100
+  keep_last_checkpoints: 3
+  target_dataset_passes: 4.0
+  max_tokens: null
+  validation_interval_tokens: 500000
+  evaluation_mode: fixed
+  evaluation_seed: 7331
+  save_best_only: false
+  early_stopping:
+    enabled: true
+    patience: 4
+    min_delta: 0.01
+  max_dataset_passes_warning: 6.0
+  max_dataset_passes_block: 12.0
+  allow_excessive_dataset_passes: false
+  prefetch_batches: 1
+  compile:
+    enabled: false
+    mode: default

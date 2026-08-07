@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#071421">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Godot Coder Studio</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/static/app-icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <canvas id="ice-particles" aria-hidden="true"></canvas>
+  <div class="aurora aurora-a" aria-hidden="true"></div>
+  <div class="aurora aurora-b" aria-hidden="true"></div>
+  <div class="aurora aurora-c" aria-hidden="true"></div>
+
+  <div class="app-shell">
+    <aside class="sidebar glass-panel">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 64 64"><path d="M32 4 51 15v22L32 60 13 48V16z"/><path d="m32 13 10 7-5 10 6 11-11 10-11-10 6-11-5-10z"/></svg>
+        </div>
+        <div>
+          <div class="brand-title">Godot Coder</div>
+          <div class="brand-subtitle">Neural Studio · <span id="brand-version">v–</span></div>
+        </div>
+      </div>
+
+      <nav class="main-nav" aria-label="Hauptnavigation">
+        <button class="nav-item active" data-view="chat">
+          <span class="nav-icon">◇</span><span>Chat</span>
+        </button>
+        <button class="nav-item" data-view="training">
+          <span class="nav-icon">↗</span><span>Training</span>
+        </button>
+        <button class="nav-item" data-view="corpus">
+          <span class="nav-icon">❄</span><span>Wissensaufbau</span>
+        </button>
+        <button class="nav-item" data-view="data">
+          <span class="nav-icon">▦</span><span>Data Lab</span>
+        </button>
+        <button class="nav-item" data-view="models">
+          <span class="nav-icon">⬡</span><span>Modelle</span>
+        </button>
+        <button class="nav-item" data-view="remote">
+          <span class="nav-icon">⌁</span><span>Remote</span>
+        </button>
+        <button class="nav-item" data-view="system">
+          <span class="nav-icon">⌁</span><span>System</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-spacer"></div>
+      <div class="runtime-card">
+        <div class="runtime-head">
+          <span class="status-dot" id="runtime-dot"></span>
+          <span id="runtime-label">System wird geprüft</span>
+        </div>
+        <div class="runtime-gpu" id="runtime-gpu">–</div>
+        <div class="runtime-meter"><span id="runtime-meter-fill"></span></div>
+        <div class="runtime-foot"><span id="runtime-vram">–</span><span>lokal</span></div>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar glass-panel">
+        <div>
+          <div class="eyebrow">LOCAL NEURAL WORKSPACE</div>
+          <h1 id="view-title">Chat & Code</h1>
+        </div>
+        <div class="topbar-actions">
+          <div class="job-pill" id="job-pill">
+            <span class="job-pulse"></span>
+            <span id="job-pill-text">Bereit</span>
+          </div>
+          <button class="icon-button" id="refresh-all" title="Daten aktualisieren" aria-label="Daten aktualisieren">↻</button>
+        </div>
+      </header>
+
+      <div class="remote-access-banner" id="remote-access-banner" hidden>
+        <div><strong id="remote-banner-title">Remote-Lesemodus</strong><span id="remote-banner-detail">Schreibaktionen sind gesperrt.</span></div>
+        <button class="secondary-button compact" id="remote-banner-open">Remote öffnen</button>
+      </div>
+
+      <section class="view active" id="view-chat">
+        <div class="chat-layout">
+          <div class="chat-main glass-panel">
+            <div class="panel-toolbar">
+              <div>
+                <div class="panel-title">Lokaler Coding-Partner</div>
+                <div class="panel-caption">Aktuell ein Completion-Modell. Der Chatmodus wächst mit dem Instruction-Training.</div>
+              </div>
+              <button class="secondary-button compact" id="clear-chat">Neue Sitzung</button>
+            </div>
+
+            <div class="chat-feed" id="chat-feed">
+              <article class="message assistant-message intro-message">
+                <div class="message-avatar">AI</div>
+                <div class="message-body">
+                  <div class="message-meta">Godot Coder · lokal</div>
+                  <p>Gib mir GDScript als Anfang oder eine klar formulierte Aufgabe. Ich vervollständige mit dem ausgewählten Checkpoint. Fehler sind hier messbare Trainingsdaten, nicht versteckte Magie.</p>
+                  <div class="prompt-chips">
+                    <button data-prompt="extends Node\n\n@export var energy: float = 100.0\n\nfunc spend_energy(amount: float) -> void:\n    ">Energie-Komponente</button>
+                    <button data-prompt="extends CharacterBody3D\n\n@export var speed: float = 5.0\n\nfunc _physics_process(delta: float) -> void:\n    ">3D-Bewegung</button>
+                    <button data-prompt="extends Node\n\nsignal health_changed(current: float)\n\nfunc take_damage(amount: float) -> void:\n    ">Health-System</button>
+                  </div>
+                </div>
+              </article>
+            </div>
+
+            <div class="composer-wrap">
+              <textarea id="chat-input" rows="5" spellcheck="false" placeholder="GDScript-Prompt oder Aufgabe eingeben …"></textarea>
+              <div class="composer-footer">
+                <div class="composer-hint"><span>Ctrl</span> + <span>Enter</span> generieren</div>
+                <button class="primary-button" id="generate-button">
+                  <span>Generieren</span><span class="button-arrow">→</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <aside class="control-stack">
+            <div class="glass-panel control-card">
+              <div class="section-label">AKTIVES MODELL</div>
+              <select id="chat-checkpoint" class="field-select"></select>
+              <div class="model-mini" id="active-model-summary">Kein Checkpoint gefunden</div>
+            </div>
+
+            <div class="glass-panel control-card">
+              <div class="section-label">GENERATION</div>
+              <label class="field-label">Neue Tokens <output id="tokens-output">300</output></label>
+              <input id="max-tokens" type="range" min="32" max="1024" step="16" value="300">
+              <label class="field-label">Temperatur <output id="temperature-output">0.40</output></label>
+              <input id="temperature" type="range" min="0.05" max="1.5" step="0.05" value="0.4">
+              <label class="field-label">Top-K <output id="top-k-output">10</output></label>
+              <input id="top-k" type="range" min="0" max="100" step="1" value="10">
+            </div>
+
+            <div class="glass-panel control-card validation-card">
+              <div class="section-label">GODOT CHECK</div>
+              <div class="validation-state" id="validation-state">
+                <span class="validation-icon">○</span>
+                <div><strong>Noch nicht geprüft</strong><small>Generierten Code direkt parsen lassen.</small></div>
+              </div>
+              <button class="secondary-button full" id="validate-last" disabled>Letzte Ausgabe prüfen</button>
+              <button class="ghost-button full" id="save-last" disabled>Als Trainingsdatei speichern</button>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="view" id="view-training">
+        <div class="dashboard-grid training-grid">
+          <div class="glass-panel hardware-lab">
+            <div class="panel-toolbar">
+              <div>
+                <div class="eyebrow">SCHRITT 1 · HARDWARE VERSTEHEN</div>
+                <div class="panel-title">Drei Profile sicher auf deiner GPU testen</div>
+                <div class="panel-caption">Kurze synthetische Trainingsschritte messen echte Parameter, Geschwindigkeit und Peak-VRAM. Dabei werden keine Checkpoints oder Trainingsdaten verändert.</div>
+              </div>
+              <button class="primary-button compact" id="probe-profiles">Alle 3 Profile testen</button>
+            </div>
+            <div class="profile-grid" id="training-profile-grid"><div class="empty-state">Profile werden geladen …</div></div>
+            <div class="probe-summary" id="probe-summary">Noch kein Hardware-Probelauf vorhanden. Führe ihn vor dem ersten großen Training einmal aus.</div>
+          </div>
+          <div class="glass-panel professional-preflight">
+            <div class="panel-toolbar">
+              <div>
+                <div class="eyebrow">PROFESSIONAL TRAINING CORE</div>
+                <div class="panel-title">Sicherer Weg zum Nachttraining</div>
+                <div class="panel-caption">Datenqualität, Hardwareprofil, 50-Schritte-Probelauf und Tokenbudget werden getrennt geprüft.</div>
+              </div>
+              <div class="preflight-light" id="preflight-light" data-status="red"><span></span><strong>Nicht geprüft</strong></div>
+            </div>
+            <div class="professional-steps" aria-label="Vorbereitungsablauf">
+              <button class="professional-step" id="professional-audit" data-workflow-step="audit">
+                <span class="professional-step-index">1</span>
+                <span class="professional-step-copy"><strong>Daten prüfen</strong><small>Lizenz, Parser, Duplikate und Splits</small></span>
+                <span class="professional-step-state" id="professional-audit-state">Offen</span>
+              </button>
+              <button class="professional-step" id="professional-autotune" data-workflow-step="autotune">
+                <span class="professional-step-index">2</span>
+                <span class="professional-step-copy"><strong>Hardware einstellen</strong><small>Batch, Kontext, VRAM und Durchsatz</small></span>
+                <span class="professional-step-state" id="professional-autotune-state">Offen</span>
+              </button>
+              <button class="professional-step" id="professional-smoke" data-workflow-step="smoke">
+                <span class="professional-step-index">3</span>
+                <span class="professional-step-copy"><strong>50-Schritte-Probelauf</strong><small>Training, Evaluation und Checkpoint testen</small></span>
+                <span class="professional-step-state" id="professional-smoke-state">Offen</span>
+              </button>
+              <button class="professional-step emphasized" id="professional-preflight" data-workflow-step="preflight">
+                <span class="professional-step-index">4</span>
+                <span class="professional-step-copy"><strong>Nachttraining vorbereiten</strong><small>Tokenbudget, Laufzeit und Blocker prüfen</small></span>
+                <span class="professional-step-state" id="professional-preflight-state">Offen</span>
+              </button>
+            </div>
+            <div class="professional-run" id="professional-run" hidden aria-live="polite">
+              <div class="professional-run-icon"><span></span></div>
+              <div class="professional-run-copy"><strong id="professional-run-title">Workflow läuft</strong><small id="professional-run-detail">Status wird geladen …</small></div>
+              <div class="professional-run-progress"><span id="professional-run-progress"></span></div>
+              <strong class="professional-run-percent" id="professional-run-percent">0 %</strong>
+            </div>
+            <div class="preflight-summary" id="preflight-summary">Noch keine vollständige Vorprüfung vorhanden.</div>
+            <details class="advanced-box compact-details professional-details"><summary>Erweiterte Prüfdetails</summary><div id="preflight-details" class="manifest-mini">–</div></details>
+          </div>
+
+          <div class="glass-panel training-control">
+            <div class="panel-toolbar">
+              <div>
+                <div class="panel-title">Training Console</div>
+                <div class="panel-caption">Startet denselben Trainer wie die CLI, aber mit Live-Status und kontrolliertem Stop.</div>
+              </div>
+              <div class="training-actions">
+                <button class="danger-button compact" id="stop-job" disabled>Stop</button>
+                <button class="primary-button compact" id="start-training">Training starten</button>
+              </div>
+            </div>
+
+            <div class="form-grid">
+              <label>
+                <span>Konfiguration</span>
+                <select id="training-config" class="field-select"></select>
+              </label>
+              <label>
+                <span>Checkpoint fortsetzen</span>
+                <select id="training-resume" class="field-select"><option value="">Von Zufallsgewichten starten</option></select>
+              </label>
+            </div>
+
+            <div class="metric-row" id="training-metrics">
+              <div class="metric-card"><span>Parameterprofil</span><strong id="metric-profile">–</strong></div>
+              <div class="metric-card"><span>Kontext</span><strong id="metric-context">–</strong></div>
+              <div class="metric-card"><span>Schritte</span><strong id="metric-steps">–</strong></div>
+              <div class="metric-card"><span>Effektiver Batch</span><strong id="metric-batch">–</strong></div>
+            </div>
+
+            <div class="progress-block">
+              <div class="progress-head"><span id="training-status">Kein aktiver Lauf</span><span id="training-progress-label">0 %</span></div>
+              <div class="progress-track"><span id="training-progress"></span></div>
+            </div>
+          </div>
+
+          <div class="glass-panel data-prepare-card">
+            <div class="section-label">DATENBASIS</div>
+            <div class="prepare-copy">Die drei großen Profile benötigen zuerst den lizenzierten Godot-Korpus aus dem geführten Wissensaufbau.</div>
+            <div class="manifest-mini" id="manifest-mini">Manifest wird geladen …</div>
+            <button class="primary-button full" id="open-corpus">Wissensaufbau öffnen</button>
+            <details class="advanced-box compact-details">
+              <summary>Altes Mini-Lehrplan-Experiment</summary>
+              <div class="stack-actions">
+                <button class="ghost-button full" id="build-curriculum">1 · Lehrplan erzeugen</button>
+                <button class="ghost-button full" id="validate-curriculum">2 · Alle Lektionen prüfen</button>
+                <button class="secondary-button full" id="prepare-curriculum">3 · Lehrplan vorbereiten</button>
+              </div>
+              <button class="text-action" id="prepare-data">Gesamten data/raw-Ordner vorbereiten</button>
+            </details>
+          </div>
+
+          <div class="glass-panel log-panel">
+            <div class="panel-toolbar slim log-heading">
+              <div>
+                <div class="panel-title">Live-Arbeitsprotokoll</div>
+                <div class="panel-caption" id="log-job-id">Noch kein Job gestartet</div>
+              </div>
+              <div class="log-view-switch" role="tablist" aria-label="Log-Ansicht">
+                <button class="secondary-button compact active" id="log-view-simple" role="tab" aria-selected="true">Einfach</button>
+                <button class="ghost-button compact" id="log-view-technical" role="tab" aria-selected="false">Technisch</button>
+              </div>
+            </div>
+            <div class="log-controls" aria-label="Log-Filter und Aktionen">
+              <label class="log-toggle"><input type="checkbox" id="log-level-info" checked><span>Info</span></label>
+              <label class="log-toggle"><input type="checkbox" id="log-level-warning" checked><span>Warnung</span></label>
+              <label class="log-toggle"><input type="checkbox" id="log-level-error" checked><span>Fehler</span></label>
+              <select id="log-filter-project" class="field-select compact-select" aria-label="Nach Projekt filtern"><option value="">Alle Projekte</option></select>
+              <select id="log-filter-phase" class="field-select compact-select" aria-label="Nach Phase filtern"><option value="">Alle Phasen</option></select>
+              <label class="log-toggle auto-follow"><input type="checkbox" id="log-auto-follow" checked><span>Automatisch folgen</span></label>
+              <div class="log-actions">
+                <button class="ghost-button compact" id="clear-log-view">Anzeige löschen</button>
+                <button class="ghost-button compact" id="copy-log">Sichtbares Log kopieren</button>
+                <button class="ghost-button compact" id="export-log-text">TXT exportieren</button>
+                <button class="ghost-button compact" id="export-log-jsonl">JSONL exportieren</button>
+              </div>
+            </div>
+            <pre id="training-log" class="terminal-output" tabindex="0" aria-live="polite">Studio bereit.</pre>
+          </div>
+
+          <div class="glass-panel training-report-panel">
+            <div class="panel-toolbar slim">
+              <div>
+                <div class="panel-title">Verifizierte Abschlusslogs</div>
+                <div class="panel-caption">Zeigt eindeutige Tokenzählung, Durchschnittsdurchsatz, besten Validation-Loss und Peak-VRAM der letzten Läufe.</div>
+              </div>
+            </div>
+            <div class="training-report-list" id="training-report-list"><div class="empty-state">Noch kein Trainingsbericht vorhanden.</div></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-corpus">
+        <div class="corpus-layout">
+          <div class="glass-panel corpus-hero">
+            <div>
+              <div class="eyebrow">GEFÜHRTER WISSENSAUFBAU</div>
+              <h2>Mehr echtes Godot-Wissen, ohne Datenchaos.</h2>
+              <p>Das Studio lädt nur ausgewählte Quellen, dokumentiert Lizenzen, entfernt Duplikate und lässt Godot den Code prüfen. Beginne oben und arbeite die Schritte der Reihe nach ab.</p>
+            </div>
+            <div class="beginner-badge"><span>✓</span><strong>Beginner-Modus</strong><small>Sichere Standardwerte aktiv</small></div>
+          </div>
+
+          <div class="glass-panel source-panel">
+            <div class="panel-toolbar">
+              <div><div class="panel-title">1 · Quellen auswählen</div><div class="panel-caption">Die offiziellen Godot-Quellen sind vorausgewählt. Du kannst sie jederzeit wieder deaktivieren.</div></div>
+              <div class="toolbar-actions"><button class="ghost-button compact" id="select-verified-expansion">Kleine Erweiterung</button><button class="ghost-button compact" id="select-core-expansion">Großausbau · 5M-Kandidaten</button><button class="ghost-button compact" id="select-max-expansion">Maximalausbau · Richtung 20M</button><button class="secondary-button compact" id="save-corpus-sources">Auswahl speichern</button></div>
+            </div>
+            <div class="corpus-filter-row">
+              <input class="search-input" id="corpus-source-search" placeholder="Quellen durchsuchen …">
+              <div class="filter-chips" id="corpus-filter-chips">
+                <button class="filter-chip active" data-filter="all">Alle</button>
+                <button class="filter-chip" data-filter="enabled">Aktiviert</button>
+                <button class="filter-chip" data-filter="disabled">Deaktiviert</button>
+              </div>
+              <button class="filter-chip" id="toggle-advanced-sources" title="Erweiterte Quellen ein-/ausblenden">⚙ Erweitert</button>
+            </div>
+            <div class="source-grid" id="corpus-source-grid"><div class="empty-state">Quellen werden geladen …</div></div>
+            <details class="advanced-box">
+              <summary>Fortgeschritten: eigene erlaubte Git-Quelle hinzufügen</summary>
+              <div class="advanced-source-form">
+                <label><span>Kurzname</span><input id="custom-source-id" class="text-input" placeholder="mein-godot-projekt"></label>
+                <label><span>Git-URL</span><input id="custom-source-url" class="text-input" placeholder="https://github.com/name/projekt.git"></label>
+                <label><span>Branch / Tag / Commit</span><input id="custom-source-ref" class="text-input" placeholder="main, 4.7 oder v1.2.0"></label>
+                <label><span>Lizenz</span><select id="custom-source-license" class="field-select"><option>MIT</option><option>Apache-2.0</option><option>BSD-2-Clause</option><option>BSD-3-Clause</option><option>CC-BY-3.0</option></select></label>
+                <label><span>Inhalt</span><select id="custom-source-kind" class="field-select"><option value="godot_projects">Godot-Projekt / GDScript</option><option value="rst_gdscript">reST-Dokumentation mit GDScript</option></select></label>
+                <button class="ghost-button" id="add-custom-source">Quelle hinzufügen</button>
+              </div>
+              <p class="legal-note">Nur Quellen hinzufügen, deren Lizenz die Nutzung erlaubt. Repositories ohne erkennbare Lizenz bleiben standardmäßig ausgeschlossen.</p>
+            </details>
+          </div>
+
+          <div class="glass-panel local-source-panel">
+            <div class="panel-toolbar">
+              <div>
+                <div class="panel-title">Eigene Godot-Projekte · privat</div>
+                <div class="panel-caption">ZIPs oder Projektordner werden lokal geprüft, bereinigt und nur bei bestandener Godot-Prüfung fürs Training aktiviert.</div>
+              </div>
+              <div class="toolbar-actions">
+                <button class="ghost-button compact" id="open-local-source-inbox">Importordner öffnen</button>
+                <button class="primary-button compact" id="import-local-sources">Projekte prüfen & importieren</button>
+              </div>
+            </div>
+            <div class="local-source-flow">
+              <div><span>1</span><strong>ZIPs kopieren</strong><small>In <code>data/local_sources/inbox</code></small></div>
+              <div><span>2</span><strong>Eigentum bestätigen</strong><small>Nur Code, den du verwenden darfst</small></div>
+              <div><span>3</span><strong>Sicher prüfen</strong><small>Secrets, Caches, Add-ons, Größe und Godot</small></div>
+              <div><span>4</span><strong>Privat aufnehmen</strong><small>Kein Weiterverteilen, standardmäßig nur Training</small></div>
+            </div>
+            <label class="ownership-confirm"><input type="checkbox" id="confirm-local-ownership"><span>Ich bestätige, dass ich den importierten Quellcode lokal zum Training verwenden darf. Fremde Add-ons werden nicht als Trainingsdaten übernommen.</span></label>
+            <div class="local-source-status" id="local-source-status">Importordner wird geladen …</div>
+            <section class="local-progress-dashboard" id="local-progress-dashboard" hidden aria-live="polite">
+              <div class="local-progress-head">
+                <div>
+                  <span class="section-label">GESAMTFORTSCHRITT</span>
+                  <strong id="local-progress-title">Import wird vorbereitet …</strong>
+                </div>
+                <span class="local-progress-percent" id="local-progress-percent">0 %</span>
+              </div>
+              <div class="progress-track local-progress-track"><span id="local-progress-bar"></span></div>
+              <div class="local-progress-layout">
+                <div class="local-current-card">
+                  <span>Aktuelles Projekt</span>
+                  <strong id="local-current-project">–</strong>
+                  <dl class="local-progress-facts">
+                    <div><dt>Phase</dt><dd id="local-current-phase">–</dd></div>
+                    <div><dt>Aktueller Schritt</dt><dd id="local-current-file" title="">–</dd></div>
+                    <div><dt>Dateien</dt><dd id="local-file-progress">0/0</dd></div>
+                    <div><dt>Bestanden</dt><dd id="local-passed">0</dd></div>
+                    <div><dt>Warnungen</dt><dd id="local-warnings">0</dd></div>
+                    <div><dt>Fehler</dt><dd id="local-failed">0</dd></div>
+                    <div><dt>Quarantäne</dt><dd id="local-quarantined">0</dd></div>
+                    <div><dt>Add-ons ausgeschlossen</dt><dd id="local-addons">0</dd></div>
+                    <div><dt>Cache/Import ausgeschlossen</dt><dd id="local-generated">0</dd></div>
+                  </dl>
+                </div>
+                <div class="local-time-card">
+                  <div><span>Vergangen</span><strong id="local-elapsed">00:00</strong></div>
+                  <div><span>Restzeit</span><strong id="local-eta">Restzeit wird berechnet …</strong></div>
+                  <div><span>Als Nächstes</span><strong id="local-next-project">–</strong><small id="local-next-detail">–</small></div>
+                </div>
+              </div>
+            </section>
+            <div class="local-project-grid" id="local-project-grid"></div>
+          </div>
+
+          <div class="corpus-main-grid">
+            <div class="glass-panel wizard-panel">
+              <div class="panel-title">Geführte Pipeline</div>
+              <div class="panel-caption">Jeder Schritt prüft seine Voraussetzungen. Ein fehlgeschlagener Schritt verändert keine fertigen Trainingsdaten.</div>
+              <div class="wizard-steps">
+                <article class="wizard-step" data-corpus-step="download">
+                  <div class="step-index">1</div><div><strong>Quellen herunterladen</strong><p>Klont die aktivierten Repositories lokal und merkt sich den exakten Commit.</p></div>
+                  <button class="ghost-button compact" id="corpus-fetch">Herunterladen</button>
+                </article>
+                <article class="wizard-step" data-corpus-step="scan">
+                  <div class="step-index">2</div><div><strong>Scannen und aufräumen</strong><p>Filtert Fremdcode, zu große Dateien und exakte Duplikate. Projekte bleiben als Gruppen zusammen.</p></div>
+                  <button class="ghost-button compact" id="corpus-build">Scannen</button>
+                </article>
+                <article class="wizard-step" data-corpus-step="validate">
+                  <div class="step-index">3</div><div><strong>Mit Godot prüfen</strong><p>Prüft vollständige Projekte. Nur eindeutige Syntaxfehler und inkompatible Godot-3-Dateien werden hart ausgeschlossen.</p></div>
+                  <button class="ghost-button compact" id="corpus-validate">Prüfen</button>
+                </article>
+                <article class="wizard-step" data-corpus-step="audit">
+                  <div class="step-index">4</div><div><strong>Daten professionell prüfen</strong><p>Prüft Lizenzen, Split-Leaks, exakte und nahe Duplikate sowie unvollständige Fragmente.</p></div>
+                  <button class="ghost-button compact" id="corpus-audit">Audit</button>
+                </article>
+                <article class="wizard-step" data-corpus-step="tokenizer">
+                  <div class="step-index">5</div><div><strong>Code-Tokenizer lernen</strong><p>Baut ein kompaktes Byte-BPE-Vokabular aus dem auditierten GDScript.</p></div>
+                  <button class="ghost-button compact" id="corpus-tokenizer">Tokenizer bauen</button>
+                </article>
+                <article class="wizard-step" data-corpus-step="prepare">
+                  <div class="step-index">6</div><div><strong>Trainingsdaten vorbereiten</strong><p>Erzeugt dokumentbewusste, versionierte Train-, Validation- und Test-Shards.</p></div>
+                  <button class="primary-button compact" id="corpus-prepare">Vorbereiten</button>
+                </article>
+                <article class="wizard-step" data-corpus-step="instructions">
+                  <div class="step-index">7</div><div><strong>Aufgabendaten als Grundlage bauen</strong><p>Erzeugt geprüfte Completion- und Reparaturaufgaben für eine spätere Instruction-Tuning-Phase.</p></div>
+                  <button class="ghost-button compact" id="corpus-instructions">Aufgabendaten</button>
+                </article>
+              </div>
+            </div>
+
+            <aside class="glass-panel corpus-status-panel">
+              <div class="section-label">AKTUELLER STAND</div>
+              <div class="corpus-readiness" id="corpus-readiness"><strong>0 %</strong><span>Noch nicht begonnen</span></div>
+              <div class="corpus-stat-grid" id="corpus-stat-grid"></div>
+              <div class="next-action" id="corpus-next-action">Speichere zuerst deine Quellenauswahl.</div>
+              <div class="corpus-filter-summary" id="corpus-filter-summary">Ausschlussgründe erscheinen nach Validierung und Audit.</div>
+              <details class="advanced-box compact-details">
+                <summary>Tokenizer-Einstellungen</summary>
+                <label class="field-label">Vokabular <output id="bpe-vocab-output">8192</output></label>
+                <input id="bpe-vocab" type="range" min="2048" max="16384" step="1024" value="8192">
+                <label class="field-label">Mindesthäufigkeit <output id="bpe-frequency-output">2</output></label>
+                <input id="bpe-frequency" type="range" min="1" max="10" step="1" value="2">
+                <p class="legal-note">Für den ersten echten Lauf sind 8192 Tokens sinnvoll. Größer ist nicht automatisch besser.</p>
+              </details>
+              <div class="scale-goal" id="corpus-scale-goal"><span>Corpus-Ziel</span><strong>Noch keine Tokenplanung</strong><i style="--p:0%"></i></div>
+              <details class="advanced-box compact-details">
+                <summary>Was bedeutet 20 Mio. Tokens?</summary>
+                <p class="legal-note">Das ist die Größe des einzigartigen Code-Corpus. Die tatsächlich verarbeiteten Trainingstokens ergeben sich aus Corpusgröße × Datensatzdurchläufe.</p>
+              </details>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-data">
+        <div class="data-layout">
+          <aside class="glass-panel file-browser">
+            <div class="panel-toolbar slim">
+              <div><div class="panel-title">Dataset</div><div class="panel-caption" id="file-count">0 Dateien</div></div>
+              <button class="icon-button small" id="new-file" title="Neue Datei">＋</button>
+            </div>
+            <div class="data-filter-row">
+              <input class="search-input" id="file-search" placeholder="Dateien filtern …">
+              <select class="field-select compact-select" id="data-kind-filter" aria-label="Datentyp filtern">
+                <option value="all">Alle Daten</option>
+                <option value="training">Aktive Trainingstokens</option>
+                <option value="raw">Eigene Rohdateien</option>
+                <option value="instruction">Aufgabendaten</option>
+                <option value="train">Train-Split</option>
+                <option value="val">Validation-Split</option>
+                <option value="test">Test-Split</option>
+              </select>
+            </div>
+            <div class="data-live-status" id="data-live-status">Live-Abgleich wird gestartet …</div>
+            <div class="file-list" id="file-list"></div>
+          </aside>
+
+          <div class="glass-panel editor-panel">
+            <div class="editor-toolbar">
+              <div>
+                <div class="editor-path" id="editor-path">Keine Datei geöffnet</div>
+                <div class="editor-meta" id="editor-meta">Wähle links eine GDScript-Datei.</div>
+              </div>
+              <div class="editor-actions">
+                <button class="danger-button compact" id="delete-editor" disabled>Löschen</button>
+                <button class="ghost-button compact" id="validate-editor" disabled>Godot prüfen</button>
+                <button class="primary-button compact" id="save-editor" disabled>Speichern</button>
+              </div>
+            </div>
+            <textarea id="data-editor" class="code-editor" spellcheck="false" disabled></textarea>
+            <div class="editor-status"><span id="editor-lines">0 Zeilen</span><span id="editor-save-state">Bereit</span></div>
+          </div>
+
+          <aside class="glass-panel curriculum-panel">
+            <div class="section-label">AKTIVER TOKENSTREAM</div>
+            <div class="curriculum-score"><strong id="dataset-token-count">–</strong><span>Trainings-Tokens</span></div>
+            <div class="data-token-breakdown" id="data-token-breakdown"></div>
+            <div class="data-catalog-state" id="data-catalog-state">Noch kein vorbereiteter Datensatz erkannt.</div>
+            <div class="section-label data-secondary-label">LEHRPLANSTATUS</div>
+            <div class="curriculum-summary" id="curriculum-summary">Lehrplan noch nicht erzeugt.</div>
+            <div class="curriculum-list" id="curriculum-list"></div>
+            <p class="muted-copy" id="curriculum-validation">Godot-Prüfung steht aus.</p>
+          </aside>
+        </div>
+      </section>
+
+      <section class="view" id="view-models">
+        <div class="glass-panel models-panel">
+          <div class="panel-toolbar">
+            <div><div class="panel-title">Checkpoint Vault</div><div class="panel-caption">Best-, Latest- und Zwischenschritte aller Trainingsläufe.</div></div>
+            <div class="training-actions">
+              <button class="ghost-button compact" id="benchmark-model">Benchmark starten</button>
+              <button class="secondary-button compact" id="refresh-models">Aktualisieren</button>
+            </div>
+          </div>
+          <div class="model-grid" id="model-grid"></div>
+        </div>
+      </section>
+
+
+      <section class="view" id="view-remote">
+        <div class="remote-layout">
+          <section class="glass-panel remote-hero">
+            <div class="remote-hero-copy">
+              <div class="eyebrow">SECURE REMOTE STUDIO</div>
+              <h2>Handy steuert. Der PC rechnet.</h2>
+              <p>Das Studio bleibt auf <code>127.0.0.1</code>. Tailscale Serve stellt nur einen privaten HTTPS-Zugang für freigegebene Identitäten bereit.</p>
+            </div>
+            <div class="remote-state-card" id="remote-state-card" data-state="loading">
+              <span class="status-dot"></span>
+              <div><strong id="remote-state-title">Remote-Status wird geprüft</strong><small id="remote-state-detail">–</small></div>
+            </div>
+          </section>
+
+          <div class="remote-grid">
+            <section class="glass-panel remote-card">
+              <div class="panel-toolbar slim">
+                <div><div class="panel-title">Verbindung & Identität</div><div class="panel-caption">Nur Tailscale Serve, kein öffentlicher Funnel.</div></div>
+                <div class="training-actions">
+                  <button class="ghost-button compact" id="remote-self-check">Selbsttest</button>
+                  <button class="ghost-button compact" id="refresh-remote">Aktualisieren</button>
+                </div>
+              </div>
+              <dl class="remote-facts">
+                <div><dt>Zugriff</dt><dd id="remote-access-kind">Lokal</dd></div>
+                <div><dt>Identität</dt><dd id="remote-identity">–</dd></div>
+                <div><dt>Tailscale</dt><dd id="remote-tailscale-state">–</dd></div>
+                <div><dt>Private Adresse</dt><dd id="remote-serve-url" title="">–</dd></div>
+              </dl>
+              <div class="remote-command"><span>Einmalige Freigabe am PC</span><code id="remote-serve-command">tailscale serve --bg http://127.0.0.1:8765</code></div>
+              <div class="remote-self-check" id="remote-self-check-result" hidden></div>
+              <p class="muted-copy">Konfiguration am PC: <code>CONFIGURE_REMOTE_STUDIO.bat</code>. Der Server selbst bleibt lokal gebunden.</p>
+            </section>
+
+            <section class="glass-panel remote-card" id="remote-lock-card">
+              <div class="panel-title">Schreibschutz</div>
+              <div class="panel-caption">Remote startet immer lesend. Training, Imports und Änderungen benötigen zusätzlich deine PIN.</div>
+              <div class="remote-lock-state" id="remote-lock-state">Status wird geladen …</div>
+              <form class="remote-unlock-form" id="remote-unlock-form">
+                <label><span>Remote-PIN</span><input class="text-input" id="remote-pin" type="password" inputmode="numeric" pattern="[0-9]{6,12}" minlength="6" maxlength="12" autocomplete="current-password" placeholder="6–12 Ziffern"></label>
+                <button class="primary-button" id="remote-unlock" type="submit">Schreibzugriff entsperren</button>
+              </form>
+              <button class="ghost-button full" id="remote-lock" hidden>Remote wieder sperren</button>
+            </section>
+
+            <section class="glass-panel remote-card remote-source-card">
+              <div class="panel-title">Projekt-Link auf dem PC laden</div>
+              <div class="panel-caption">Unterstützt sichere HTTPS-Links von GitHub, GitLab und Bitbucket. Der PC lädt das ZIP direkt in den privaten Importordner.</div>
+              <label class="stacked-field"><span>Repository- oder ZIP-Link</span><input class="text-input" id="remote-source-url" type="url" inputmode="url" placeholder="https://github.com/name/projekt"></label>
+              <label class="ownership-confirm"><input type="checkbox" id="confirm-remote-link-ownership"><span>Ich darf diesen Quellcode lokal als Trainingsdaten verwenden.</span></label>
+              <button class="primary-button full remote-write-action" id="remote-download-source">Auf dem PC herunterladen</button>
+              <div class="remote-transfer" id="remote-download-progress" hidden><span>Download</span><div class="progress-track"><i></i></div><strong>Wird vorbereitet …</strong></div>
+            </section>
+
+            <section class="glass-panel remote-card remote-source-card">
+              <div class="panel-title">ZIP vom Handy übertragen</div>
+              <div class="panel-caption">Die Datei wird verschlüsselt über dein Tailnet zum PC übertragen, dort geprüft und separat abgelegt.</div>
+              <label class="file-drop" for="remote-source-file"><strong>ZIP auswählen</strong><span id="remote-file-name">Keine Datei gewählt</span><input id="remote-source-file" type="file" accept=".zip,application/zip"></label>
+              <label class="ownership-confirm"><input type="checkbox" id="confirm-remote-upload-ownership"><span>Ich darf diesen Quellcode lokal als Trainingsdaten verwenden.</span></label>
+              <button class="secondary-button full remote-write-action" id="remote-upload-source">Zum PC hochladen</button>
+              <div class="remote-transfer" id="remote-upload-progress" hidden><span>Upload</span><div class="progress-track"><i></i></div><strong>0 %</strong></div>
+            </section>
+
+            <section class="glass-panel remote-card remote-inbox-card">
+              <div class="panel-toolbar slim">
+                <div><div class="panel-title">Privater Importordner</div><div class="panel-caption">Heruntergeladene und hochgeladene ZIPs bleiben lokal auf diesem PC.</div></div>
+                <button class="ghost-button compact remote-write-action" id="remote-import-sources">Prüfen & importieren</button>
+              </div>
+              <div class="remote-inbox-list" id="remote-inbox-list"><div class="empty-state">Importordner wird geladen …</div></div>
+              <label class="ownership-confirm"><input type="checkbox" id="confirm-remote-import-ownership"><span>Eigentum und lokale Trainingsnutzung für alle angezeigten Quellen bestätigt.</span></label>
+            </section>
+
+            <section class="glass-panel remote-card pwa-card">
+              <div class="panel-title">Wie eine App verwenden</div>
+              <div class="panel-caption">Installiert nur die Oberfläche auf dem Startbildschirm. Modell, Daten und Jobs bleiben auf dem PC.</div>
+              <div class="pwa-state" id="pwa-state">Browser-Unterstützung wird geprüft …</div>
+              <button class="ghost-button full" id="install-pwa" disabled>Zum Startbildschirm hinzufügen</button>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-system">
+        <div class="system-layout">
+          <div class="glass-panel system-hero">
+            <div class="system-glyph">✦</div>
+            <div>
+              <div class="eyebrow">LOCAL-FIRST</div>
+              <h2>Dein Modell. Deine Daten. Deine Fehler.</h2>
+              <p>Das Studio bindet keine fremde Modell-API ein. Chat, Training, Checkpoints und Godot-Prüfung bleiben in deinem Projekt.</p>
+            </div>
+          </div>
+          <div class="system-cards" id="system-cards"></div>
+          <div class="glass-panel path-panel">
+            <div class="section-label">PROJEKTPFAD</div>
+            <code id="project-root">–</code>
+            <div class="path-note">Die App lauscht standardmäßig nur auf <code>127.0.0.1</code> und ist damit nicht im Netzwerk freigegeben.</div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="new-file-modal" hidden>
+    <div class="modal glass-panel">
+      <div class="panel-title">Neue Trainingsdatei</div>
+      <p class="panel-caption">Der Pfad muss unter <code>data/raw</code> liegen.</p>
+      <input id="new-file-path" class="text-input" value="data/raw/curriculum/01_basics/new_example.gd">
+      <div class="modal-actions">
+        <button class="ghost-button" data-close-modal>Abbrechen</button>
+        <button class="primary-button" id="create-file">Erstellen</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-region" id="toast-region" aria-live="polite"></div>
+  <script src="/static/progress.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

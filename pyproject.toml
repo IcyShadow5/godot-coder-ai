@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "godot-coder-ai"
+version = "0.10.1"
+description = "A local training studio for building a compact Godot/GDScript language model from scratch."
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.24",
+  "PyYAML>=6.0",
+  "tqdm>=4.66",
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+  "tokenizers>=0.21,<1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "httpx2>=2.0,<3"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[project.scripts]
+godot-coder-studio = "godot_coder.studio:main"
+godot-coder-remote = "godot_coder.remote_access:main"
+
+[tool.setuptools.package-data]
+"godot_coder.ui" = ["static/*.html", "static/*.css", "static/*.js", "static/*.webmanifest", "static/*.svg", "static/*.png"]

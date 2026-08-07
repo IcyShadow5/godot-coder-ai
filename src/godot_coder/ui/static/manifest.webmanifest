@@ -1,0 +1,31 @@
+{
+  "name": "Godot Coder AI Studio",
+  "short_name": "Godot Coder",
+  "description": "Private mobile control surface for the local Godot Coder AI workstation.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#071421",
+  "theme_color": "#071421",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/static/app-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/app-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

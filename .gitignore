@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project runtime data (excluded from source)
+data/corpus/downloads/
+data/local_sources/inbox/
+data/local_sources/incoming/
+data/raw/
+data/tokenizer/
+data/corpus/index/
+data/corpus/shards/
+reports/
+checkpoints/
+artifacts/
+.studio_backups/
+.upgrade_backups/
+logs/
+
+# Environment files
+.env
+.env.local
+*.secret
+
+# Windows scripts (generated)
+*.bat
+*.ps1

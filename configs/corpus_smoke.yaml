@@ -1,0 +1,32 @@
+model:
+  max_seq_len: 128
+  n_layers: 2
+  d_model: 128
+  n_heads: 4
+  d_ff: 320
+  dropout: 0.0
+  rope_base: 10000.0
+  tie_embeddings: true
+  gradient_checkpointing: false
+train:
+  tokenizer_path: artifacts/tokenizer_bpe_godot.json
+  data_dir: data/processed/corpus_v04
+  output_dir: checkpoints/corpus_smoke
+  device: auto
+  dtype: float16
+  seed: 1337
+  batch_size: 2
+  gradient_accumulation_steps: 2
+  max_steps: 30
+  learning_rate: 0.0006
+  min_learning_rate: 6.0e-05
+  warmup_steps: 5
+  weight_decay: 0.1
+  beta1: 0.9
+  beta2: 0.95
+  gradient_clip: 1.0
+  log_interval: 5
+  eval_interval: 10
+  eval_batches: 5
+  save_interval: 10
+  keep_last_checkpoints: 2

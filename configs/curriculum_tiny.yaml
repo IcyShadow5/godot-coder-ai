@@ -1,0 +1,32 @@
+model:
+  max_seq_len: 256
+  n_layers: 4
+  d_model: 192
+  n_heads: 6
+  d_ff: 512
+  dropout: 0.05
+  rope_base: 10000.0
+  tie_embeddings: true
+  gradient_checkpointing: false
+train:
+  tokenizer_path: artifacts/tokenizer.json
+  data_dir: data/processed/curriculum_v03
+  output_dir: checkpoints/curriculum_tiny
+  device: auto
+  dtype: float16
+  seed: 1337
+  batch_size: 8
+  gradient_accumulation_steps: 1
+  max_steps: 600
+  learning_rate: 0.00035
+  min_learning_rate: 3.5e-05
+  warmup_steps: 30
+  weight_decay: 0.1
+  beta1: 0.9
+  beta2: 0.95
+  gradient_clip: 1.0
+  log_interval: 10
+  eval_interval: 50
+  eval_batches: 20
+  save_interval: 50
+  keep_last_checkpoints: 3
