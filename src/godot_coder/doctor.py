@@ -95,7 +95,7 @@ def collect_status(root: Path) -> tuple[dict[str, Any], bool]:
         root / "pyproject.toml",
         root / "configs" / "corpus_starter_30m.yaml",
         root / "src" / "godot_coder" / "model.py",
-        root / "start_studio.bat",
+        root / "LICENSE",
     ]
     missing = [str(path.relative_to(root)) for path in expected if not path.exists()]
     status["project_files"] = {"passed": not missing, "missing": missing}

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "godot-coder-ai"
-version = "0.10.1"
+version = "0.10.2"
 description = "A local training studio for building a compact Godot/GDScript language model from scratch."
 requires-python = ">=3.10"
 dependencies = [
@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "httpx2>=2.0,<3"]
+dev = ["pytest>=8.0", "httpx>=0.27"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

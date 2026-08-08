@@ -24,6 +24,7 @@ Thumbs.db
 
 # Project runtime data (excluded from source)
 data/corpus/downloads/
+data/corpus/sources.json
 data/local_sources/inbox/
 data/local_sources/incoming/
 data/raw/
@@ -42,6 +43,17 @@ logs/
 .env.local
 *.secret
 
-# Windows scripts (generated)
-*.bat
-*.ps1
+# Windows scripts are source and tracked (Studio launch + upgrade helpers).
+# They are not generated artifacts, so they must not be ignored.
+
+# Hardware autotuner output is machine-local — every PC measures different
+# timings, so autotuned configs stay out of the repo. The example template
+# IS committed (it is documentation), everything else is not.
+configs/autotuned_*.yaml
+!configs/autotuned_night.example.yaml
+
+# Test caches
+.pytest_cache/
+
+# Upgrade package build output (assembled from upgrade/ templates)
+upgrade/payload/

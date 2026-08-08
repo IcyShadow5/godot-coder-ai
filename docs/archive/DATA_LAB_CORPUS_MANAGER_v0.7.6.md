@@ -1,5 +1,11 @@
 # Data Lab & Corpus Manager v0.7.6
 
+> **Veraltet / Archiv.** Beschreibt den Data-Lab-Stand von v0.7.6. Das Data Lab
+> existiert weiterhin (Filter, Sicherungen, Hot Reload), Details stehen in
+> `STUDIO.md`.
+
+# Data Lab & Corpus Manager v0.7.6
+
 ## Welche Daten Data Lab zeigt
 
 Data Lab unterscheidet vier Zustände:

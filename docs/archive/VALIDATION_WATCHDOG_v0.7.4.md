@@ -1,5 +1,11 @@
 # Validation Watchdog v0.7.4
 
+> **Veraltet / Archiv.** Der v0.7.4-Watchdog wurde durch den
+> Managed-Process-Runner mit Job-Objects und den Error-Rate-Abort abgelöst
+> (v0.10.x). Der aktuelle Validierungsablauf steht in `ARCHITECTURE.md`.
+
+# Validation Watchdog v0.7.4
+
 ## Ablauf
 
 1. Eine bereinigte, dauerhafte Corpus-Kopie wird erzeugt oder bei identischem Fingerprint wiederverwendet.

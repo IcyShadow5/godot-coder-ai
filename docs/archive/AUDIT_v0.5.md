@@ -1,5 +1,8 @@
 # Audit v0.5.0
 
+> **Veraltet / Archiv.** Historischer Audit der v0.5-Phase. Der Nachfolger ist
+> `docs/AUDIT_v0.6.md`; alles seit v0.6 steht im `docs/CHANGELOG_v0.10.2.md`.
+
 ## Behobene Fehler und Risiken
 
 - Git-Quellen verwenden reproduzierbare Branches/Tags/Commits; unvollständige Downloads gelten nicht mehr als fertig.

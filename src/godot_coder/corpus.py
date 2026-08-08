@@ -19,6 +19,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 from urllib.parse import urlparse
 
+from . import __version__
 from .godot_cli import build_check_command, build_project_script_command, build_project_validation_command
 from .progress_events import serialize_event
 from .tokenizer import BPETokenizer
@@ -720,7 +721,8 @@ def _archive_checkout(target: Path, source: dict[str, Any]) -> subprocess.Comple
         return subprocess.CompletedProcess([], 1, "", "Archive fallback only supports GitHub HTTPS URLs")
     archive_path = target.with_suffix(".download.zip")
     try:
-        request = urllib.request.Request(archive_url, headers={"User-Agent": "Godot-Coder-AI/0.10.1"})
+        # User-Agent comes from __version__ so it can't drift from the release.
+        request = urllib.request.Request(archive_url, headers={"User-Agent": f"Godot-Coder-AI/{__version__}"})
         with urllib.request.urlopen(request, timeout=300) as response, archive_path.open("wb") as output:
             shutil.copyfileobj(response, output, length=1024 * 1024)
         _safe_extract_github_archive(archive_path, target, source)

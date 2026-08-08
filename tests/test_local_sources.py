@@ -11,9 +11,13 @@ from godot_coder.local_sources import (
     _ERROR_LINE_RE,
     _PROGRESS_LINE_RE,
     _safe_extract,
+    _static_warnings,
+    _validate_project,
+    audit_project,
     import_inbox,
     inbox_path,
 )
+from godot_coder.process_control import ManagedProcessResult
 
 
 def _write_project(root: Path, name: str = "Private Demo") -> None:
@@ -150,3 +154,119 @@ def test_error_line_re_matches_godot_error_output() -> None:
     mixed = "[  16% ] first_scan_filesystem | ERROR: Some warning"
     assert _ERROR_LINE_RE.search(mixed)
     assert _PROGRESS_LINE_RE.search(mixed), "progress marker must be detectable even in error lines"
+
+
+def test_fast_static_still_scans_for_secrets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """FAST_STATIC must NOT skip the secret scan (v0.10.2 security fix).
+
+    A stray .env or hardcoded API key would otherwise sail straight into
+    the training corpus on the "fast" path.
+    """
+    project = tmp_path / "secret-project"
+    project.mkdir()
+    (project / "project.godot").write_text("config_version=5\n", encoding="utf-8")
+    (project / "main.gd").write_text("extends Node\n", encoding="utf-8")
+    (project / ".env").write_text(
+        "OPENAI_API_KEY=sk-proj-ABCDEFGHIJKLMNOPQRSTUVWXYZ123456\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("GODOT_CODER_FAST_STATIC", "1")
+
+    audit = audit_project(project, project, ownership_confirmed=True)
+
+    assert audit.secret_hits, "secret scan must run even in FAST_STATIC mode"
+    assert any(hit["kind"] == "suspicious_filename" for hit in audit.secret_hits)
+
+
+def test_fast_static_skips_static_warnings_and_never_double_processes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FAST_STATIC skips the AST walk entirely and each file is processed once."""
+    project = tmp_path / "static-project"
+    project.mkdir()
+    (project / "project.godot").write_text("config_version=5\n", encoding="utf-8")
+    for index in range(3):
+        (project / f"script_{index}.gd").write_text(
+            "extends Node\n\nfunc _ready() -> void:\n\tprint(1)\n", encoding="utf-8"
+        )
+    calls = 0
+    real_static_warnings = _static_warnings
+
+    def counting_wrapper(path, text, *, display_path=None):
+        nonlocal calls
+        calls += 1
+        return real_static_warnings(path, text, display_path=display_path)
+
+    monkeypatch.setattr("godot_coder.local_sources._static_warnings", counting_wrapper)
+
+    monkeypatch.setenv("GODOT_CODER_FAST_STATIC", "1")
+    audit_fast = audit_project(project, project, ownership_confirmed=True)
+    assert calls == 0, "FAST_STATIC must not run the AST walk at all"
+    assert audit_fast.gd_files == 3
+    assert audit_fast.trainable_gd_files == 3
+    assert audit_fast.static_warnings == []
+
+    monkeypatch.delenv("GODOT_CODER_FAST_STATIC")
+    calls = 0
+    audit_normal = audit_project(project, project, ownership_confirmed=True)
+    assert calls == 3, "normal mode must run exactly one AST pass per file (no double processing)"
+    assert audit_normal.gd_files == 3
+
+
+def test_skip_project_import_wins_over_fast_static(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """SKIP_PROJECT_IMPORT stays authoritative even when FAST_STATIC=1.
+
+    v0.10.2: both env vars used to be set, the skip was silently ignored
+    and the slow --import ran anyway.
+    """
+    source = tmp_path / "private-project"
+    _write_project(source)
+    monkeypatch.setenv("GODOT_CODER_SKIP_PROJECT_IMPORT", "1")
+    monkeypatch.setenv("GODOT_CODER_FAST_STATIC", "1")
+    monkeypatch.setattr("godot_coder.local_sources._find_godot", lambda: "fake-godot")
+    ran: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        ran.append(list(command))
+        return ManagedProcessResult(
+            command=list(command), return_code=0, output="ok", timed_out=False,
+            duration_seconds=0.1, pid=4242, termination_attempted=False,
+        )
+
+    monkeypatch.setattr("godot_coder.local_sources.run_managed_process", fake_run)
+
+    result = _validate_project(source, static_warning_paths=set())
+
+    assert result.mode == "gdscript_check", "skip-import must use the per-file parser"
+    assert result.status in {"passed", "passed_with_warnings"}
+    assert not ran, "statically clean scripts must not be Godot-checked per file"
+
+
+def test_error_rate_abort_triggers_parser_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A stuck --import (endless error lines) aborts and falls back to the per-file parser."""
+    source = tmp_path / "stuck-project"
+    _write_project(source)
+    monkeypatch.setattr("godot_coder.local_sources._find_godot", lambda: "fake-godot")
+    monkeypatch.setattr("godot_coder.local_sources._error_abort_threshold", lambda: 3)
+    state = {"import_runs": 0}
+
+    def fake_run(command, **kwargs):
+        state["import_runs"] += 1
+        abort_on_line = kwargs["abort_on_line"]
+        reason = None
+        for _ in range(4):  # 4 error lines > threshold 3
+            reason = abort_on_line("ERROR: failed to load resource: res://broken.tscn")
+        assert reason is not None
+        return ManagedProcessResult(
+            command=list(command), return_code=None, output="errors", timed_out=False,
+            duration_seconds=1.0, pid=7001, termination_attempted=True, aborted=True,
+            abort_reason=reason,
+        )
+
+    monkeypatch.setattr("godot_coder.local_sources.run_managed_process", fake_run)
+
+    result = _validate_project(source, static_warning_paths=set())
+
+    assert state["import_runs"] == 1
+    assert result.mode == "gdscript_check", "abort must fall back to the per-file parser"
+    assert result.status in {"passed", "passed_with_warnings"}
+    assert result.infrastructure_failure and "consecutive error lines" in result.infrastructure_failure

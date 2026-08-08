@@ -1,5 +1,13 @@
 # Godot Coder AI Remote API und Konfigurationsschema v1
 
+> **Veraltet / Archiv.** Die Remote-API in dieser Form wurde durch den
+> Tailscale-Serve-Workflow ersetzt (`CONFIGURE_REMOTE_STUDIO.ps1`,
+> `remote_access configure | disable`). Die Einrichtung steht in `STUDIO.md`;
+> die Konfigurationsdatei `data/studio/remote_access.json` wird weiterhin
+> verwendet, die Endpunkte können aber abweichen.
+
+# Godot Coder AI Remote API und Konfigurationsschema v1
+
 ## Lokale Konfiguration
 
 Pfad: `data/studio/remote_access.json`

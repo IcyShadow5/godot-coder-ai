@@ -1,5 +1,12 @@
 # Parser Fallback v0.7.5
 
+> **Veraltet / Archiv.** Dieses Dokument beschreibt den v0.7.5-Parserfallback.
+> Der Mechanismus lebt weiter, aber mit neuen Standardwerten und dem
+> Windows-Job-Object-Runner. Der aktuelle Stand steht in `ARCHITECTURE.md`
+> (Validierungspfade), die Umgebungsvariablen in `README.md`.
+
+# Parser Fallback v0.7.5
+
 ## Diagnose aus dem Pennyshire-Log
 
 Die statische Prüfung hatte 85 GDScript-Dateien vollständig verarbeitet: 83 ohne Hinweise und 2 mit Hinweisen. Erst danach hing Godot beim vollständigen Mono-Editorimport.

@@ -1,5 +1,11 @@
 # Installation und Upgrade auf v0.7.9
 
+> **Veraltet / Archiv.** Diese Anleitung gilt für v0.7.9 und beschreibt den
+> alten `APPLY_CUMULATIVE_V079_UPGRADE.bat`-Ablauf. Die aktuelle Anleitung
+> steht in `docs/INSTALL_v0.10.2.md`, das Upgrade-Paket in `upgrade/`.
+
+# Installation und Upgrade auf v0.7.9
+
 ## Clean ZIP
 
 Das Clean ZIP enthält nur Projektcode, Konfigurationen, Tests, Dokumentation und Startskripte. Es enthält keine Modelle, Checkpoints, privaten Quellen, Reports, Datenordner oder virtuelle Umgebung.

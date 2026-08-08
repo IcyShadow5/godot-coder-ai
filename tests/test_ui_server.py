@@ -2,6 +2,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from godot_coder import __version__
 from godot_coder.ui.server import create_app
 
 
@@ -92,7 +93,7 @@ def test_studio_brand_version_is_runtime_driven(tmp_path: Path) -> None:
         index = client.get("/")
         overview = client.get("/api/overview")
     assert 'id="brand-version"' in index.text
-    assert overview.json()["app_version"] == "0.10.1"
+    assert overview.json()["app_version"] == __version__
 
 
 def test_professional_training_core_uses_visual_workflow(tmp_path: Path) -> None:
@@ -164,3 +165,17 @@ def test_remote_self_check_uses_actual_local_request_port(tmp_path: Path, monkey
         response = client.get("/api/remote/self-check")
     assert response.status_code == 200
     assert captured["port"] == 9988
+
+
+def test_local_import_extra_env_maps_request_flags() -> None:
+    from godot_coder.ui.server import _local_import_extra_env
+
+    assert _local_import_extra_env(
+        skip_project_import=False, fast_static=False, error_abort_threshold=None
+    ) == {}
+    env = _local_import_extra_env(skip_project_import=True, fast_static=True, error_abort_threshold=60)
+    assert env == {
+        "GODOT_CODER_SKIP_PROJECT_IMPORT": "1",
+        "GODOT_CODER_FAST_STATIC": "1",
+        "GODOT_CODER_ERROR_ABORT_THRESHOLD": "60",
+    }

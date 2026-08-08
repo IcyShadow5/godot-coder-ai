@@ -204,7 +204,7 @@ function renderConfigs() {
   const generated = state.configs.filter((config) => config.profile_generated);
   const profiles = state.configs.filter((config) => config.profile_id && !config.profile_generated);
   const legacy = state.configs.filter((config) => !config.profile_id);
-  select.innerHTML = `${generated.length ? `<optgroup label="Hardware-Empfehlung">${generated.map((config) => `<option value="${escapeHtml(config.path)}">${escapeHtml(config.profile_title || config.name)}</option>`).join("")}</optgroup>` : ""}${profiles.length ? `<optgroup label="v0.6 · Professional Profiles">${profiles.map((config) => `<option value="${escapeHtml(config.path)}">${escapeHtml(config.profile_title || config.name)}</option>`).join("")}</optgroup>` : ""}${legacy.length ? `<optgroup label="Lern- und Legacy-Konfigurationen">${legacy.map((config) => `<option value="${escapeHtml(config.path)}">${escapeHtml(config.name)}</option>`).join("")}</optgroup>` : ""}`;
+  select.innerHTML = `${generated.length ? `<optgroup label="Hardware-Empfehlung">${generated.map((config) => `<option value="${escapeHtml(config.path)}">${escapeHtml(config.profile_title || config.name)}</option>`).join("")}</optgroup>` : ""}${profiles.length ? `<optgroup label="Empfohlene Profile">${profiles.map((config) => `<option value="${escapeHtml(config.path)}">${escapeHtml(config.profile_title || config.name)}</option>`).join("")}</optgroup>` : ""}${legacy.length ? `<optgroup label="Lern- und Legacy-Konfigurationen">${legacy.map((config) => `<option value="${escapeHtml(config.path)}">${escapeHtml(config.name)}</option>`).join("")}</optgroup>` : ""}`;
   const recommendedPath = state.autotune?.recommendation?.config;
   if (state.configs.some((item) => item.path === prior)) select.value = prior;
   else if (recommendedPath && state.configs.some((item) => item.path === recommendedPath)) select.value = recommendedPath;
@@ -703,8 +703,13 @@ async function openLocalSourceInbox() {
 async function importLocalSources() {
   const confirmed = Boolean($("#confirm-local-ownership")?.checked);
   if (!confirmed) return toast("Bestätige zuerst, dass du den Quellcode verwenden darfst.", "error");
+  // Forward the fast-import toggles; the server maps them to env vars.
+  const body = { confirm_owned: true };
+  if ($("#opt-skip-project-import")?.checked) body.skip_project_import = true;
+  if ($("#opt-fast-static")?.checked) body.fast_static = true;
+  if ($("#opt-tighten-abort")?.checked) body.error_abort_threshold = 60;
   try {
-    const job = await api("/api/jobs/corpus/local-import", { method: "POST", body: JSON.stringify({ confirm_owned: true }) });
+    const job = await api("/api/jobs/corpus/local-import", { method: "POST", body: JSON.stringify(body) });
     state.currentJob = job;
     renderJob(job);
     toast("Private Projekte werden sicher geprüft und importiert.");
@@ -1512,7 +1517,7 @@ function renderRemote(remote) {
   const tailscale = remote.tailscale || {};
   let stateName = "loading";
   let title = "Nur lokal erreichbar";
-  let detail = remote.configured ? "Remote-Zugriff ist konfiguriert, aber diese Ansicht läuft lokal." : "Führe CONFIGURE_REMOTE_STUDIO.bat am PC aus.";
+  let detail = remote.configured ? "Remote-Zugriff ist konfiguriert, aber diese Ansicht läuft lokal." : "Führe python -m godot_coder.remote_access configure am PC aus.";
   if (isRemote && !remote.can_read) {
     stateName = "blocked"; title = "Zugriff nicht freigegeben"; detail = "Diese Tailscale-Identität steht nicht in der lokalen Freigabeliste.";
   } else if (isRemote && remote.can_write) {

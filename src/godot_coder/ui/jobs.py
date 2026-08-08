@@ -12,7 +12,7 @@ import uuid
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 from ..process_control import terminate_process_tree
 from ..progress_events import EVENT_SCHEMA_VERSION, mask_secrets, parse_event_line, utc_timestamp
@@ -56,6 +56,10 @@ class Job:
     kind: str
     command: list[str]
     cwd: str
+    # Extra env vars for the child process (Studio import toggles).
+    # Deliberately excluded from snapshots — job state should never carry
+    # env-like values.
+    extra_env: dict[str, str] = field(default_factory=dict, repr=False)
     status: str = "starting"
     created_at: float = field(default_factory=time.time)
     started_at: float | None = None
@@ -214,6 +218,7 @@ class JobManager:
         args: Sequence[str],
         *,
         max_steps: int | None = None,
+        extra_env: Mapping[str, str] | None = None,
     ) -> dict[str, object]:
         with self._lock:
             if self.is_busy():
@@ -225,6 +230,7 @@ class JobManager:
                 command=command,
                 cwd=str(self.project_root),
                 max_steps=max_steps,
+                extra_env=dict(extra_env or {}),
                 progress_state={
                     "schema_version": EVENT_SCHEMA_VERSION,
                     "job_status": "starting",
@@ -446,6 +452,8 @@ class JobManager:
             )
         try:
             child_env = os.environ.copy()
+            # Studio import toggles arrive via job.extra_env — no shell needed.
+            child_env.update(job.extra_env)
             child_env["PYTHONUTF8"] = "1"
             child_env["PYTHONIOENCODING"] = "utf-8"
             child_env["GODOT_CODER_JOB_ID"] = job.id

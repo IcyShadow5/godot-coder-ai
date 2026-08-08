@@ -66,7 +66,7 @@ def test_eta_estimator_returns_range_after_samples() -> None:
     assert result["estimated_remaining_max_seconds"] >= result["estimated_remaining_seconds"]
 
 
-def test_eta_cache_persists_through_zero_remaining() -> None:
+def test_eta_preserves_last_estimate_on_zero_remaining() -> None:
     """The ETA must not flip to None / "calculating" between projects when
     remaining_files temporarily drops to zero.  The cached last estimate
     carries through so the UI stays stable."""

@@ -358,6 +358,13 @@
               <div><span>4</span><strong>Privat aufnehmen</strong><small>Kein Weiterverteilen, standardmäßig nur Training</small></div>
             </div>
             <label class="ownership-confirm"><input type="checkbox" id="confirm-local-ownership"><span>Ich bestätige, dass ich den importierten Quellcode lokal zum Training verwenden darf. Fremde Add-ons werden nicht als Trainingsdaten übernommen.</span></label>
+            <div class="local-import-options">
+              <span class="local-import-options-title">Import-Optionen · nur für große Mengen</span>
+              <label class="local-import-option"><input type="checkbox" id="opt-skip-project-import"><span><strong>Godot-Projektimport überspringen</strong><small>Prüft jede <code>.gd</code>-Datei einzeln statt des vollen <code>--import</code>. Deutlich schneller, aber ohne Projektkontext. Volle Prüfung später über <code>validate_dataset.py</code>.</small></span></label>
+              <label class="local-import-option"><input type="checkbox" id="opt-fast-static"><span><strong>Statische AST-Prüfung überspringen</strong><small>Überspringt die langsame Warnungsanalyse. Secret-Scan und Dateigrößenprüfung laufen trotzdem — nichts Leichtfertiges wird übersprungen.</small></span></label>
+              <label class="local-import-option"><input type="checkbox" id="opt-tighten-abort"><span><strong>Fehler-Abbruch verschärfen</strong><small>Bricht Godot nach 60 statt 500 Fehlerzeilen ab — hilfreich bei hängenden Add-on-Projekten.</small></span></label>
+              <span class="local-import-options-note">Tipp: Für den ersten großen Import beides oben aktivieren und später einen normalen Lauf mit voller Prüfung machen.</span>
+            </div>
             <div class="local-source-status" id="local-source-status">Importordner wird geladen …</div>
             <section class="local-progress-dashboard" id="local-progress-dashboard" hidden aria-live="polite">
               <div class="local-progress-head">
@@ -551,7 +558,7 @@
               </dl>
               <div class="remote-command"><span>Einmalige Freigabe am PC</span><code id="remote-serve-command">tailscale serve --bg http://127.0.0.1:8765</code></div>
               <div class="remote-self-check" id="remote-self-check-result" hidden></div>
-              <p class="muted-copy">Konfiguration am PC: <code>CONFIGURE_REMOTE_STUDIO.bat</code>. Der Server selbst bleibt lokal gebunden.</p>
+              <p class="muted-copy">Konfiguration am PC: <code>python -m godot_coder.remote_access configure</code>. Der Server selbst bleibt lokal gebunden.</p>
             </section>
 
             <section class="glass-panel remote-card" id="remote-lock-card">

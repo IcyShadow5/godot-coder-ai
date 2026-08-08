@@ -545,62 +545,31 @@ def audit_project(
         )
 
     fast_static = os.environ.get("GODOT_CODER_FAST_STATIC", "").strip() == "1"
-    if fast_static:
-        # Pre-validated dataset: skip secret scan + per-file static analysis.
-        # Still count bytes/lines for token estimation.
-        for path in script_files:
-            text_value, _ = _decode(path.read_bytes())
-            raw = text_value.encode("utf-8")
-            gd_bytes += len(raw)
-            gd_lines += text_value.count("\n") + 1
-            if len(raw) <= TRAIN_FILE_LIMIT:
-                trainable_gd_files += 1
-                trainable_gd_bytes += len(raw)
-        passed_files = gd_files
-        if progress and project_index:
-            progress.emit(
-                "local_project_phase",
-                index=project_index,
-                phase="secret_scan",
-                phase_status="skipped",
-                message="Secret-Prüfung übersprungen (GODOT_CODER_FAST_STATIC=1).",
-            )
-            progress.emit(
-                "local_project_phase",
-                index=project_index,
-                phase="file_size_check",
-                phase_status="skipped",
-                message="Dateigrößenprüfung übersprungen (Fast-Static-Modus).",
-            )
-            progress.emit(
-                "local_project_phase",
-                index=project_index,
-                phase="static_analysis",
-                phase_status="skipped",
-                scripts_found=gd_files,
-                trainable_scripts=trainable_gd_files,
-                message=f"Statische Prüfung übersprungen: {gd_files} Skripte übernommen (GODOT_CODER_FAST_STATIC=1).",
-            )
-    else:
-        for path in usable_files:
-            relative = path.relative_to(project)
-            if SECRET_NAME_RE.search(relative.as_posix()):
-                secret_hits.append({"path": relative.as_posix(), "kind": "suspicious_filename"})
-            if path.suffix.lower() not in TEXT_SUFFIXES or path.stat().st_size > 4 * 1024**2:
-                continue
-            text_value, encoding = _decode(path.read_bytes())
-            if encoding == "utf-8-replace":
-                warnings.append({"code": "encoding_damage", "path": relative.as_posix()})
-            for kind, pattern in SECRET_PATTERNS:
-                match = pattern.search(text_value)
-                if match:
-                    secret_hits.append({
-                        "path": relative.as_posix(),
-                        "kind": kind,
-                        "line": text_value.count("\n", 0, match.start()) + 1,
-                    })
 
-    if not fast_static and progress and project_index:
+    # Secret scan — runs in every mode, no exceptions. I made FAST_STATIC skip
+    # this in v0.10.1 and regretted it immediately: a stray .env or hardcoded
+    # API key would have sailed straight into the training corpus. It's cheap
+    # next to a Godot startup, so there is no reason to ever skip it.
+    # FAST_STATIC only skips the slow per-file AST walk below.
+    for path in usable_files:
+        relative = path.relative_to(project)
+        if SECRET_NAME_RE.search(relative.as_posix()):
+            secret_hits.append({"path": relative.as_posix(), "kind": "suspicious_filename"})
+        if path.suffix.lower() not in TEXT_SUFFIXES or path.stat().st_size > 4 * 1024**2:
+            continue
+        text_value, encoding = _decode(path.read_bytes())
+        if encoding == "utf-8-replace":
+            warnings.append({"code": "encoding_damage", "path": relative.as_posix()})
+        for kind, pattern in SECRET_PATTERNS:
+            match = pattern.search(text_value)
+            if match:
+                secret_hits.append({
+                    "path": relative.as_posix(),
+                    "kind": kind,
+                    "line": text_value.count("\n", 0, match.start()) + 1,
+                })
+
+    if progress and project_index:
         progress.emit(
             "local_project_phase",
             index=project_index,
@@ -610,7 +579,7 @@ def audit_project(
             message="Secret-Prüfung bestanden." if not secret_hits else f"{len(secret_hits)} mögliche Secrets erkannt; Inhalte werden nicht angezeigt.",
             level="info" if not secret_hits else "warning",
         )
-    if not fast_static and progress and project_index:
+    if progress and project_index:
         progress.emit(
             "local_project_phase",
             index=project_index,
@@ -619,13 +588,56 @@ def audit_project(
             message="GDScript-Dateigrößen werden geprüft.",
         )
 
-    for path in script_files:
+    # Per-script pass. Counting always; the AST warning walk only in normal
+    # mode. FAST_STATIC saves the slow part, nothing else — and every file is
+    # processed exactly once either way.
+    passed_files = 0
+    warning_files = 0
+    for file_index, path in enumerate(script_files, start=1):
         relative = path.relative_to(project)
         size = path.stat().st_size
         if size > TRAIN_FILE_LIMIT:
             oversized.append(relative.as_posix())
+        text_value, encoding = _decode(path.read_bytes())
+        raw = text_value.encode("utf-8")
+        gd_bytes += len(raw)
+        gd_lines += text_value.count("\n") + 1
+        if len(raw) <= TRAIN_FILE_LIMIT:
+            trainable_gd_files += 1
+            trainable_gd_bytes += len(raw)
+        file_warnings: list[dict[str, Any]] = []
+        if not fast_static:
+            file_warnings = _static_warnings(path, text_value, display_path=relative)
+            warnings.extend(file_warnings)
+        if encoding == "utf-8-replace":
+            # Mirrored into the per-file tally so the progress events don't
+            # claim "bestanden" for a damaged file. The record itself already
+            # lives in `warnings` via the secret scan above — no double entries.
+            file_warnings.append({"code": "encoding_damage", "path": relative.as_posix()})
+        if file_warnings:
+            warning_files += 1
+        else:
+            passed_files += 1
+        if progress and project_index:
+            progress.script_checked()
+            progress.emit(
+                "local_project_progress",
+                index=project_index,
+                phase="static_analysis",
+                phase_status="running",
+                current_file=relative.as_posix(),
+                file_index=file_index,
+                file_total=gd_files,
+                passed=passed_files,
+                warnings=warning_files,
+                failed=0,
+                scripts_found=gd_files,
+                trainable_scripts=trainable_gd_files,
+                level="warning" if file_warnings else "info",
+                message=f"{relative.as_posix()} geprüft" + (f" · {len(file_warnings)} Hinweis(e)" if file_warnings else " · bestanden"),
+            )
 
-    if not fast_static and progress and project_index:
+    if progress and project_index:
         progress.emit(
             "local_project_phase",
             index=project_index,
@@ -635,67 +647,12 @@ def audit_project(
             message="Alle Skriptgrößen sind trainierbar." if not oversized else f"{len(oversized)} übergroße Skripte werden ausgeschlossen.",
             level="info" if not oversized else "warning",
         )
-    if not fast_static and progress and project_index:
+    if progress and project_index:
         progress.emit(
             "local_project_phase",
             index=project_index,
             phase="static_analysis",
-            phase_status="running",
-            file_index=0,
-            file_total=gd_files,
-            passed=0,
-            warnings=len(warnings),
-            failed=0,
-            message="Statische GDScript-Prüfung gestartet.",
-        )
-
-    # In fast_static mode, byte/line counting was already done above and
-    # _static_warnings is skipped.  The per-file loop only runs in normal mode.
-    passed_files = gd_files if fast_static else 0
-    warning_files = 0
-    if not fast_static:
-        for file_index, path in enumerate(script_files, start=1):
-            relative = path.relative_to(project)
-            text_value, encoding = _decode(path.read_bytes())
-            raw = text_value.encode("utf-8")
-            gd_bytes += len(raw)
-            gd_lines += text_value.count("\n") + 1
-            if len(raw) <= TRAIN_FILE_LIMIT:
-                trainable_gd_files += 1
-                trainable_gd_bytes += len(raw)
-            file_warnings = _static_warnings(path, text_value, display_path=relative)
-            if encoding == "utf-8-replace":
-                file_warnings.append({"code": "encoding_damage", "path": relative.as_posix()})
-            warnings.extend(file_warnings)
-            if file_warnings:
-                warning_files += 1
-            else:
-                passed_files += 1
-            if progress and project_index:
-                progress.script_checked()
-                progress.emit(
-                    "local_project_progress",
-                    index=project_index,
-                    phase="static_analysis",
-                    phase_status="running",
-                    current_file=relative.as_posix(),
-                    file_index=file_index,
-                    file_total=gd_files,
-                    passed=passed_files,
-                    warnings=warning_files,
-                    failed=0,
-                    scripts_found=gd_files,
-                    trainable_scripts=trainable_gd_files,
-                    level="warning" if file_warnings else "info",
-                    message=f"{relative.as_posix()} geprüft" + (f" · {len(file_warnings)} Hinweis(e)" if file_warnings else " · bestanden"),
-                )
-
-    if not fast_static and progress and project_index:
-        progress.emit(
-            "local_project_phase",
-            index=project_index,
-            phase="static_analysis",
-            phase_status="passed_with_warnings" if warning_files else "passed",
+            phase_status="skipped" if fast_static else ("passed_with_warnings" if warning_files else "passed"),
             file_index=gd_files,
             file_total=gd_files,
             passed=passed_files,
@@ -703,8 +660,12 @@ def audit_project(
             failed=0,
             scripts_found=gd_files,
             trainable_scripts=trainable_gd_files,
-            message=f"Statische Prüfung abgeschlossen: {passed_files} ohne Hinweise, {warning_files} mit Hinweisen.",
-            level="warning" if warning_files else "info",
+            message=(
+                f"Statische AST-Prüfung übersprungen (GODOT_CODER_FAST_STATIC=1): {passed_files} Skripte übernommen; Secrets und Dateigrößen wurden trotzdem geprüft."
+                if fast_static
+                else f"Statische Prüfung abgeschlossen: {passed_files} ohne Hinweise, {warning_files} mit Hinweisen."
+            ),
+            level="info" if fast_static else ("warning" if warning_files else "info"),
         )
 
     return ProjectAudit(
@@ -1252,11 +1213,12 @@ def _validate_project(
     error_count: int = 0  # tracked by _abort_on_line to detect stuck error loops
 
     skip_import = os.environ.get("GODOT_CODER_SKIP_PROJECT_IMPORT", "").strip() == "1"
-    fast_static = os.environ.get("GODOT_CODER_FAST_STATIC", "").strip() == "1"
-    # With FAST_STATIC, static analysis is skipped but we still need the Godot
-    # project --import to validate that all .gd files parse correctly. Only skip
-    # the import when FAST_STATIC is NOT active.
-    if skip_import and not fast_static:
+    # SKIP_PROJECT_IMPORT always wins now. In v0.10.1 it was silently ignored
+    # when FAST_STATIC=1 was set too — imports ended up slower than I wanted
+    # and it was genuinely confusing. FAST_STATIC only skips the AST walk
+    # during auditing; it has nothing to do with which Godot validation path
+    # we take.
+    if skip_import:
         reason = "GODOT_CODER_SKIP_PROJECT_IMPORT=1 — project import skipped, using direct per-file parser."
         if progress and project_index:
             progress.emit(

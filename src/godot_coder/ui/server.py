@@ -93,6 +93,30 @@ class CorpusTokenizerRequest(BaseModel):
 
 class LocalSourceImportRequest(BaseModel):
     confirm_owned: bool = False
+    skip_project_import: bool = False
+    fast_static: bool = False
+    error_abort_threshold: int | None = Field(default=None, ge=50, le=10000)
+
+
+def _local_import_extra_env(
+    *,
+    skip_project_import: bool,
+    fast_static: bool,
+    error_abort_threshold: int | None,
+) -> dict[str, str]:
+    """Map Studio toggle flags to the env vars local_sources understands.
+
+    These knobs used to be CLI/env-only; the Studio now forwards them to the
+    import child process so the fast-import options don't need a shell.
+    """
+    extra: dict[str, str] = {}
+    if skip_project_import:
+        extra["GODOT_CODER_SKIP_PROJECT_IMPORT"] = "1"
+    if fast_static:
+        extra["GODOT_CODER_FAST_STATIC"] = "1"
+    if error_abort_threshold is not None:
+        extra["GODOT_CODER_ERROR_ABORT_THRESHOLD"] = str(error_abort_threshold)
+    return extra
 
 
 class RemoteUnlockRequest(BaseModel):
@@ -369,6 +393,11 @@ def create_app(project_root: Path) -> FastAPI:
                 "local-source-import",
                 ["-m", "godot_coder.local_sources", "--root", str(root), "import", "--confirm-owned"],
                 max_steps=item_count,
+                extra_env=_local_import_extra_env(
+                    skip_project_import=request.skip_project_import,
+                    fast_static=request.fast_static,
+                    error_abort_threshold=request.error_abort_threshold,
+                ),
             )
         except RuntimeError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
