@@ -4,7 +4,8 @@ Patch notes, so I still know later what I was thinking.
 
 ## v0.10.9 (2026-08-09)
 
-Docs-only release - no code changes.
+Docs and upgrade tooling - no product code changed (no `.py`/`.js`/config
+files), so the 193 tests stay green.
 
 ### Changed
 
@@ -20,6 +21,18 @@ Docs-only release - no code changes.
   - `STUDIO.md` - "afterwards ... follows" -> "then ... follows" in the
     Knowledge Building steps.
 - README and CHANGELOG got the usual v0.10.9 entries.
+
+### Changed (upgrade tooling)
+
+- `upgrade/template/APPLY_TEMPLATE.ps1` - the interactive "Type JA"
+  confirmation prompt is gone. The apply runs non-interactively (backup ->
+  copy -> doctor/pytest), matching how the v0.10.8/v0.10.9 packages were
+  actually built - it also works from a scheduled task or a double-click
+  `.bat`.
+- `upgrade/template/APPLY_TEMPLATE.bat` (new) - double-click wrapper that asks
+  for the project path. Packages v0.10.7/v0.10.8 shipped one; the repo
+  template now does too.
+- `upgrade/README.md` - documents the `.bat` wrapper.
 
 ### Version
 

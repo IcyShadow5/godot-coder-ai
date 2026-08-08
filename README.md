@@ -23,9 +23,11 @@ I keep the full history in `CHANGELOG.md` (per-version detail in
 `docs/CHANGELOG_v0.10.x.md`), so here is just the short version - the last
 few releases in one breath:
 
-- **v0.10.9** - docs voice pass. A review pass removed leftover translation
-  artifacts ("resp.", "Comprehensible", "in principle") and bumped stale
-  version stamps in STUDIO/ARCHITECTURE/ROADMAP. No code changed.
+- **v0.10.9** - docs voice pass + smoother upgrades. A review pass removed
+  leftover translation artifacts ("resp.", "Comprehensible", "in principle")
+  and bumped stale version stamps; the upgrade template now applies
+  non-interactively (no "Type JA" prompt) and ships a .bat wrapper template.
+  No product code changed.
 - **v0.10.8** - AMD GPUs and a clean exit. ROCm (HIP) builds are detected and
   reported ("ROCm ready" in the Studio, `device: rocm` in configs), and
   prepare_data stops printing the 10MB manifest to stdout - the reason a

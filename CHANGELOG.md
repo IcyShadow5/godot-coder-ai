@@ -5,14 +5,17 @@ each version live in `docs/CHANGELOG_v0.10.x.md`; this file is the quick tour.
 
 ## v0.10.9 (2026-08-09)
 
-Docs-only release - a voice pass over the documentation:
+Docs voice pass plus smoother upgrade tooling - no product code changed
+(193 tests stay green):
 
 - Removed leftover translation artifacts ("resp." -> "and"/"or",
   "Comprehensible" -> "Human-readable", "in principle" -> "essentially",
   "afterwards ... follows" -> "then ... follows").
 - Bumped stale version stamps in STUDIO/ARCHITECTURE/ROADMAP to v0.10.9
   (current stable scope).
-- No code changed; 193 tests stay green.
+- Upgrade template no longer prompts "Type JA" - the apply runs
+  non-interactively, and a new .bat wrapper template ships out of the box.
+- No product code changed; 193 tests stay green.
 
 ## v0.10.8 (2026-08-09)
 
