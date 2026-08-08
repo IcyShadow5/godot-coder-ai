@@ -1,35 +1,35 @@
-# Installation und Upgrade auf v0.7.9
+# Installation and upgrade to v0.7.9
 
-> **Veraltet / Archiv.** Diese Anleitung gilt für v0.7.9 und beschreibt den
-> alten `APPLY_CUMULATIVE_V079_UPGRADE.bat`-Ablauf. Die aktuelle Anleitung
-> steht in `docs/INSTALL_v0.10.2.md`, das Upgrade-Paket in `upgrade/`.
+> **Superseded / Archive.** This guide applies to v0.7.9 and describes the
+> old `APPLY_CUMULATIVE_V079_UPGRADE.bat` flow. The current guide is in
+> `docs/INSTALL_v0.10.2.md`, the upgrade package in `upgrade/`.
 
-# Installation und Upgrade auf v0.7.9
+# Installation and upgrade to v0.7.9
 
 ## Clean ZIP
 
-Das Clean ZIP enthält nur Projektcode, Konfigurationen, Tests, Dokumentation und Startskripte. Es enthält keine Modelle, Checkpoints, privaten Quellen, Reports, Datenordner oder virtuelle Umgebung.
+The clean ZIP contains only project code, configurations, tests, documentation and start scripts. It contains no models, checkpoints, private sources, reports, data folders or virtual environment.
 
-Für eine neue Installation die reguläre Python-/CUDA-Einrichtung befolgen und anschließend im Projektordner ausführen:
+For a new installation follow the regular Python/CUDA setup and then run in the project folder:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-## Bestehende Installation upgraden
+## Upgrading an existing installation
 
-1. Laufende Trainings-, Download-, Audit- oder Corpusjobs beenden und das Studio schließen.
-2. Das Upgrader-ZIP in einen neuen Ordner entpacken.
-3. `APPLY_CUMULATIVE_V079_UPGRADE.bat` starten.
-4. Den bestehenden Godot-Coder-AI-Ordner auswählen.
-5. Nach erfolgreichem Testlauf das Studio erneut starten.
+1. Stop running training, download, audit or corpus jobs and close the Studio.
+2. Unpack the upgrader ZIP into a new folder.
+3. Start `APPLY_CUMULATIVE_V079_UPGRADE.bat`.
+4. Select the existing Godot-Coder-AI folder.
+5. After a successful test run start the Studio again.
 
-Der Upgrader überschreibt nur die Dateien aus dem Paket. Er ersetzt oder löscht niemals `.venv`, `data`, `checkpoints`, `artifacts`, `reports`, `.studio_backups` oder frühere `.upgrade_backups`.
+The upgrader only overwrites the files from the package. It never replaces or deletes `.venv`, `data`, `checkpoints`, `artifacts`, `reports`, `.studio_backups` or earlier `.upgrade_backups`.
 
-Vor jedem Überschreiben wird eine Kopie der tatsächlich ersetzten Dateien unter `<Projekt>\.upgrade_backups\v0.7.9-<Zeitstempel>` angelegt. Bei einem fehlgeschlagenen Testlauf bleibt dieses Backup erhalten; es findet kein automatischer Rollback statt.
+Before every overwrite a copy of the actually replaced files is created under `<Project>\.upgrade_backups\v0.7.9-<timestamp>`. In case of a failed test run this backup is kept; there is no automatic rollback.
 
-## Nach dem Upgrade
+## After the upgrade
 
 ```powershell
 .\.venv\Scripts\python.exe -m godot_coder.doctor
@@ -37,4 +37,4 @@ Vor jedem Überschreiben wird eine Kopie der tatsächlich ersetzten Dateien unte
 .\start_studio.bat
 ```
 
-`doctor` prüft zusätzlich Godot und die CUDA-Laufzeit. Auf einem Rechner ohne korrekt installierten Godot- oder CUDA-Pfad kann dieser Check scheitern, obwohl die reinen Python-Tests bestanden haben.
+`doctor` additionally checks Godot and the CUDA runtime. On a machine without a correctly installed Godot or CUDA path this check can fail even though the pure Python tests passed.

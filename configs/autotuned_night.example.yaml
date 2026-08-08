@@ -8,9 +8,9 @@
 profile:
   id: autotuned-night
   title: Autotuned Night · <GPU-NAME>
-  method: Hardware-Autotuner
-  description: Gemessene lokale Hardware-Empfehlung. Batch, Kontext und
-    Speichertechnik stammen aus dem isolierten Autotuner.
+  method: Hardware autotuner
+  description: Measured local hardware recommendation. Batch, context and
+    memory technique come from the isolated autotuner.
   beginner_order: 0
   recommended: true
   risk: medium

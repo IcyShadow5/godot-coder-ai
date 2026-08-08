@@ -1,30 +1,30 @@
-# Validation Watchdog v0.7.4
+# Validation watchdog v0.7.4
 
-> **Veraltet / Archiv.** Der v0.7.4-Watchdog wurde durch den
-> Managed-Process-Runner mit Job-Objects und den Error-Rate-Abort abgelöst
-> (v0.10.x). Der aktuelle Validierungsablauf steht in `ARCHITECTURE.md`.
+> **Superseded / Archive.** The v0.7.4 watchdog was replaced by the
+> managed-process runner with job objects and the error-rate abort
+> (v0.10.x). The current validation flow is in `ARCHITECTURE.md`.
 
-# Validation Watchdog v0.7.4
+# Validation watchdog v0.7.4
 
-## Ablauf
+## Flow
 
-1. Eine bereinigte, dauerhafte Corpus-Kopie wird erzeugt oder bei identischem Fingerprint wiederverwendet.
-2. Daraus wird ein separater, kurzlebiger Validierungsworkspace erstellt.
-3. Godot läuft mit `--headless --xr-mode off --disable-crash-handler --path <workspace> --import`.
-4. Ausgaben erscheinen sofort in der technischen Logansicht.
-5. Die einfache Ansicht erhält alle fünf Sekunden einen Status-Heartbeat.
-6. Bei Ablauf des Zeitlimits werden Godot und seine gestarteten Unterprozesse beendet.
-7. Ein einmaliger zweiter Lauf darf vorhandene Importcaches der isolierten Kopie nutzen.
-8. Ergebnis und vollständiges technisches Log werden gespeichert.
-9. Der Validierungsworkspace wird entfernt; eine verbleibende Sperre wird protokolliert, blockiert aber die Corpus-Kopie nicht.
+1. A cleaned, persistent corpus copy is created or reused when the fingerprint is identical.
+2. A separate, short-lived validation workspace is created from it.
+3. Godot runs with `--headless --xr-mode off --disable-crash-handler --path <workspace> --import`.
+4. Output appears immediately in the technical log view.
+5. The simple view receives a status heartbeat every five seconds.
+6. When the time limit expires, Godot and its started subprocesses are terminated.
+7. A one-time second run may use the existing import caches of the isolated copy.
+8. The result and the complete technical log are saved.
+9. The validation workspace is removed; a remaining lock is logged but does not block the corpus copy.
 
-## Verhalten bei Fehlern
+## Behavior on errors
 
-- Timeout: Projekt wird nicht trainingsaktiviert, der Importjob wird jedoch geordnet abgeschlossen und zeigt den letzten erfolgreichen Schritt.
-- Parserfehler: Projekt bleibt quarantänisiert; Parserausgabe bleibt im technischen Log und Report.
-- Studioabsturz: Beim nächsten Import wird die gespeicherte PID nur nach Befehlszeilenprüfung beendet.
-- Alter v0.7.3-Prozess: `RECOVER_STUCK_VALIDATION.bat` verwenden.
+- Timeout: the project is not enabled for training, but the import job completes in an orderly way and shows the last successful step.
+- Parser error: the project stays quarantined; the parser output stays in the technical log and report.
+- Studio crash: on the next import the saved PID is only terminated after a command-line check.
+- Old v0.7.3 process: use `RECOVER_STUCK_VALIDATION.bat`.
 
-## Datenschutz und Datenerhalt
+## Privacy and data preservation
 
-Die Originalprojekte werden weiterhin nur gelesen. Die Godot-Prüfung läuft weder im Originalordner noch in der dauerhaften Corpus-Kopie. Private Projekte werden nicht hochgeladen und nicht als weiterverteilbar markiert.
+The original projects continue to be only read. The Godot check runs neither in the original folder nor in the persistent corpus copy. Private projects are not uploaded and not marked as redistributable.

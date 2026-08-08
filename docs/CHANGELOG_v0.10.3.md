@@ -2,6 +2,71 @@
 
 Patch notes, so I still know later what I was thinking.
 
+## v0.10.3 (2026-08-08)
+
+### Fixed
+
+- **Corpus validation completely hung on large Mono projects.**
+  This was the worst bug so far: When importing projects like Pixelorama
+  (Godot Mono build), Godot starts a child process that inherits the stdout/stderr
+  pipes. `corpus.py` used raw `subprocess.run(capture_output=...)` - on
+  timeout only the direct child process is terminated, and `communicate()`
+  then blocks forever because the pipe is held open by the orphaned grandchild.
+  Result: 0% CPU, no children, no progress, a job that hung as "running"
+  for hours. The solution already existed:
+  `run_managed_process` in `process_control.py` terminates the complete
+  process tree via Windows job objects. The corpus validation (project import
+  and script checker) now runs through it - timeouts kill the tree, no orphans
+  anymore, no deadlock.
+- **`validate_dataset.py` had a broken `os.environ.copy()` line** because
+  `import os` was missing. The error would have surfaced on the first run as a
+  `NameError`; now the import is there.
+- **A silent job hung in the Studio on "running" forever.** When a
+  child process stops producing output (exactly the Mono case above), there was
+  no mechanism to detect it. The JobManager now has a
+  **stall watchdog**: If a job stays without output for longer than `GODOT_CODER_JOB_STALL_TIMEOUT_SECONDS`
+  (default 20 minutes), the process tree is terminated and the job
+  is marked as failed - with a reason in the UI. `0` disables the
+  watchdog.
+
+### Fixed (validation policy, retroactively)
+
+- **Scripts from add-on repos without `project.godot` were wrongly hard-excluded.**
+  Pure add-on repositories (dialogic, phantom-camera,
+  godot-firebase and others) do not ship their own `project.godot` - they are
+  plugged into a host project. Still, all their scripts were discarded as
+  `missing_project` (351 records in the current corpus). That contradicted
+  the own policy ("only unambiguous syntax errors and incompatible Godot-3 files
+  are hard-excluded"). Now the corpus validation checks such files
+  individually with Godot's `--check-only` parser (`--path` = source root) and keeps them
+  as a context warning - only real syntax errors are still excluded.
+- **`GODOT_CODER_VALIDATION_TIMEOUT_SECONDS` / `_IDLE_TIMEOUT_SECONDS` did not
+  apply to the corpus check.** The README documents both variables
+  (default 120s / 30s), but only the local import (`local_sources.py`) read them;
+  `corpus.py` had 60/120/30 hardcoded. On large projects a
+  legitimate import could be aborted after 60s. `corpus.py` reads the variables
+  now itself (import 120s, checker >= 120s, idle 30s; adjustable per env variable).
+- **Scripts outside the resolved project path** were silently passed as
+  "passed". Now: context warning instead of silent pass.
+- **`_godot_version`** still ran via raw `subprocess.run` (same
+  orphan-risk class as the main hang) - now via the managed-process runner.
+- Dead code removed (unused `_first_error` in `corpus.py`).
+
+### Tests
+
+- Regression tests for the hang: Validation now provably runs via the
+  managed-process runner with the correct timeouts (import 120s, checker >= 120s, 30s idle), and a timeout does not discard records but
+  evaluates them with a context warning.
+- Test for the stall watchdog: A job that produces no output is terminated
+  after the window expires and marked as `failed`.
+- Existing corpus tests switched to the managed runner (now mocks
+  `run_managed_process` instead of `_run`).
+
+### Version
+
+- `__init__.py`, `pyproject.toml` and the service worker cache bumped to `0.10.3`.
+- `GODOT_CODER_JOB_STALL_TIMEOUT_SECONDS` documented in the README.
+
 ## v0.10.2 (2026-08-08)
 
 ### Fixed

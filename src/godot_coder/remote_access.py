@@ -98,7 +98,7 @@ def request_is_remote(headers: Mapping[str, str]) -> bool:
 
 def hash_pin(pin: str, *, salt: bytes | None = None) -> tuple[str, str]:
     if not pin.isdigit() or not 6 <= len(pin) <= 12:
-        raise ValueError("Die Remote-PIN muss aus 6 bis 12 Ziffern bestehen.")
+        raise ValueError("The remote PIN must consist of 6 to 12 digits.")
     salt_value = salt or secrets.token_bytes(24)
     digest = hashlib.pbkdf2_hmac("sha256", pin.encode("utf-8"), salt_value, PIN_ITERATIONS)
     return base64.b64encode(salt_value).decode("ascii"), base64.b64encode(digest).decode("ascii")
@@ -131,9 +131,9 @@ def load_remote_config(project_root: Path) -> dict[str, Any]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError, TypeError) as exc:
-        raise RemoteAccessError(f"Remote-Konfiguration kann nicht gelesen werden: {exc}") from exc
+        raise RemoteAccessError(f"Remote configuration could not be read: {exc}") from exc
     if not isinstance(payload, dict) or payload.get("format") != REMOTE_CONFIG_FORMAT:
-        raise RemoteAccessError("Remote-Konfiguration besitzt ein unbekanntes Format.")
+        raise RemoteAccessError("The remote configuration has an unknown format.")
     allowed = sorted({str(value).strip().lower() for value in payload.get("allowed_users", []) if str(value).strip()})
     # v2 configs default require_identity_for_read=True; v3+ reads the actual flag.
     require_id = bool(payload.get("require_identity_for_read", True))
@@ -162,9 +162,9 @@ def configure_remote_access(
 ) -> dict[str, Any]:
     users = sorted({value.strip().lower() for value in allowed_users if value.strip()})
     if not users:
-        raise ValueError("Mindestens ein erlaubter Tailscale-Login ist erforderlich.")
+        raise ValueError("At least one allowed Tailscale login is required.")
     if not 1 <= int(port) <= 65_535:
-        raise ValueError("Der Remote-Port muss zwischen 1 und 65535 liegen.")
+        raise ValueError("The remote port must be between 1 and 65535.")
     salt, digest = hash_pin(pin)
     payload = {
         "format": REMOTE_CONFIG_FORMAT,
@@ -233,12 +233,12 @@ def tailscale_status(*, timeout: float = 5.0) -> dict[str, Any]:
         result["error"] = str(exc)
         return result
     if completed.returncode != 0:
-        result["error"] = (completed.stderr or completed.stdout or "Tailscale status fehlgeschlagen.").strip()[:500]
+        result["error"] = (completed.stderr or completed.stdout or "Tailscale status failed.").strip()[:500]
         return result
     try:
         payload = json.loads(completed.stdout)
     except (ValueError, TypeError):
-        result["error"] = "Tailscale lieferte kein gültiges Status-JSON."
+        result["error"] = "Tailscale returned no valid status JSON."
         return result
     self_node = payload.get("Self") if isinstance(payload.get("Self"), dict) else {}
     dns_name = str(self_node.get("DNSName") or "").rstrip(".") or None
@@ -256,7 +256,7 @@ def tailscale_status(*, timeout: float = 5.0) -> dict[str, Any]:
 
 def tailscale_serve_target(port: int) -> str:
     if not 1 <= int(port) <= 65_535:
-        raise ValueError("Der Remote-Port muss zwischen 1 und 65535 liegen.")
+        raise ValueError("The remote port must be between 1 and 65535.")
     return f"http://127.0.0.1:{int(port)}"
 
 
@@ -294,7 +294,7 @@ def tailscale_serve_status(port: int = DEFAULT_REMOTE_PORT, *, timeout: float = 
         return result
     output = (completed.stdout or completed.stderr or "").strip()
     if completed.returncode != 0:
-        result["error"] = mask_secrets(output or "Tailscale Serve status fehlgeschlagen.")[:500]
+        result["error"] = mask_secrets(output or "Tailscale Serve status failed.")[:500]
         return result
     try:
         payload = json.loads(completed.stdout)
@@ -312,7 +312,7 @@ def tailscale_serve_status(port: int = DEFAULT_REMOTE_PORT, *, timeout: float = 
 def configure_tailscale_serve(port: int, *, timeout: float = 30.0) -> dict[str, Any]:
     executable = find_tailscale_cli()
     if executable is None:
-        raise RemoteAccessError("Tailscale CLI wurde nicht gefunden. Installiere oder starte Tailscale zuerst.")
+        raise RemoteAccessError("Tailscale CLI was not found. Install or start Tailscale first.")
     target = tailscale_serve_target(port)
     command = [str(executable), "serve", "--bg", target]
     completed = subprocess.run(
@@ -326,7 +326,7 @@ def configure_tailscale_serve(port: int, *, timeout: float = 30.0) -> dict[str, 
     )
     output = (completed.stdout + "\n" + completed.stderr).strip()
     if completed.returncode != 0:
-        raise RemoteAccessError(f"Tailscale Serve konnte nicht aktiviert werden: {mask_secrets(output)[:800]}")
+        raise RemoteAccessError(f"Tailscale Serve could not be enabled: {mask_secrets(output)[:800]}")
     verified = tailscale_serve_status(port)
     return {
         "configured": True,
@@ -347,18 +347,18 @@ def remote_self_check(project_root: Path, *, port: int | None = None, socket_tim
         checks.append({"name": name, "passed": bool(passed), "required": required, "detail": detail})
 
     configured = bool(config.get("enabled") and config.get("allowed_users") and config.get("pin_hash") and config.get("pin_salt"))
-    add("remote_config", configured, "Remote-Konfiguration vollständig." if configured else "Remote-Konfiguration oder PIN/Freigabeliste fehlt.")
+    add("remote_config", configured, "Remote configuration complete." if configured else "Remote configuration or PIN/allowlist is missing.")
     add("loopback_target", True, tailscale_serve_target(effective_port))
     try:
         with socket.create_connection(("127.0.0.1", effective_port), timeout=socket_timeout):
             local_reachable = True
     except OSError:
         local_reachable = False
-    add("local_studio", local_reachable, f"127.0.0.1:{effective_port} ist erreichbar." if local_reachable else f"Studio lauscht derzeit nicht auf 127.0.0.1:{effective_port}.")
+    add("local_studio", local_reachable, f"127.0.0.1:{effective_port} is reachable." if local_reachable else f"The Studio is currently not listening on 127.0.0.1:{effective_port}.")
     status = tailscale_status()
-    add("tailscale_online", bool(status.get("online")), status.get("error") or status.get("backend_state") or "Tailscale nicht online.")
+    add("tailscale_online", bool(status.get("online")), status.get("error") or status.get("backend_state") or "Tailscale is not online.")
     serve = tailscale_serve_status(effective_port)
-    add("serve_proxy", bool(serve.get("configured")), serve.get("error") or serve.get("target") or "Serve-Ziel nicht erkannt.")
+    add("serve_proxy", bool(serve.get("configured")), serve.get("error") or serve.get("target") or "Serve target not recognized.")
     required = [item for item in checks if item["required"]]
     return {
         "ok": all(item["passed"] for item in required),
@@ -472,21 +472,21 @@ class RemoteAccessManager:
         login = identity["login"]
         tailnet_fallback = not config.get("require_identity_for_read", True) and not login
         if not login and not tailnet_fallback:
-            raise RemoteAccessError("Remote-Entsperrung ist nur über Tailscale Serve verfügbar.")
+            raise RemoteAccessError("Remote unlock is only available through Tailscale Serve.")
         effective_login = login or TAILNET_DEVICE_ID
         if not tailnet_fallback and (not config["enabled"] or login not in config["allowed_users"]):
             self.audit("unlock_denied", identity=login, level="warning", reason="identity_not_allowed")
             if not login:
-                raise RemoteAccessError("Keine Tailscale-Identität empfangen. Entsperrung ist nur über Tailscale Serve verfügbar.")
-            raise RemoteAccessError(f"Tailscale-Identität »{login}« ist nicht für das Studio freigegeben.")
+                raise RemoteAccessError("No Tailscale identity received. Unlock is only available through Tailscale Serve.")
+            raise RemoteAccessError(f"Tailscale identity '{login}' is not allowed for the Studio.")
         attempts = self.attempts.setdefault(effective_login, [])
         if len(attempts) >= MAX_UNLOCK_ATTEMPTS:
             self.audit("unlock_rate_limited", identity=effective_login, level="warning")
-            raise RemoteAccessError("Zu viele Fehlversuche. Versuche es in einigen Minuten erneut.")
+            raise RemoteAccessError("Too many failed attempts. Try again in a few minutes.")
         if not verify_pin(pin, str(config["pin_salt"] or ""), str(config["pin_hash"] or "")):
             attempts.append(time.time())
             self.audit("unlock_failed", identity=effective_login, level="warning")
-            raise RemoteAccessError("Remote-PIN ist falsch.")
+            raise RemoteAccessError("Remote PIN is wrong.")
         self.attempts.pop(effective_login, None)
         token = secrets.token_urlsafe(32)
         csrf_token = secrets.token_urlsafe(32)
@@ -524,14 +524,14 @@ class RemoteAccessManager:
         config = self.config()
         if not config["enabled"]:
             self.audit("request_denied", identity=login, level="warning", path=path, method=method, reason="remote_disabled")
-            return 403, "Remote-Zugriff ist deaktiviert."
+            return 403, "Remote access is disabled."
         tailnet_fallback = not config.get("require_identity_for_read", True) and not login
         if not tailnet_fallback and login not in config["allowed_users"]:
             reason = "identity_header_missing" if not login else "identity_not_allowed"
             self.audit("request_denied", identity=login, level="warning", path=path, method=method, reason=reason)
             if not login:
-                return 403, "Keine Tailscale-Identität empfangen. Läuft Tailscale Serve mit HTTPS? Prüfe tailscale serve status."
-            return 403, f"Tailscale-Identität »{login}« ist nicht für das Studio freigegeben."
+                return 403, "No Tailscale identity received. Is Tailscale Serve running with HTTPS? Check `tailscale serve status`."
+            return 403, f"Tailscale identity '{login}' is not allowed for the Studio."
         if method.upper() in {"GET", "HEAD", "OPTIONS"} or path == "/api/remote/unlock":
             return None
         self._prune()
@@ -545,10 +545,10 @@ class RemoteAccessManager:
         )
         if not valid_session:
             self.audit("write_denied", identity=login or TAILNET_DEVICE_ID, level="warning", path=path, method=method, reason="locked")
-            return 423, "Remote-Schreibzugriff ist gesperrt. Entsperre ihn mit deiner PIN."
+            return 423, "Remote write access is locked. Unlock it with your PIN."
         if not csrf or not hmac.compare_digest(csrf, session.csrf_token):
             self.audit("write_denied", identity=login or TAILNET_DEVICE_ID, level="warning", path=path, method=method, reason="csrf")
-            return 403, "CSRF-Prüfung fehlgeschlagen. Entsperre den Remote-Zugriff erneut."
+            return 403, "CSRF check failed. Unlock remote access again."
         return None
 
 
@@ -561,7 +561,7 @@ def parse_args() -> argparse.Namespace:
     configure.add_argument("--port", type=int, default=DEFAULT_REMOTE_PORT)
     configure.add_argument("--session-minutes", type=int, default=60)
     configure.add_argument("--no-serve", action="store_true")
-    configure.add_argument("--no-identity-required", action="store_true", help="Lese-Zugriff ohne Tailscale-Identity-Header erlauben (nur innerhalb des Tailnets).")
+    configure.add_argument("--no-identity-required", action="store_true", help="Allow read access without a Tailscale identity header (within the tailnet only).")
     status_parser = subparsers.add_parser("status")
     status_parser.add_argument("--json", action="store_true")
     check_parser = subparsers.add_parser("check")
@@ -574,10 +574,10 @@ def parse_args() -> argparse.Namespace:
 def _reset_tailscale_serve() -> None:
     executable = find_tailscale_cli()
     if executable is None:
-        raise RemoteAccessError("Tailscale CLI wurde nicht gefunden.")
+        raise RemoteAccessError("Tailscale CLI was not found.")
     completed = subprocess.run([str(executable), "serve", "reset"], check=False, capture_output=True, text=True)
     if completed.returncode != 0:
-        raise RemoteAccessError((completed.stderr or completed.stdout or "Tailscale Serve reset fehlgeschlagen.").strip())
+        raise RemoteAccessError((completed.stderr or completed.stdout or "Tailscale Serve reset failed.").strip())
 
 
 def main() -> int:
@@ -587,12 +587,12 @@ def main() -> int:
         if args.command == "configure":
             users = [value.strip() for value in args.user if value.strip()]
             if not users:
-                entered = input("Erlaubter Tailscale-Login (z. B. name@example.com): ").strip()
+                entered = input("Allowed Tailscale login (e.g. name@example.com): ").strip()
                 users = [entered] if entered else []
-            pin = getpass.getpass("Neue Remote-PIN (6-12 Ziffern): ")
-            confirm = getpass.getpass("Remote-PIN wiederholen: ")
+            pin = getpass.getpass("New remote PIN (6-12 digits): ")
+            confirm = getpass.getpass("Repeat remote PIN: ")
             if pin != confirm:
-                raise RemoteAccessError("Die PIN-Eingaben stimmen nicht überein.")
+                raise RemoteAccessError("The PIN entries do not match.")
             config = configure_remote_access(
                 root,
                 allowed_users=users,
@@ -608,22 +608,22 @@ def main() -> int:
                     disable_remote_access(root)
                     raise
             status = tailscale_status()
-            print("\nSecure Remote Studio ist konfiguriert.")
-            print(f"Erlaubte Identität(en): {', '.join(config['allowed_users'])}")
-            print(f"Studio bleibt lokal gebunden: http://127.0.0.1:{args.port}")
-            print(f"Tailscale-Adresse: {status.get('serve_url') or 'siehe Ausgabe von tailscale serve status'}")
-            print("Remote-Zugriff startet im Lesemodus; Schreibaktionen benötigen die PIN.")
+            print("\nSecure Remote Studio is configured.")
+            print(f"Allowed identity(ies): {', '.join(config['allowed_users'])}")
+            print(f"Studio stays bound locally: http://127.0.0.1:{args.port}")
+            print(f"Tailscale address: {status.get('serve_url') or 'see output of tailscale serve status'}")
+            print("Remote access starts in read mode; write actions require the PIN.")
             if not config.get("require_identity_for_read", True):
-                print("⚠ Identity-Prüfung deaktiviert: Jedes Gerät im Tailnet hat Lesezugriff.")
+                print("⚠ Identity check disabled: every device in the tailnet has read access.")
             return 0
         if args.command == "status":
             payload = {"config": load_remote_config(root), "tailscale": tailscale_status()}
             if args.json:
                 print(json.dumps(mask_secrets(payload), ensure_ascii=False, indent=2))
             else:
-                print(f"Remote aktiviert: {payload['config']['enabled']}")
+                print(f"Remote enabled: {payload['config']['enabled']}")
                 print(f"Tailscale online: {payload['tailscale']['online']}")
-                print(f"Adresse: {payload['tailscale'].get('serve_url') or '–'}")
+                print(f"Address: {payload['tailscale'].get('serve_url') or '–'}")
             return 0
         if args.command == "check":
             payload = remote_self_check(root)
@@ -631,17 +631,17 @@ def main() -> int:
                 print(json.dumps(mask_secrets(payload), ensure_ascii=False, indent=2))
             else:
                 for item in payload["checks"]:
-                    print(f"[{'OK' if item['passed'] else 'FEHLER'}] {item['name']}: {item['detail']}")
-                print(f"Remote-Selbsttest: {'bestanden' if payload['ok'] else 'nicht bestanden'}")
+                    print(f"[{'OK' if item['passed'] else 'ERROR'}] {item['name']}: {item['detail']}")
+                print(f"Remote self-test: {'passed' if payload['ok'] else 'failed'}")
             return 0 if payload["ok"] else 1
         if args.command == "disable":
             disable_remote_access(root)
             if args.reset_serve:
                 _reset_tailscale_serve()
-            print("Remote-Zugriff wurde in Godot Coder AI deaktiviert.")
+            print("Remote access has been disabled in Godot Coder AI.")
             return 0
     except (RemoteAccessError, ValueError, OSError, subprocess.TimeoutExpired) as exc:
-        print(f"Fehler: {exc}")
+        print(f"Error: {exc}")
         return 1
     return 1
 

@@ -68,8 +68,8 @@ SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 
 ANSI_ESCAPE_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 KNOWN_GODOT_EDITOR_FAILURES: tuple[tuple[str, str], ...] = (
-    ("EditorSettings not instantiated yet", "Godot-Mono-EditorSettings wurden beim Headless-Import zu früh abgebaut."),
-    ("export/android/shutdown_adb_on_exit", "Godot blieb beim Android-/ADB-Aufräumen des Headless-Editors hängen."),
+    ("EditorSettings not instantiated yet", "Godot Mono's EditorSettings were torn down too early during the headless import."),
+    ("export/android/shutdown_adb_on_exit", "Godot hung during the Android/ADB cleanup of the headless editor."),
 )
 
 # Patterns to detect when Godot --import is stuck in an error loop (e.g. broken
@@ -251,20 +251,20 @@ def _archive_preflight(path: Path) -> dict[str, Any]:
     with zipfile.ZipFile(path) as archive:
         infos = archive.infolist()
         if len(infos) > MAX_ARCHIVE_FILES:
-            raise ValueError(f"ZIP enthält zu viele Einträge ({len(infos):,}).")
+            raise ValueError(f"ZIP contains too many entries ({len(infos):,}).")
         total = 0
         for info in infos:
             if not _safe_member(info.filename):
-                raise ValueError(f"Unsicherer ZIP-Pfad: {info.filename}")
+                raise ValueError(f"Unsafe ZIP path: {info.filename}")
             if info.flag_bits & 1:
-                raise ValueError(f"Verschlüsselter ZIP-Eintrag wird nicht unterstützt: {info.filename}")
+                raise ValueError(f"Encrypted ZIP entries are not supported: {info.filename}")
             if info.file_size > MAX_SINGLE_FILE:
-                raise ValueError(f"Einzeldatei ist zu groß: {info.filename}")
+                raise ValueError(f"Single file is too large: {info.filename}")
             total += info.file_size
             if info.file_size > 8 * 1024**2 and info.file_size / max(1, info.compress_size) > MAX_COMPRESSION_RATIO:
-                raise ValueError(f"Verdächtige Kompressionsrate im ZIP: {info.filename}")
+                raise ValueError(f"Suspicious compression ratio in ZIP: {info.filename}")
         if total > MAX_ARCHIVE_UNCOMPRESSED:
-            raise ValueError(f"ZIP würde entpackt {total / 1024**3:.1f} GiB belegen.")
+            raise ValueError(f"ZIP would occupy {total / 1024**3:.1f} GiB uncompressed.")
         return {"entries": len(infos), "uncompressed_bytes": total}
 
 
@@ -490,7 +490,7 @@ def audit_project(
             phase="inventory",
             phase_status="running",
             project_status="running",
-            message=f"{len(all_files)} Dateien werden inventarisiert.",
+            message=f"Inventorizing {len(all_files)} files.",
         )
 
     usable_files: list[Path] = []
@@ -518,7 +518,7 @@ def audit_project(
             phase_status="completed",
             scripts_found=gd_files,
             file_total=gd_files,
-            message=f"{gd_files} trainierbare GDScript-Dateien erkannt.",
+            message=f"{gd_files} trainable GDScript files detected.",
         )
         progress.emit(
             "local_project_phase",
@@ -526,7 +526,7 @@ def audit_project(
             phase="cache_exclusion",
             phase_status="completed",
             generated_files=generated_files,
-            message=f"{generated_files} Cache-/Importdateien ausgeschlossen.",
+            message=f"{generated_files} cache/import files excluded.",
         )
         progress.emit(
             "local_project_phase",
@@ -534,14 +534,14 @@ def audit_project(
             phase="addon_classification",
             phase_status="completed",
             addon_files=addon_files,
-            message=f"{addon_files} Add-on-Dateien klassifiziert und vom Training ausgeschlossen.",
+            message=f"{addon_files} add-on files classified and excluded from training.",
         )
         progress.emit(
             "local_project_phase",
             index=project_index,
             phase="secret_scan",
             phase_status="running",
-            message="Textdateien werden auf mögliche Zugangsdaten geprüft.",
+            message="Checking text files for possible credentials.",
         )
 
     fast_static = os.environ.get("GODOT_CODER_FAST_STATIC", "").strip() == "1"
@@ -576,7 +576,7 @@ def audit_project(
             phase="secret_scan",
             phase_status="passed" if not secret_hits else "passed_with_warnings",
             warnings=len(secret_hits),
-            message="Secret-Prüfung bestanden." if not secret_hits else f"{len(secret_hits)} mögliche Secrets erkannt; Inhalte werden nicht angezeigt.",
+            message="Secret scan passed." if not secret_hits else f"{len(secret_hits)} possible secrets detected; contents are not shown.",
             level="info" if not secret_hits else "warning",
         )
     if progress and project_index:
@@ -585,7 +585,7 @@ def audit_project(
             index=project_index,
             phase="file_size_check",
             phase_status="running",
-            message="GDScript-Dateigrößen werden geprüft.",
+            message="GDScript file sizes are being checked.",
         )
 
     # Per-script pass. Counting always; the AST warning walk only in normal
@@ -611,7 +611,7 @@ def audit_project(
             warnings.extend(file_warnings)
         if encoding == "utf-8-replace":
             # Mirrored into the per-file tally so the progress events don't
-            # claim "bestanden" for a damaged file. The record itself already
+            # claim "passed" for a damaged file. The record itself already
             # lives in `warnings` via the secret scan above — no double entries.
             file_warnings.append({"code": "encoding_damage", "path": relative.as_posix()})
         if file_warnings:
@@ -634,7 +634,7 @@ def audit_project(
                 scripts_found=gd_files,
                 trainable_scripts=trainable_gd_files,
                 level="warning" if file_warnings else "info",
-                message=f"{relative.as_posix()} geprüft" + (f" · {len(file_warnings)} Hinweis(e)" if file_warnings else " · bestanden"),
+                message=f"{relative.as_posix()} checked" + (f" · {len(file_warnings)} warning(s)" if file_warnings else " · passed"),
             )
 
     if progress and project_index:
@@ -644,7 +644,7 @@ def audit_project(
             phase="file_size_check",
             phase_status="passed" if not oversized else "passed_with_warnings",
             warnings=len(oversized),
-            message="Alle Skriptgrößen sind trainierbar." if not oversized else f"{len(oversized)} übergroße Skripte werden ausgeschlossen.",
+            message="All script sizes are trainable." if not oversized else f"{len(oversized)} oversized scripts are excluded.",
             level="info" if not oversized else "warning",
         )
     if progress and project_index:
@@ -661,9 +661,9 @@ def audit_project(
             scripts_found=gd_files,
             trainable_scripts=trainable_gd_files,
             message=(
-                f"Statische AST-Prüfung übersprungen (GODOT_CODER_FAST_STATIC=1): {passed_files} Skripte übernommen; Secrets und Dateigrößen wurden trotzdem geprüft."
+                f"Static AST check skipped (GODOT_CODER_FAST_STATIC=1): {passed_files} scripts adopted; secrets and file sizes were still checked."
                 if fast_static
-                else f"Statische Prüfung abgeschlossen: {passed_files} ohne Hinweise, {warning_files} mit Hinweisen."
+                else f"Static check finished: {passed_files} without warnings, {warning_files} with warnings."
             ),
             level="info" if fast_static else ("warning" if warning_files else "info"),
         )
@@ -739,7 +739,7 @@ def _copy_project(
             index=project_index,
             phase="corpus_admission",
             phase_status="running",
-            message="Bereinigte Arbeitskopie wird separat erzeugt.",
+            message="A cleaned working copy is created separately.",
         )
     if reuse_existing and destination.is_dir() and (destination / "project.godot").is_file():
         locked_generated = _cleanup_generated_copy(destination)
@@ -750,9 +750,9 @@ def _copy_project(
                 phase="corpus_admission",
                 phase_status="passed_with_warnings" if locked_generated else "completed",
                 message=(
-                    "Vorhandene deterministische Arbeitskopie wird wiederverwendet; eine gesperrte Cachedatei bleibt ausgeschlossen."
+                    "The existing deterministic working copy is reused; a locked cache file stays excluded."
                     if locked_generated
-                    else "Vorhandene deterministische Arbeitskopie wird wiederverwendet."
+                    else "The existing deterministic working copy is reused."
                 ),
                 level="warning" if locked_generated else "info",
                 locked_generated_paths=len(locked_generated),
@@ -782,7 +782,7 @@ def _copy_project(
             error = _safe_remove_tree(destination)
             if error:
                 raise OSError(
-                    f"Vorhandene Arbeitskopie ist noch durch einen Prozess gesperrt: {destination}. "
+                    f"The existing working copy is still locked by a process: {destination}. "
                     f"Details: {error}"
                 )
         work.replace(destination)
@@ -795,7 +795,7 @@ def _copy_project(
             index=project_index,
             phase="corpus_admission",
             phase_status="completed",
-            message=f"Bereinigte Arbeitskopie mit {copied} Dateien erstellt.",
+            message=f"Created a cleaned working copy with {copied} files.",
         )
 
 
@@ -932,7 +932,7 @@ def _recover_recorded_validation(project_root: Path, emitter: ProgressEmitter | 
                 phase="godot_validation",
                 phase_status="skipped",
                 level="warning",
-                message="Eine alte Validierungs-PID wurde gefunden, aber nicht sicher als eigener Godot-Prozess erkannt; sie wurde nicht beendet.",
+                message="An old validation PID was found but could not be reliably identified as a Godot process; it was not terminated.",
             )
         return False
     stopped = terminate_process_tree(pid, force=False, wait_seconds=3.0)
@@ -955,8 +955,8 @@ def _recover_recorded_validation(project_root: Path, emitter: ProgressEmitter | 
             phase_status="completed" if stopped else "failed",
             level="warning" if stopped else "error",
             message=(
-                "Zurückgebliebenen Godot-Validierungsprozess sicher beendet."
-                if stopped else "Zurückgebliebener Godot-Validierungsprozess konnte nicht beendet werden."
+                "Safely terminated the leftover Godot validation process."
+                if stopped else "The leftover Godot validation process could not be terminated."
             ),
         )
     return stopped
@@ -976,7 +976,7 @@ def _run_gdscript_parser_fallback(
     if not all_scripts:
         return ProjectValidationResult(
             status="failed",
-            error="Keine trainierbaren GDScript-Dateien für die Parser-Ersatzprüfung gefunden.",
+            error="No trainable GDScript files found for the parser fallback check.",
             output="",
             mode="gdscript_check",
             infrastructure_failure=reason,
@@ -1005,7 +1005,7 @@ def _run_gdscript_parser_fallback(
     if progress and project_index:
         skipped_message = ""
         if skip_passed:
-            skipped_message = f" {len(skip_passed)} statisch unauffällige Skripte werden direkt übernommen."
+            skipped_message = f" {len(skip_passed)} statically inconspicuous scripts are adopted directly."
         progress.emit(
             "local_project_phase",
             index=project_index,
@@ -1022,8 +1022,8 @@ def _run_gdscript_parser_fallback(
             statically_passed=len(skip_passed),
             godot_checked=len(check_scripts),
             message=(
-                "Der vollständige Godot-Mono-Editorimport wurde beendet, weil er nicht mehr zuverlässig fortschritt. "
-                f"Jetzt prüft Godot {len(check_scripts)} auffällige GDScript(s) einzeln ohne Editor, Plugins, Hot-Reload oder ADB-Aufräumen."
+                "The full Godot Mono editor import was stopped because it no longer made reliable progress. "
+                f"Godot now checks {len(check_scripts)} suspicious GDScript file(s) individually without the editor, plugins, hot reload or ADB cleanup."
                 + skipped_message
             ),
             level="warning" if check_scripts else "info",
@@ -1111,13 +1111,13 @@ def _run_gdscript_parser_fallback(
             failed_files.append(relative.as_posix())
 
         if progress and project_index:
-            detail = "bestanden" if file_passed else "ausgeschlossen"
+            detail = "passed" if file_passed else "excluded"
             if result.timed_out:
-                detail = "Zeitlimit erreicht und ausgeschlossen"
+                detail = "Time limit reached and excluded"
             elif result.startup_error:
-                detail = "Godot-Start fehlgeschlagen und ausgeschlossen"
+                detail = "Godot startup failed and excluded"
             elif first:
-                detail = f"Parserfehler erkannt und ausgeschlossen: {_strip_ansi(first)[:180]}"
+                detail = f"Parser error detected and excluded: {_strip_ansi(first)[:180]}"
             progress.emit(
                 "local_project_progress",
                 index=project_index,
@@ -1134,7 +1134,7 @@ def _run_gdscript_parser_fallback(
                 warnings=1,
                 statically_passed=len(skip_passed),
                 godot_checked_total=len(check_scripts),
-                message=f"Parser-Ersatzprüfung {file_index}/{len(check_scripts)} · {relative.as_posix()} · {detail}",
+                message=f"Parser fallback check {file_index}/{len(check_scripts)} · {relative.as_posix()} · {detail}",
                 level="info" if file_passed else "warning",
             )
 
@@ -1142,7 +1142,7 @@ def _run_gdscript_parser_fallback(
     if passed <= 0:
         return ProjectValidationResult(
             status="failed",
-            error=f"Parser-Ersatzprüfung: alle {len(all_scripts)} trainierbaren Skripte sind fehlgeschlagen.",
+            error=f"Parser fallback check: all {len(all_scripts)} trainable scripts failed.",
             output=output,
             failed_files=failed_files,
             checked_files=len(all_scripts),
@@ -1181,7 +1181,7 @@ def _validate_project(
                 validation_status="not_run",
                 validation_mode="not_run",
                 eta_status="calculating",
-                message="Godot wurde nicht gefunden; projektweite Parserprüfung konnte nicht laufen.",
+                message="Godot was not found; the project-wide parser check could not run.",
                 level="warning",
             )
         return ProjectValidationResult("not_run", "Godot executable not found", "", mode="not_run")
@@ -1229,7 +1229,7 @@ def _validate_project(
                 validation_mode="gdscript_check",
                 validation_skip_import=True,
                 eta_status="calculating",
-                message="Godot-Projektimport übersprungen; direkte dateiweise Parserprüfung startet.",
+                message="Godot project import skipped; direct per-file parser check starts.",
             )
         fallback = _run_gdscript_parser_fallback(
             godot,
@@ -1263,10 +1263,10 @@ def _validate_project(
                 eta_status="calculating",
                 parser_output=fallback.output[-6000:],
                 message=(
-                    "Godot-Projektimport übersprungen; Parser-Ersatzprüfung abgeschlossen."
+                    "Godot project import skipped; parser fallback check finished."
                     if fallback.status == "passed"
                     else (
-                        f"Parser-Ersatzprüfung abgeschlossen: {fallback.checked_files - failed_count}/{fallback.checked_files} Skripte bestanden; {failed_count} ausgeschlossen."
+                        f"Parser fallback check finished: {fallback.checked_files - failed_count}/{fallback.checked_files} scripts passed; {failed_count} excluded."
                         if accepted else str(fallback.error)
                     )
                 ),
@@ -1287,7 +1287,7 @@ def _validate_project(
                 validation_timeout_seconds=timeout,
                 validation_idle_timeout_seconds=idle_timeout,
                 eta_status="calculating",
-                message="Godot importiert und prüft eine isolierte Arbeitskopie. Der Prozess wird bei einem erkannten Mono-/Editor-Hänger automatisch auf eine dateiweise Parserprüfung umgestellt.",
+                message="Godot imports and checks an isolated working copy. On a detected Mono/editor hang, the process automatically switches to a per-file parser check.",
             )
 
         def _on_start(pid: int) -> None:
@@ -1336,7 +1336,7 @@ def _validate_project(
         def _on_heartbeat(elapsed: float, last_line: str | None) -> None:
             if not progress or not project_index:
                 return
-            detail = _strip_ansi(str(mask_secrets(last_line or "noch keine neue technische Ausgabe")))
+            detail = _strip_ansi(str(mask_secrets(last_line or "no new technical output yet")))
             if len(detail) > 180:
                 detail = "…" + detail[-179:]
             progress.emit(
@@ -1348,7 +1348,7 @@ def _validate_project(
                 eta_status="calculating",
                 validation_attempt=1,
                 phase_elapsed_seconds=round(elapsed, 1),
-                message=f"Godot-Projektimport läuft seit {_format_elapsed(elapsed)} · {detail}",
+                message=f"Godot project import running for {_format_elapsed(elapsed)} · {detail}",
             )
 
         result = run_managed_process(
@@ -1367,7 +1367,7 @@ def _validate_project(
         output = "\n".join(lines or [result.output])
 
         if result.startup_error:
-            error = f"Godot konnte nicht gestartet werden: {result.startup_error}"
+            error = f"Godot could not be started: {result.startup_error}"
             validation = ProjectValidationResult("failed", error, output, mode="project_import")
         else:
             first = _first_error(output)
@@ -1387,15 +1387,15 @@ def _validate_project(
                 if infrastructure_failure:
                     reason = infrastructure_failure
                 elif result.idle_timed_out:
-                    reason = f"Godot lieferte {idle_timeout:.0f} Sekunden lang keine neue Ausgabe."
+                    reason = f"Godot produced no new output for {idle_timeout:.0f} seconds."
                 elif result.timed_out:
-                    reason = f"Godot-Projektimport überschritt das Zeitlimit von {timeout:.0f} Sekunden."
+                    reason = f"The Godot project import exceeded the time limit of {timeout:.0f} seconds."
                 elif first:
-                    reason = f"Vollständiger Projektimport meldete: {_strip_ansi(first)}"
+                    reason = f"The full project import reported: {_strip_ansi(first)}"
                 elif result.aborted:
-                    reason = result.abort_reason or "Godot-Projektimport wurde kontrolliert beendet."
+                    reason = result.abort_reason or "The Godot project import was stopped in a controlled manner."
                 else:
-                    reason = f"Godot beendete den Projektimport mit Exitcode {result.return_code}."
+                    reason = f"Godot ended the project import with exit code {result.return_code}."
                 if progress and project_index:
                     progress.emit(
                         "local_project_phase",
@@ -1406,7 +1406,7 @@ def _validate_project(
                         validation_fallback=True,
                         eta_status="calculating",
                         validation_process_tree_terminated=result.termination_attempted,
-                        message=f"{reason} Der Prozessbaum wurde beendet; die sichere GDScript-Parser-Ersatzprüfung startet jetzt.",
+                        message=f"{reason} The process tree was terminated; the safe GDScript parser fallback check now starts.",
                         level="warning",
                     )
                 fallback = _run_gdscript_parser_fallback(
@@ -1443,10 +1443,10 @@ def _validate_project(
                 eta_status="calculating",
                 parser_output=validation.output[-6000:],
                 message=(
-                    "Godot-Projektimport und Parserprüfung bestanden."
+                    "Godot project import and parser check passed."
                     if validation.status == "passed"
                     else (
-                        f"Sichere Parser-Ersatzprüfung abgeschlossen: {validation.checked_files - failed_count}/{validation.checked_files} Skripte bestanden; {failed_count} ausgeschlossen."
+                        f"Safe parser fallback check finished: {validation.checked_files - failed_count}/{validation.checked_files} scripts passed; {failed_count} excluded."
                         if accepted else str(validation.error)
                     )
                 ),
@@ -1461,7 +1461,7 @@ def _validate_project(
                 "local_validation_cleanup",
                 index=project_index,
                 phase="godot_validation",
-                message="Die isolierte Prüfarbeitskopie blieb wegen einer Dateisperre zurück; sie wird beim nächsten Lauf erneut bereinigt.",
+                message="The isolated validation working copy remained behind due to a file lock; it will be cleaned again on the next run.",
                 level="warning",
                 validation_cleanup_error=cleanup_error,
             )
@@ -1470,8 +1470,8 @@ def _registry_source(audit: ProjectAudit, source_id: str) -> dict[str, Any]:
     excluded = list(dict.fromkeys(["addons", *audit.oversized_gd_files, *audit.parser_failed_files]))
     return {
         "id": source_id,
-        "title": f"Privat · {audit.project_name}",
-        "description": "Lokales, vom Nutzer bestätigtes Godot-Projekt. Nur lokal trainieren; nicht weiterverteilen.",
+        "title": f"Private · {audit.project_name}",
+        "description": "A local Godot project confirmed by the user. Train locally only; do not redistribute.",
         "url": f"local://{source_id}",
         "branch": audit.source_sha256[:16],
         "kind": "godot_projects",
@@ -1511,7 +1511,7 @@ def _import_one(
             index=project_index,
             phase="deduplication",
             phase_status="running",
-            message="Projektfingerprint und vorhandene lokale Quelle werden abgeglichen.",
+            message="Matching the project fingerprint against the existing local source.",
         )
     source_id = f"local-{_slug(audit.project_name)}-{audit.source_sha256[:8]}"
     destination = corpus_root(project_root) / "downloads" / source_id
@@ -1522,7 +1522,7 @@ def _import_one(
             index=project_index,
             phase="deduplication",
             phase_status="completed",
-            message="Vorhandene Quelle wird deterministisch aktualisiert." if existing else "Keine identische lokale Quelle vorhanden.",
+            message="The existing source is updated deterministically." if existing else "No identical local source exists.",
         )
     _copy_project(
         project, destination, progress=progress, project_index=project_index, reuse_existing=existing
@@ -1586,9 +1586,9 @@ def _import_one(
             generated_files=audit.generated_files,
             trainable_scripts=audit.trainable_gd_files,
             message=(
-                f"Import für Training aktiviert; {len(audit.parser_failed_files)} parserfehlerhafte Skript(e) bleiben ausgeschlossen."
+                f"Import enabled for training; {len(audit.parser_failed_files)} script(s) with parser errors stay excluded."
                 if audit.enabled_for_training and audit.parser_failed_files
-                else ("Import für Training aktiviert." if audit.enabled_for_training else "Projekt bleibt deaktiviert beziehungsweise quarantänisiert.")
+                else ("Import enabled for training." if audit.enabled_for_training else "The project stays disabled or quarantined.")
             ),
             level="info" if audit.enabled_for_training else "warning",
         )
@@ -1621,11 +1621,11 @@ def _import_one(
 
 def import_inbox(project_root: Path, *, ownership_confirmed: bool) -> dict[str, Any]:
     if not ownership_confirmed:
-        raise ValueError("Bestätige zuerst, dass du den importierten Code verwenden darfst.")
+        raise ValueError("First confirm that you are allowed to use the imported code.")
     inbox = inbox_path(project_root)
     items = sorted(path for path in inbox.iterdir() if path.is_dir() or path.suffix.lower() == ".zip")
     if not items:
-        raise FileNotFoundError(f"Keine ZIPs oder Projektordner in {inbox}")
+        raise FileNotFoundError(f"No ZIPs or project folders in {inbox}")
 
     emitter = ProgressEmitter()
     _recover_recorded_validation(project_root, emitter)
@@ -1635,7 +1635,7 @@ def import_inbox(project_root: Path, *, ownership_confirmed: bool) -> dict[str, 
         phase="input_detection",
         phase_label=PHASE_LABELS["input_detection"],
         phase_status="running",
-        message=f"{len(items)} Importelement(e) erkannt.",
+        message=f"{len(items)} import item(s) detected.",
     )
     audits: list[ProjectAudit] = []
     failures: list[dict[str, str]] = []
@@ -1653,7 +1653,7 @@ def import_inbox(project_root: Path, *, ownership_confirmed: bool) -> dict[str, 
                 source_item=item.name,
                 source_item_index=item_index,
                 source_item_total=len(items),
-                message=f"{item.name} wird erkannt.",
+                message=f"Detecting {item.name}.",
             )
             try:
                 if item.is_file():
@@ -1664,7 +1664,7 @@ def import_inbox(project_root: Path, *, ownership_confirmed: bool) -> dict[str, 
                         phase_label=PHASE_LABELS["secure_extract"],
                         phase_status="running",
                         source_item=item.name,
-                        message=f"{item.name} wird sicher entpackt.",
+                        message=f"Safely extracting {item.name}.",
                     )
                     preflight = _archive_preflight(item)
                     _safe_extract(item, extraction)
@@ -1676,7 +1676,7 @@ def import_inbox(project_root: Path, *, ownership_confirmed: bool) -> dict[str, 
                         source_item=item.name,
                         archive_entries=preflight["entries"],
                         archive_uncompressed_bytes=preflight["uncompressed_bytes"],
-                        message=f"{item.name} wurde sicher entpackt.",
+                        message=f"Safely extracted {item.name}.",
                     )
                     source_root = extraction
                 else:
@@ -1687,7 +1687,7 @@ def import_inbox(project_root: Path, *, ownership_confirmed: bool) -> dict[str, 
                         phase_label=PHASE_LABELS["input_detection"],
                         phase_status="completed",
                         source_item=item.name,
-                        message="Lokaler Ordner wird nur gelesen; Originaldateien bleiben unverändert.",
+                        message="The local folder is only read; original files stay unchanged.",
                     )
                 emitter.emit(
                     "local_import_item",
@@ -1695,11 +1695,11 @@ def import_inbox(project_root: Path, *, ownership_confirmed: bool) -> dict[str, 
                     phase_label=PHASE_LABELS["project_detection"],
                     phase_status="running",
                     source_item=item.name,
-                    message="project.godot-Dateien werden gesucht.",
+                    message="Searching for project.godot files.",
                 )
                 projects = _find_projects(source_root)
                 if not projects:
-                    raise ValueError("Kein project.godot gefunden")
+                    raise ValueError("No project.godot found")
                 for project in projects:
                     project_name, _ = _project_name(project)
                     plans.append(ImportPlan(
@@ -1715,7 +1715,7 @@ def import_inbox(project_root: Path, *, ownership_confirmed: bool) -> dict[str, 
                     phase_status="completed",
                     source_item=item.name,
                     detected_projects=len(projects),
-                    message=f"{len(projects)} Godot-Projekt(e) erkannt.",
+                    message=f"{len(projects)} Godot project(s) detected.",
                 )
             except (OSError, ValueError, zipfile.BadZipFile) as exc:
                 failures.append({"item": item.name, "error": str(exc)})
@@ -1737,10 +1737,10 @@ def import_inbox(project_root: Path, *, ownership_confirmed: bool) -> dict[str, 
                 phase="project_detection",
                 phase_label=PHASE_LABELS["project_detection"],
                 phase_status="failed",
-                message="Kein importierbares Godot-Projekt gefunden.",
+                message="No importable Godot project found.",
                 level="error",
             )
-            raise ValueError("Kein importierbares Godot-Projekt gefunden")
+            raise ValueError("No importable Godot project found")
 
         progress = ImportProgress(emitter=emitter, plans=plans)
         emitter.emit(
@@ -1761,7 +1761,7 @@ def import_inbox(project_root: Path, *, ownership_confirmed: bool) -> dict[str, 
             phase="project_detection",
             phase_label=PHASE_LABELS["project_detection"],
             phase_status="completed",
-            message=f"{len(plans)} Projekte mit insgesamt {progress.total_scripts} Skripten geplant.",
+            message=f"{len(plans)} projects planned with {progress.total_scripts} scripts in total.",
         )
 
         for project_index, plan in enumerate(plans, start=1):
@@ -1771,7 +1771,7 @@ def import_inbox(project_root: Path, *, ownership_confirmed: bool) -> dict[str, 
                 phase="project_detection",
                 phase_status="completed",
                 project_status="running",
-                message=f"Projekt {project_index}/{len(plans)} gestartet.",
+                message=f"Started project {project_index}/{len(plans)}.",
             )
             try:
                 audit = _import_one(
@@ -1812,8 +1812,8 @@ def import_inbox(project_root: Path, *, ownership_confirmed: bool) -> dict[str, 
                     overall_progress=project_index / len(plans),
                     project_progress=1.0,
                     message=(
-                        f"Projektimport abgeschlossen; {len(audit.parser_failed_files)} parserfehlerhafte Skript(e) wurden ausgeschlossen."
-                        if audit.parser_failed_files else "Projektimport abgeschlossen."
+                        f"Project import finished; {len(audit.parser_failed_files)} script(s) with parser errors were excluded."
+                        if audit.parser_failed_files else "Project import finished."
                     ),
                     level="warning" if final_status in {"passed_with_warnings", "quarantined", "disabled"} else "info",
                 )
@@ -1843,7 +1843,7 @@ def import_inbox(project_root: Path, *, ownership_confirmed: bool) -> dict[str, 
         phase_status="running",
         job_status="running",
         project_total=len(plans),
-        message="Lokale private Quellen werden in der Corpus-Registry aktualisiert.",
+        message="Updating local private sources in the corpus registry.",
     )
     registry = load_registry(project_root)
     by_id = {str(source.get("id")): source for source in registry.get("sources", [])}
@@ -1860,7 +1860,7 @@ def import_inbox(project_root: Path, *, ownership_confirmed: bool) -> dict[str, 
         phase_status="completed",
         job_status="running",
         project_total=len(plans),
-        message=f"Corpus-Registry mit {len(saved.get('sources', []))} Quellen gespeichert.",
+        message=f"Saved corpus registry with {len(saved.get('sources', []))} sources.",
     )
 
     report = {
@@ -1895,7 +1895,7 @@ def import_inbox(project_root: Path, *, ownership_confirmed: bool) -> dict[str, 
         phase_status="running",
         job_status="running",
         project_total=len(plans),
-        message="JSON- und Markdown-Abschlussberichte werden geschrieben.",
+        message="Writing JSON and Markdown final reports.",
     )
     _json_write(local_root(project_root) / "import_report.json", report)
     reports = project_root / "reports" / "local_sources"
@@ -1941,7 +1941,7 @@ def import_inbox(project_root: Path, *, ownership_confirmed: bool) -> dict[str, 
         warnings=sum(bool(audit.static_warnings) for audit in audits),
         failed=len(failures),
         quarantined=sum(not audit.enabled_for_training for audit in audits),
-        message="Privater Projektimport und Abschlussbericht sind fertig.",
+        message="Private project import and final report are done.",
         level="warning" if failures or any(not audit.enabled_for_training for audit in audits) else "info",
     )
     print("LOCAL_IMPORT_SUMMARY_JSON=" + json.dumps(report["summary"], ensure_ascii=True))
@@ -1974,7 +1974,7 @@ def open_inbox(project_root: Path) -> None:
             return
         except OSError:
             continue
-    raise RuntimeError(f"Ordner konnte nicht geöffnet werden: {path}")
+    raise RuntimeError(f"Could not open folder: {path}")
 
 
 def parse_args() -> argparse.Namespace:

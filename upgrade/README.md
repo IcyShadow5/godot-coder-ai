@@ -1,4 +1,4 @@
-# Upgrade-Templates
+# Upgrade templates
 
 This folder contains **templates** for building a versioned upgrade package for a
 future release. It deliberately contains **no built upgrader**: no `payload/`,

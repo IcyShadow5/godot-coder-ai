@@ -1,77 +1,83 @@
-# Godot Coder Studio v0.10.2
+# Godot Coder Studio v0.10.3
 
-Das Studio läuft weiterhin lokal auf `127.0.0.1` und benötigt keine Cloud-API. Optional stellt Tailscale Serve einen privaten HTTPS-Zugang innerhalb des eigenen Tailnets bereit.
+The Studio continues to run locally on `127.0.0.1` and requires no cloud API. Optionally, Tailscale Serve provides a private HTTPS entry point within your own tailnet.
 
-## Bereiche
+## Areas
 
-- **Chat & Code:** Checkpoint laden, Completion erzeugen, mit Godot prüfen und als Lernbeispiel speichern.
-- **Training:** Konfiguration wählen, von Zufall oder kompatiblem Checkpoint starten, Live-Logs und Stop.
-- **Wissensaufbau:** fünf geführte Schritte vom Git-Repository bis zum Tokenstream.
-- **Data Lab:** GDScript lesen/bearbeiten; bestehende Dateien werden vorher gesichert.
-- **Modelle:** `best`, `latest` und aufbewahrte Step-Checkpoints auswählen.
-- **System:** Python, PyTorch, CUDA, GPU, Godot und Projektpfad prüfen.
+- **Chat & Code:** Load a checkpoint, generate a completion, check it with Godot and save it as a learning example.
+- **Training:** Pick a configuration, start from scratch or from a compatible checkpoint, live logs and stop.
+- **Knowledge Building:** five guided steps from the Git repository to the token stream.
+- **Data Lab:** read/edit GDScript; existing files are backed up first.
+- **Models:** select `best`, `latest` and retained step checkpoints.
+- **System:** check Python, PyTorch, CUDA, GPU, Godot and the project path.
 
 ## Chat & Code
 
-Checkpoint wählen, Prompt eingeben und eine GDScript-Completion erzeugen. Die Ausgabe kann direkt mit Godot geprüft werden; bestätigte Beispiele lassen sich als Lernbeispiel speichern. Beim Speichern wird die Ziel-Datei vorher gesichert.
+Select a checkpoint, enter a prompt and generate a GDScript completion. The output can be checked directly with Godot; confirmed examples can be saved as learning examples. When saving, the target file is backed up first.
 
 ## Data Lab
 
-Das Data Lab ist ein kleiner Editor für den lokalen Korpus: GDScript-Dateien lesen und bearbeiten, vorhandene Einträge löschen und neue Dateien anlegen. Die Liste lässt sich per Datentyp filtern (alle Daten, aktive Trainingstokens, eigene Rohdateien, Aufgabendaten oder Train-/Validation-/Test-Split) und zusätzlich über das Suchfeld durchsuchen. Jede Änderung an einer bestehenden Datei legt vorher eine Sicherung an — nichts wird blind überschrieben.
+The Data Lab is a small editor for the local corpus: read and edit GDScript files, delete existing entries and create new files. The list can be filtered by data type (all data, active training tokens, own raw files, task data or train/validation/test split) and additionally searched via the search box. Every change to an existing file creates a backup first - nothing is overwritten blindly.
 
-## Wissensaufbau: die geführten Schritte
+## Knowledge Building: the guided steps
 
-1. **Quellen auswählen** — die offiziellen Godot-Quellen sind vorausgewählt; deaktivierbar, plus Erweiterungs-Pakete (klein / Großausbau · 5M / Maximalausbau · 20M). Eigene Git-Quellen lassen sich nur mit erlaubter Lizenz hinzufügen.
-2. **Quellen laden & bereinigen** — `fetch` lädt die ausgewählten Repositories, `build` erzeugt das Staging-Manifest (Lizenzen, Splits, Deduplikation).
-3. **Prüfen** — `validate` lässt Godot den Code durch den Parser laufen; danach folgt das Corpus-Audit mit Token-Zählung.
-4. **Tokenstrom** — `train-bpe` baut den Byte-BPE-Tokenizer und den versionierten Tokenstrom.
-5. **Dataset vorbereiten** — das finale Trainings-Dataset mit Shards und Hashes; danach kann Training starten.
+1. **Select sources** - the official Godot sources are preselected; they can be disabled, plus extension packages (small / large build · 5M / max build · 20M). Own Git sources can only be added with a permitted license.
+2. **Fetch & clean sources** - `fetch` downloads the selected repositories, `build` creates the staging manifest (licenses, splits, deduplication).
+3. **Check** - `validate` runs the code through the Godot parser; afterwards the corpus audit with token counting follows.
+4. **Token stream** - `train-bpe` builds the byte-BPE tokenizer and the versioned token stream.
+5. **Prepare dataset** - the final training dataset with shards and hashes; afterwards training can start.
 
-Für den privaten Import eigener Projekte gelten die Optionen im Abschnitt „Import-Optionen für große Mengen“.
+For the private import of own projects, the options in the "Import options for large volumes" section apply.
 
 ## Secure Remote Studio
 
-Einrichtung in vier Schritten:
+Setup in four steps:
 
-1. `python -m godot_coder.remote_access configure` ausführen (richtet Tailscale Serve ein; das Studio bleibt auf `127.0.0.1:8765` gebunden).
-2. Studio mit `python -m godot_coder.studio` starten.
-3. Die angezeigte Tailscale-HTTPS-Adresse am Handy/Tablet öffnen.
-4. Wieder entfernen mit `python -m godot_coder.remote_access disable`.
+1. Run `python -m godot_coder.remote_access configure` (sets up Tailscale Serve; the Studio stays bound to `127.0.0.1:8765`).
+2. Start the Studio with `python -m godot_coder.studio`.
+3. Open the displayed Tailscale HTTPS address on your phone/tablet.
+4. Remove it again with `python -m godot_coder.remote_access disable`.
 
-Der Remote-Bereich zeigt Tailscale-Status, Identität, Lesemodus, PIN-Sitzung, private Linkdownloads, ZIP-Uploads und den lokalen Importordner. Alle Jobs laufen auf dem PC. API-Daten werden nicht durch die PWA offline gecacht. Eine öffentliche Tailscale-Funnel-Freigabe ist nicht vorgesehen.
+The remote area shows Tailscale status, identity, read mode, PIN session, private link downloads, ZIP uploads and the local import folder. All jobs run on the PC. API data is not cached offline by the PWA. A public Tailscale funnel share is not intended.
 
-## Anfänger-Schutz
+## Beginner protection
 
-Unbekannte Lizenzen, ungültige Git-URLs/Refs, Pfade außerhalb des Projekts, unpassende Tokenizer und ungültige Trainingskonfigurationen werden vor dem Start abgewiesen. Große Jobs laufen separat und können gestoppt werden.
+Unknown licenses, invalid Git URLs/refs, paths outside the project, mismatched tokenizers and invalid training configurations are rejected before start. Large jobs run separately and can be stopped.
 
-## Import-Optionen für große Mengen (v0.10.2)
+## Import options for large volumes (v0.10.2)
 
-Unter **Wissensaufbau → Eigene Godot-Projekte · privat** gibt es jetzt drei
-Schalter, die sonst nur als Umgebungsvariablen erreichbar waren:
+Under **Knowledge Building -> Own Godot projects · private** there are now three
+toggles that were previously only reachable as environment variables:
 
-- **Godot-Projektimport überspringen** (`GODOT_CODER_SKIP_PROJECT_IMPORT=1`) –
-  prüft jede `.gd`-Datei einzeln statt des vollen `--import`. Deutlich schneller,
-  aber ohne Projektkontext; die volle Prüfung läuft später über
+- **Skip Godot project import** (`GODOT_CODER_SKIP_PROJECT_IMPORT=1`) -
+  checks each `.gd` file individually instead of a full `--import`. Significantly
+  faster, but without project context; the full check runs later via
   `validate_dataset.py`.
-- **Statische AST-Prüfung überspringen** (`GODOT_CODER_FAST_STATIC=1`) –
-  überspringt nur die langsame Warnungsanalyse. Der Secret-Scan und die
-  Dateigrößenprüfung laufen trotzdem (seit v0.10.2 garantiert).
-- **Fehler-Abbruch verschärfen** (`GODOT_CODER_ERROR_ABORT_THRESHOLD=60`) –
-  bricht Godot nach 60 statt 500 Fehlerzeilen ab. Nützlich, wenn ein Add-on
-  den Import in eine Endlosschleife treibt.
+- **Skip static AST analysis** (`GODOT_CODER_FAST_STATIC=1`) -
+  skips only the slow warning analysis. The secret scan and the
+  file size check still run (guaranteed since v0.10.2).
+- **Tighten error abort** (`GODOT_CODER_ERROR_ABORT_THRESHOLD=60`) -
+  aborts Godot after 60 instead of 500 error lines. Useful when an add-on
+  drives the import into an infinite loop.
 
-Die Schalter werden als Umgebungsvariablen an den Import-Job durchgereicht
-(`extra_env`), also ohne Shell. Die Einstellungen gelten nur für den jeweiligen
-Importlauf, nicht dauerhaft.
+The toggles are passed to the import job as environment variables
+(`extra_env`), so without a shell. The settings only apply to the respective
+import run, not permanently.
 
 ## Professional Training Core
 
-Die Trainingsansicht enthält eine Preflight-Ampel. Rot blockiert den Nachtlauf, Gelb erlaubt eine bewusste Prüfung und Grün bedeutet, dass Pflichtprüfungen bestanden sind. Erweiterte Optionen bleiben eingeklappt.
+The training view contains a preflight traffic light. Red blocks the night run, yellow allows a deliberate review and green means mandatory checks passed. Advanced options stay collapsed.
 
-## Parser-Fallback
+## Parser fallback
 
-Bei einem festgefahrenen Godot-Mono-Editorimport (Timeout, Idle, Fehlerflut)
-wechselt das Studio automatisch auf die dateiweise `--check-only`-Prüfung. Der
-aktuelle Pfad, Dateizähler und ausgeschlossene Parserfehler werden im
-Live-Fortschritt angezeigt. Seit v0.10.1 beendet der Windows-Job-Object-Runner
-den kompletten Prozessbaum, bevor der Fallback startet — keine Waisen mehr.
+When a stuck Godot Mono editor import (timeout, idle, error flood) occurs,
+the Studio automatically switches to the per-file `--check-only` check. The
+current path, file counter and excluded parser errors are shown in the
+live progress. Since v0.10.1 the Windows job-object runner terminates the
+complete process tree before the fallback starts - no orphans anymore.
+Since v0.10.3 the corpus validation (`corpus validate`) also runs through this
+runner: a hanging Mono import is terminated together with grandchild processes
+instead of blocking forever on an inherited pipe. In addition, a
+stall watchdog terminates every job that produces no output for longer than
+`GODOT_CODER_JOB_STALL_TIMEOUT_SECONDS` (default 20 minutes, `0` disables it)
+and marks it as failed in the UI.

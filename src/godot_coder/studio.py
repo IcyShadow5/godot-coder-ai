@@ -41,8 +41,8 @@ def main() -> None:
     port = int(args.port or remote_config.get("port") or DEFAULT_REMOTE_PORT)
     if remote_enabled and not is_loopback_host(args.host) and not args.allow_non_loopback:
         raise SystemExit(
-            "Secure Remote Studio bleibt aus Sicherheitsgruenden auf localhost gebunden. "
-            "Nutze Tailscale Serve oder bestaetige einen externen Bind explizit mit --allow-non-loopback."
+            "Secure Remote Studio stays bound to localhost for security reasons. "
+            "Use Tailscale Serve or explicitly allow an external bind with --allow-non-loopback."
         )
     app = create_app(root)
     url = f"http://{args.host}:{port}"

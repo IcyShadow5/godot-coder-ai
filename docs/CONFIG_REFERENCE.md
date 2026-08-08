@@ -1,15 +1,15 @@
-# Konfigurationsreferenz (configs/*.yaml)
+# Configuration reference (configs/*.yaml)
 
-Jede Trainings-/Laufkonfiguration liegt als YAML unter `configs/` und besteht aus
-genau zwei Abschnitten: `model:` und `train:`. Die Studio-Trainingsansicht listet
-die Profile aus diesem Ordner; die CLI lädt eine Datei mit
+Every training/run configuration lives as YAML under `configs/` and consists of
+exactly two sections: `model:` and `train:`. The Studio training view lists
+the profiles from this folder; the CLI loads a file with
 `python -m godot_coder.train --config configs/<name>.yaml`.
 
-Echte Autotuner-Ergebnisse heißen `configs/autotuned_*.yaml` und sind
-maschinenlokal (gitignored). Eine Vorlage zum Abtippen liegt als
-`configs/autotuned_night.example.yaml` im Repo.
+Real autotuner results are named `configs/autotuned_*.yaml` and are
+machine-local (gitignored). A template for typing them out is available as
+`configs/autotuned_night.example.yaml` in the repo.
 
-## Beispiel
+## Example
 
 ```yaml
 model:
@@ -45,88 +45,88 @@ train:
     mode: default
 ```
 
-## `model:` — Architektur
+## `model:` - architecture
 
-| Schlüssel | Default | Bedeutung |
+| Key | Default | Meaning |
 |---|---|---|
-| `vocab_size` | 269 | Token-IDs. Muss zum trainierten BPE-Tokenizer passen — Fingerprints verhindern stilles Vermischen. |
-| `max_seq_len` | 256 | Kontextlänge in Tokens (mindestens 8). |
-| `n_layers` | 4 | Transformer-Schichten. |
-| `d_model` | 192 | Modellbreite; muss durch `n_heads` teilbar sein. |
-| `n_heads` | 6 | Aufmerksamkeitsköpfe; Kopfbreite muss gerade sein (RoPE). |
-| `d_ff` | 512 | Feed-Forward-Breite. |
+| `vocab_size` | 269 | Token IDs. Must match the trained BPE tokenizer - fingerprints prevent silent mixing. |
+| `max_seq_len` | 256 | Context length in tokens (at least 8). |
+| `n_layers` | 4 | Transformer layers. |
+| `d_model` | 192 | Model width; must be divisible by `n_heads`. |
+| `n_heads` | 6 | Attention heads; head width must be even (RoPE). |
+| `d_ff` | 512 | Feed-forward width. |
 | `dropout` | 0.0 | Dropout in `[0, 1)`. |
-| `rope_base` | 10000.0 | RoPE-Basis > 1. |
-| `tie_embeddings` | true | Einbettungen teilen (Input/Output). |
-| `gradient_checkpointing` | false | Sparen VRAM, langsameres Training. |
+| `rope_base` | 10000.0 | RoPE base > 1. |
+| `tie_embeddings` | true | Tie embeddings (input/output). |
+| `gradient_checkpointing` | false | Save VRAM, slower training. |
 
-## `train:` — Training
+## `train:` - training
 
-### Daten & Ausgabe
+### Data & output
 
-| Schlüssel | Default | Bedeutung |
+| Key | Default | Meaning |
 |---|---|---|
-| `tokenizer_path` | `artifacts/tokenizer.json` | BPE-Tokenizer-Datei. |
-| `data_dir` | `data/processed` | Trainings-/Validierungsdaten. |
-| `output_dir` | `checkpoints/tiny` | Checkpoint-Ziel. |
-| `device` | `auto` | `auto`, `cuda` oder `cpu`. |
-| `dtype` | `float16` | `float32`, `float16` oder `bfloat16`. |
-| `seed` | 1337 | Seed für Datenshuffling und Evaluation. |
+| `tokenizer_path` | `artifacts/tokenizer.json` | BPE tokenizer file. |
+| `data_dir` | `data/processed` | Training/validation data. |
+| `output_dir` | `checkpoints/tiny` | Checkpoint target. |
+| `device` | `auto` | `auto`, `cuda` or `cpu`. |
+| `dtype` | `float16` | `float32`, `float16` or `bfloat16`. |
+| `seed` | 1337 | Seed for data shuffling and evaluation. |
 
-### Optimierung
+### Optimization
 
-| Schlüssel | Default | Bedeutung |
+| Key | Default | Meaning |
 |---|---|---|
-| `batch_size` | 8 | Mikrobatch je Optimizer-Schritt. |
-| `gradient_accumulation_steps` | 4 | Gradients sammeln; effektiver Batch = `batch_size × accumulation`. |
-| `learning_rate` | 4e-4 | Spitzen-Lernrate (> 0). |
-| `min_learning_rate` | 4e-5 | Ziel-Lernrate am Ende. |
-| `warmup_steps` | 100 | Warmup-Schritte (kleiner als `max_steps`). |
-| `weight_decay` | 0.1 | AdamW-Decay. |
-| `beta1` / `beta2` | 0.9 / 0.95 | Adam-Betas in `[0, 1)`. |
-| `gradient_clip` | 1.0 | Max. Gradientennorm (> 0). |
-| `prefetch_batches` | 0 | Vorab geladene Batches. |
+| `batch_size` | 8 | Micro-batch per optimizer step. |
+| `gradient_accumulation_steps` | 4 | Accumulate gradients; effective batch = `batch_size x accumulation`. |
+| `learning_rate` | 4e-4 | Peak learning rate (> 0). |
+| `min_learning_rate` | 4e-5 | Target learning rate at the end. |
+| `warmup_steps` | 100 | Warmup steps (smaller than `max_steps`). |
+| `weight_decay` | 0.1 | AdamW decay. |
+| `beta1` / `beta2` | 0.9 / 0.95 | Adam betas in `[0, 1)`. |
+| `gradient_clip` | 1.0 | Max. gradient norm (> 0). |
+| `prefetch_batches` | 0 | Preloaded batches. |
 
-### Abbruch
+### Termination
 
-Mindestens eines von `max_steps`, `max_tokens` oder `target_dataset_passes`
-**muss** gesetzt sein; was zuerst endet, gewinnt:
+At least one of `max_steps`, `max_tokens` or `target_dataset_passes`
+**must** be set; whichever ends first wins:
 
-| Schlüssel | Default | Bedeutung |
+| Key | Default | Meaning |
 |---|---|---|
-| `max_steps` | 1500 | Maximale Optimizer-Schritte. |
-| `max_tokens` | — | Maximale Tokens insgesamt. |
-| `target_dataset_passes` | — | Gewünschte Epochen (Token-Multiplikator). |
+| `max_steps` | 1500 | Maximum optimizer steps. |
+| `max_tokens` | - | Maximum total tokens. |
+| `target_dataset_passes` | - | Desired epochs (token multiplier). |
 
-Schutz gegen ständiges Wiederholen desselben Datensatzes:
+Protection against endlessly repeating the same dataset:
 
-| Schlüssel | Default | Bedeutung |
+| Key | Default | Meaning |
 |---|---|---|
-| `max_dataset_passes_warning` | 8.0 | Ab hier Warnung im Preflight. |
-| `max_dataset_passes_block` | 50.0 | Ab hier blockiert der Preflight den Lauf. |
-| `allow_excessive_dataset_passes` | false | Block bewusst umgehen (Studio: gelbe Ampel). |
+| `max_dataset_passes_warning` | 8.0 | Warning in the preflight from here. |
+| `max_dataset_passes_block` | 50.0 | The preflight blocks the run from here. |
+| `allow_excessive_dataset_passes` | false | Deliberately bypass the block (Studio: yellow light). |
 
 ### Evaluation
 
-| Schlüssel | Default | Bedeutung |
+| Key | Default | Meaning |
 |---|---|---|
-| `eval_interval` | 100 | Validierung alle N Schritte. |
-| `eval_batches` | 20 | Batches je Validierung. |
-| `evaluation_mode` | `fixed` | `fixed`, `random` oder `sliding`. |
-| `evaluation_seed` | 7331 | Seed der Evaluationsauswahl. |
-| `evaluation_stride` | — | Schrittweite im Sliding-Modus. |
-| `validation_interval_tokens` | — | Validierung zusätzlich alle N Tokens. |
+| `eval_interval` | 100 | Validate every N steps. |
+| `eval_batches` | 20 | Batches per validation. |
+| `evaluation_mode` | `fixed` | `fixed`, `random` or `sliding`. |
+| `evaluation_seed` | 7331 | Seed of the evaluation selection. |
+| `evaluation_stride` | - | Stride in sliding mode. |
+| `validation_interval_tokens` | - | Additionally validate every N tokens. |
 
-### Checkpoints & Logging
+### Checkpoints & logging
 
-| Schlüssel | Default | Bedeutung |
+| Key | Default | Meaning |
 |---|---|---|
-| `log_interval` | 10 | Log alle N Schritte. |
-| `save_interval` | 100 | Checkpoint alle N Schritte. |
-| `save_best_only` | false | Nur das beste Modell speichern. |
-| `keep_last_checkpoints` | 3 | Aufbewahrte Step-Checkpoints. |
+| `log_interval` | 10 | Log every N steps. |
+| `save_interval` | 100 | Checkpoint every N steps. |
+| `save_best_only` | false | Only save the best model. |
+| `keep_last_checkpoints` | 3 | Retained step checkpoints. |
 
-### Early Stopping (YAML-Unterblock)
+### Early stopping (YAML sub-block)
 
 ```yaml
 early_stopping:
@@ -135,7 +135,7 @@ early_stopping:
   min_delta: 0.01
 ```
 
-### torch.compile (YAML-Unterblock)
+### torch.compile (YAML sub-block)
 
 ```yaml
 compile:
@@ -143,21 +143,21 @@ compile:
   mode: default   # default | reduce-overhead | max-autotune
 ```
 
-## Profile im Repo
+## Profiles in the repo
 
-| Datei | Zweck |
+| File | Purpose |
 |---|---|
-| `corpus_balanced_90m.yaml` | Balanced · 91M — empfohlenes Hauptprofil |
-| `corpus_starter_30m.yaml` | Kleinster echter Korpuslauf, ohne Activation Checkpointing |
-| `corpus_experimental_163m.yaml` | Größtes Profil (RTX-5060-Erkundung), nur nach Hardware-Probe |
-| `corpus_small_8gb.yaml` / `corpus_smoke.yaml` | Ältere Korpusläufe (v04) |
-| `curriculum_tiny.yaml` | Curriculum-Datensatz |
-| `small_8gb.yaml` / `tiny.yaml` / `smoke.yaml` / `tiny_demo.yaml` | Allgemeine Trainingskonfigurationen |
-| `autotuned_night.example.yaml` | Autotuner-Vorlage (maschinenlokal, nicht committen) |
+| `corpus_balanced_90m.yaml` | Balanced · 91M - recommended main profile |
+| `corpus_starter_30m.yaml` | Smallest real corpus run, without activation checkpointing |
+| `corpus_experimental_163m.yaml` | Largest profile (RTX-5060 exploration), only after hardware probe |
+| `corpus_small_8gb.yaml` / `corpus_smoke.yaml` | Older corpus runs (v04) |
+| `curriculum_tiny.yaml` | Curriculum dataset |
+| `small_8gb.yaml` / `tiny.yaml` / `smoke.yaml` / `tiny_demo.yaml` | General training configurations |
+| `autotuned_night.example.yaml` | Autotuner template (machine-local, do not commit) |
 
-## Prüfregeln (Kurzfassung)
+## Validation rules (short version)
 
-Die Validierung beim Laden lehnt ab, wenn z. B. `d_model` nicht durch `n_heads`
-teilbar ist, die Kopfbreite ungerade ist, `dtype`/`evaluation_mode`/`compile_mode`
-unbekannt sind, `warmup_steps ≥ max_steps`, oder `max_dataset_passes_block`
-unter der Warnschwelle liegt. Fehlertexte nennen das betroffene Feld direkt.
+The validation on load rejects when e.g. `d_model` is not divisible by `n_heads`,
+the head width is odd, `dtype`/`evaluation_mode`/`compile_mode`
+are unknown, `warmup_steps >= max_steps`, or `max_dataset_passes_block`
+is below the warning threshold. Error texts name the affected field directly.

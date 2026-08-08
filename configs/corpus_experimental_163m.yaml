@@ -1,9 +1,9 @@
 profile:
   id: experimental
   title: Experimental · 163M
-  method: VRAM-Grenze ausloten
-  description: Größtes Profil für die RTX-5060-Erkundung. Nur nach bestandenem Hardware-Probelauf
-    verwenden. v0.6 nutzt Tokenbudgets, feste Evaluation und Early Stopping.
+  method: Probe the VRAM limit
+  description: Largest profile for the RTX-5060 exploration. Only use after a passed hardware probe
+    run. v0.6 uses token budgets, fixed evaluation and early stopping.
   beginner_order: 3
   recommended: false
   risk: high

@@ -73,6 +73,7 @@ class Job:
     events: deque[dict[str, Any]] = field(default_factory=lambda: deque(maxlen=5000))
     progress_state: dict[str, Any] = field(default_factory=dict)
     last_successful_step: dict[str, Any] | None = None
+    last_output_at: float | None = field(default=None, repr=False)
     process: subprocess.Popen[str] | None = field(default=None, repr=False)
 
     def elapsed_seconds(self, now: float | None = None) -> float:
@@ -179,8 +180,8 @@ class JobManager:
                 job.finished_at = time.time()
                 job.return_code = -2
                 job.progress_state["job_status"] = "failed"
-                job.progress_state["failure_reason"] = "Studio wurde während des Jobs neu gestartet."
-                self._append_log(job, "Studio-Neustart erkannt; der unvollständige Job wurde als fehlgeschlagen markiert.", level="error")
+                job.progress_state["failure_reason"] = "The Studio was restarted during the job."
+                self._append_log(job, "Studio restart detected; the incomplete job was marked as failed.", level="error")
                 self._persist_snapshot(job)
             self._history.append(job)
         if self._history:
@@ -307,6 +308,7 @@ class JobManager:
             "level": level or _level_from_text(masked),
             "text": masked,
         }
+        job.last_output_at = time.monotonic()
         job.logs.append(masked)
         job.log_records.append(record)
         with self._text_path(job).open("a", encoding="utf-8", newline="\n") as handle:
@@ -315,6 +317,7 @@ class JobManager:
         self._update_legacy_progress(job, masked)
 
     def _append_event(self, job: Job, event: dict[str, Any]) -> None:
+        job.last_output_at = time.monotonic()
         safe_event = mask_secrets(event)
         job.events.append(safe_event)
         self._append_jsonl(job, {"record_type": "event", **safe_event})
@@ -437,6 +440,57 @@ class JobManager:
                 "message": event.get("message"),
             }
 
+    def _start_stall_watchdog(self, job: Job) -> None:
+        """Kill the job when its child stops producing output.
+
+        A hung child (for example a Mono Godot process that keeps its stdout
+        pipe open) would otherwise leave the job showing as "running" forever
+        with no way to detect it. Default window: 20 minutes of silence.
+        Override with GODOT_CODER_JOB_STALL_TIMEOUT_SECONDS (0 disables).
+        """
+        try:
+            stall_seconds = float(os.environ.get("GODOT_CODER_JOB_STALL_TIMEOUT_SECONDS", "1200"))
+        except (TypeError, ValueError):
+            # Malformed value must not take the whole job down.
+            stall_seconds = 1200.0
+        if stall_seconds <= 0:
+            return
+
+        def _watch() -> None:
+            # Poll at a fraction of the window so tests can use small stall
+            # values without waiting the full 10 seconds between checks.
+            poll_seconds = min(10.0, max(0.5, stall_seconds / 2))
+            while True:
+                time.sleep(poll_seconds)
+                with self._lock:
+                    if job.status not in _ACTIVE_STATUSES or job.process is None or job.process.poll() is not None:
+                        return
+                    last_output_at = job.last_output_at
+                if last_output_at is None:
+                    continue
+                if time.monotonic() - last_output_at < stall_seconds:
+                    continue
+                with self._lock:
+                    job.status = "failed"
+                    job.finished_at = time.time()
+                    job.return_code = -3
+                    job.progress_state["job_status"] = "failed"
+                    job.progress_state["failure_reason"] = (
+                        f"The job process produced no output for over {int(stall_seconds)} seconds; "
+                        "it was ended as stalled and the process tree was stopped."
+                    )
+                    self._append_log(
+                        job,
+                        "No output from the job process detected; terminating the process tree.",
+                        level="error",
+                    )
+                    self._persist_snapshot(job)
+                    process = job.process
+                self._kill_tree(process)
+                return
+
+        threading.Thread(target=_watch, daemon=True).start()
+
     def _persist_snapshot(self, job: Job) -> None:
         path = self._snapshot_path(job)
         temporary = path.with_suffix(path.suffix + ".tmp")
@@ -475,8 +529,10 @@ class JobManager:
                 job.pid = process.pid
                 job.status = "running"
                 job.started_at = time.time()
+                job.last_output_at = time.monotonic()
                 job.progress_state["job_status"] = "running"
                 self._persist_snapshot(job)
+            self._start_stall_watchdog(job)
             assert process.stdout is not None
             for raw_line in process.stdout:
                 line = raw_line.rstrip("\r\n")
@@ -489,12 +545,18 @@ class JobManager:
                     self._persist_snapshot(job)
             return_code = process.wait()
             with self._lock:
-                job.return_code = return_code
                 job.finished_at = time.time()
-                if job.status == "stopping":
+                if job.status not in _ACTIVE_STATUSES:
+                    # The stall watchdog (or a stop) already ended this job -
+                    # keep its verdict, exit code and failure reason instead of
+                    # overwriting them from the child's exit code.
+                    pass
+                elif job.status == "stopping":
                     job.status = "stopped"
+                    job.return_code = return_code
                 else:
                     job.status = "completed" if return_code == 0 else "failed"
+                    job.return_code = return_code
                 job.progress_state["job_status"] = job.status
                 if job.status == "completed":
                     job.progress_state["overall_progress"] = 1.0
@@ -509,7 +571,7 @@ class JobManager:
                     "return_code": max(0, return_code) if return_code >= 0 else None,
                     "elapsed_seconds": job.elapsed_seconds(),
                     "overall_progress": 1.0 if job.status == "completed" else job.progress_state.get("overall_progress"),
-                    "message": "Job abgeschlossen." if job.status == "completed" else "Job wurde nicht erfolgreich abgeschlossen.",
+                    "message": "Job finished." if job.status == "completed" else "The job did not finish successfully.",
                 })
                 self._persist_snapshot(job)
         except Exception as exc:  # pragma: no cover - defensive process boundary

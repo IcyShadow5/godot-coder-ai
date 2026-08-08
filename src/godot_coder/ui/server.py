@@ -267,7 +267,7 @@ def create_app(project_root: Path) -> FastAPI:
         try:
             session = await asyncio.to_thread(app.state.remote_access.unlock, request.headers, payload.pin)
         except RemoteAccessError as exc:
-            raise HTTPException(status_code=429 if "Fehlversuche" in str(exc) else 403, detail=str(exc)) from exc
+            raise HTTPException(status_code=429 if "Too many failed attempts" in str(exc) else 403, detail=str(exc)) from exc
         response = JSONResponse({
             "unlocked": True,
             "csrf_token": session.csrf_token,
@@ -385,7 +385,7 @@ def create_app(project_root: Path) -> FastAPI:
     @app.post("/api/jobs/corpus/local-import")
     async def import_local_sources(request: LocalSourceImportRequest) -> dict[str, Any]:
         if not request.confirm_owned:
-            raise HTTPException(status_code=400, detail="Bestätige zuerst, dass du den importierten Code verwenden darfst.")
+            raise HTTPException(status_code=400, detail="First confirm that you are allowed to use the imported code.")
         try:
             current = await asyncio.to_thread(local_source_status, root)
             item_count = len(current.get("inbox_items", [])) or None
@@ -406,7 +406,7 @@ def create_app(project_root: Path) -> FastAPI:
     @app.post("/api/jobs/remote/source-download")
     async def remote_source_download(request: RemoteDownloadRequest) -> dict[str, Any]:
         if not request.confirm_owned:
-            raise HTTPException(status_code=400, detail="Bestätige zuerst, dass du den Quellcode lokal verwenden darfst.")
+            raise HTTPException(status_code=400, detail="First confirm that you are allowed to use the source code locally.")
         try:
             normalized = await asyncio.to_thread(validate_remote_url, request.url)
             return app.state.jobs.start(
@@ -425,10 +425,10 @@ def create_app(project_root: Path) -> FastAPI:
         confirm_owned: bool = Query(default=False),
     ) -> dict[str, Any]:
         if not confirm_owned:
-            raise HTTPException(status_code=400, detail="Bestätige zuerst, dass du den Quellcode lokal verwenden darfst.")
+            raise HTTPException(status_code=400, detail="First confirm that you are allowed to use the source code locally.")
         content_length = request.headers.get("content-length")
         if content_length and content_length.isdigit() and int(content_length) > MAX_REMOTE_SOURCE_BYTES:
-            raise HTTPException(status_code=413, detail=f"Upload überschreitet {MAX_REMOTE_SOURCE_BYTES // 1024**2} MiB.")
+            raise HTTPException(status_code=413, detail=f"Upload exceeds {MAX_REMOTE_SOURCE_BYTES // 1024**2} MiB.")
         staging = root / "data" / "local_sources" / ".remote_staging"
         staging.mkdir(parents=True, exist_ok=True)
         descriptor, temporary_name = tempfile.mkstemp(prefix="upload-", suffix=".zip.part", dir=staging)
@@ -442,7 +442,7 @@ def create_app(project_root: Path) -> FastAPI:
                         continue
                     received += len(chunk)
                     if received > MAX_REMOTE_SOURCE_BYTES:
-                        raise HTTPException(status_code=413, detail=f"Upload überschreitet {MAX_REMOTE_SOURCE_BYTES // 1024**2} MiB.")
+                        raise HTTPException(status_code=413, detail=f"Upload exceeds {MAX_REMOTE_SOURCE_BYTES // 1024**2} MiB.")
                     output.write(chunk)
             result = await asyncio.to_thread(stage_uploaded_zip, root, temporary, filename)
             app.state.remote_access.audit(
@@ -670,7 +670,7 @@ def create_app(project_root: Path) -> FastAPI:
             load_config(config_path)
             readiness = await asyncio.to_thread(build_preflight, root, config_path=config_path, mode="smoke")
             if not readiness.get("can_start"):
-                raise ValueError("Smoke-Test blockiert: " + " · ".join(readiness.get("blockers") or ["Vorprüfung fehlgeschlagen"]))
+                raise ValueError("Smoke test blocked: " + " · ".join(readiness.get("blockers") or ["Preflight failed"]))
             await asyncio.to_thread(app.state.generation.unload)
             return app.state.jobs.start(
                 "training-smoke-50",
@@ -689,7 +689,7 @@ def create_app(project_root: Path) -> FastAPI:
             load_config(config_path)
             readiness = await asyncio.to_thread(build_preflight, root, config_path=config_path, mode="full")
             if not readiness.get("can_start"):
-                raise ValueError("Training blockiert: " + " · ".join(readiness.get("blockers") or ["Vorprüfung fehlgeschlagen"]))
+                raise ValueError("Training blocked: " + " · ".join(readiness.get("blockers") or ["Preflight failed"]))
             max_steps = int(raw.get("train", {}).get("max_steps", 0)) or None
             await asyncio.to_thread(app.state.generation.unload)
             args = ["-m", "godot_coder.train", "--config", str(config_path)]

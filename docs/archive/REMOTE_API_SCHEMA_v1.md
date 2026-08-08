@@ -1,16 +1,16 @@
-# Godot Coder AI Remote API und Konfigurationsschema v1
+# Godot Coder AI Remote API and configuration schema v1
 
-> **Veraltet / Archiv.** Die Remote-API in dieser Form wurde durch den
-> Tailscale-Serve-Workflow ersetzt (`CONFIGURE_REMOTE_STUDIO.ps1`,
-> `remote_access configure | disable`). Die Einrichtung steht in `STUDIO.md`;
-> die Konfigurationsdatei `data/studio/remote_access.json` wird weiterhin
-> verwendet, die Endpunkte können aber abweichen.
+> **Superseded / Archive.** The remote API in this form was replaced by the
+> Tailscale Serve workflow (`CONFIGURE_REMOTE_STUDIO.ps1`,
+> `remote_access configure | disable`). The setup is in `STUDIO.md`;
+> the configuration file `data/studio/remote_access.json` is still
+> used, but the endpoints may differ.
 
-# Godot Coder AI Remote API und Konfigurationsschema v1
+# Godot Coder AI Remote API and configuration schema v1
 
-## Lokale Konfiguration
+## Local configuration
 
-Pfad: `data/studio/remote_access.json`
+Path: `data/studio/remote_access.json`
 
 ```json
 {
@@ -25,42 +25,42 @@ Pfad: `data/studio/remote_access.json`
 }
 ```
 
-Die PIN wird nicht gespeichert. Persistiert werden Salt und PBKDF2-HMAC-SHA256-Hash mit 310.000 Iterationen. Die Datei wird nach Möglichkeit mit Benutzer-Lese-/Schreibrechten angelegt.
+The PIN is not stored. Persisted are the salt and the PBKDF2-HMAC-SHA256 hash with 310,000 iterations. The file is created with user read/write permissions where possible.
 
-## Identitätsheader
+## Identity headers
 
-Bei einem Remote-Aufruf erwartet das Studio die von Tailscale Serve gesetzten Header:
+On a remote call the Studio expects the headers set by Tailscale Serve:
 
 - `Tailscale-User-Login`
 - `Tailscale-User-Name`
 - optional `Tailscale-User-Profile-Pic`
 
-Diese Header sind nur dann als Sicherheitsgrenze zulässig, wenn das Backend ausschließlich auf localhost lauscht und Tailscale Serve der einzige Remote-Proxy ist. Anfragen an einen `*.ts.net`-Host ohne Benutzerheader – etwa von einem getaggten Gerät – werden ausdrücklich als Remote erkannt und abgewiesen, nicht als lokaler Zugriff behandelt.
+These headers are only admissible as a security boundary when the backend listens exclusively on localhost and Tailscale Serve is the only remote proxy. Requests to a `*.ts.net` host without user headers - e.g. from a tagged device - are explicitly recognized as remote and rejected, not treated as local access.
 
-## Sitzungsmodell
+## Session model
 
 Cookie: `godot_coder_remote_session`
 
-Eigenschaften:
+Properties:
 
 - `HttpOnly`
 - `Secure`
 - `SameSite=Strict`
-- Pfad `/`
-- standardmäßig 60 Minuten gültig
-- nur im Arbeitsspeicher des Studio-Prozesses
+- path `/`
+- valid 60 minutes by default
+- only in the memory of the Studio process
 
-Schreibende Anfragen senden zusätzlich:
+Write requests additionally send:
 
 ```http
 X-Godot-Coder-CSRF: <session-specific-token>
 ```
 
-## Endpunkte
+## Endpoints
 
 ### `GET /api/remote/status`
 
-Liefert den lokalen beziehungsweise Remote-Zustand, erkannte Identität, Lese-/Schreibberechtigung, Sitzungsablauf, Tailscale-Zustand und Serve-Hinweis. Erlaubte Benutzer werden Remote-Clients nicht aufgelistet. Bei einer bereits authentifizierten Remote-Sitzung wird der sitzungsspezifische CSRF-Token erneut geliefert, damit ein UI-Neuladen ohne erneute PIN-Eingabe fortgesetzt werden kann; die Antwort ist mit `Cache-Control: no-store` geschützt.
+Returns the local resp. remote state, detected identity, read/write permission, session expiry, Tailscale state and a serve hint. Allowed users are not listed to remote clients. With an already authenticated remote session the session-specific CSRF token is delivered again so a UI reload can continue without a new PIN entry; the response is protected with `Cache-Control: no-store`.
 
 ### `POST /api/remote/unlock`
 
@@ -68,7 +68,7 @@ Liefert den lokalen beziehungsweise Remote-Zustand, erkannte Identität, Lese-/S
 {"pin": "123456"}
 ```
 
-Erstellt nach Identitäts-, Rate-Limit- und PIN-Prüfung eine Schreibsitzung. Antwort:
+Creates a write session after identity, rate-limit and PIN checks. Response:
 
 ```json
 {
@@ -80,7 +80,7 @@ Erstellt nach Identitäts-, Rate-Limit- und PIN-Prüfung eine Schreibsitzung. An
 
 ### `POST /api/remote/lock`
 
-Löscht die aktuelle Serversitzung und das Cookie. Erfordert eine gültige Schreibsitzung.
+Deletes the current server session and the cookie. Requires a valid write session.
 
 ### `POST /api/jobs/remote/source-download`
 
@@ -91,7 +91,7 @@ Löscht die aktuelle Serversitzung und das Cookie. Erfordert eine gültige Schre
 }
 ```
 
-Startet einen normalen persistenten Studio-Job. Fortschrittsereignisse verwenden das bestehende Progress-Schema v1 und ergänzen:
+Starts a normal persistent Studio job. Progress events use the existing progress schema v1 and add:
 
 - `phase = remote_link_validation`
 - `phase = remote_download`
@@ -102,20 +102,20 @@ Startet einen normalen persistenten Studio-Job. Fortschrittsereignisse verwenden
 
 ### `POST /api/remote/sources/upload`
 
-Queryparameter:
+Query parameters:
 
 - `filename`
 - `confirm_owned=true`
 
-Body: rohe ZIP-Bytes mit `Content-Type: application/octet-stream`.
+Body: raw ZIP bytes with `Content-Type: application/octet-stream`.
 
-Der Endpunkt nutzt bewusst kein Multipart-Formular und benötigt daher keine zusätzliche Upload-Abhängigkeit. Die maximale Nutzlast beträgt 256 MiB.
+The endpoint deliberately uses no multipart form and therefore needs no additional upload dependency. The maximum payload is 256 MiB.
 
-## Auditformat
+## Audit format
 
-Pfad: `reports/remote_access/remote_audit.jsonl`
+Path: `reports/remote_access/remote_audit.jsonl`
 
-Jede Zeile enthält ein maskiertes JSON-Objekt, beispielsweise:
+Every line contains a masked JSON object, e.g.:
 
 ```json
 {
@@ -129,12 +129,12 @@ Jede Zeile enthält ein maskiertes JSON-Objekt, beispielsweise:
 }
 ```
 
-PINs, CSRF-Tokens, Cookies, Authorization-Header und erkannte Secrets werden nicht absichtlich protokolliert. Die vorhandene rekursive Secret-Maskierung wird auch auf Auditfelder angewendet.
+PINs, CSRF tokens, cookies, Authorization headers and detected secrets are not deliberately logged. The existing recursive secret masking is also applied to audit fields.
 
-## Rückwärtskompatibilität
+## Backward compatibility
 
-- bestehende lokale API-Aufrufe benötigen weder Tailscale-Header noch PIN
-- normale Textlogs bleiben erhalten
-- das Progress-Event-Schema bleibt Version 1
-- neue Downloadfelder sind optional und werden bei alten Ereignissen als fehlend behandelt
-- bestehende Jobs, private Importreports und Trainingsformate bleiben unverändert lesbar
+- existing local API calls need neither Tailscale headers nor a PIN
+- normal text logs stay intact
+- the progress event schema stays version 1
+- new download fields are optional and treated as missing on old events
+- existing jobs, private import reports and training formats remain readable unchanged

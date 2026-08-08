@@ -138,7 +138,7 @@ def test_validate_project_retries_once_after_timeout_and_reports_recovery(
     assert calls == 2
     assert status == "passed_with_warnings"
     assert error is None
-    assert any("Prozessbaum wurde beendet" in str(event.get("message")) for event in events)
+    assert any("The process tree was terminated" in str(event.get("message")) for event in events)
     assert any(event.get("validation_fallback") is True for event in events)
     assert events[-1]["phase_status"] == "passed_with_warnings"
 
@@ -166,7 +166,7 @@ def test_validate_project_fails_cleanly_after_two_timeouts(tmp_path: Path, monke
     )
     assert calls == 2
     assert status == "failed"
-    assert error and "alle 1 trainierbaren Skripte" in error
+    assert error and "all 1 trainable scripts failed" in error
     assert not (tmp_path / "active.json").exists()
 
 
@@ -268,7 +268,7 @@ def test_known_mono_editor_failure_switches_to_file_parser_fallback(
     assert len([command for command in commands if "--import" in command]) == 1
     assert len([command for command in commands if "--check-only" in command]) == 2
     assert any(event.get("validation_fallback") is True for event in events)
-    assert any("ADB" in str(event.get("message")) or "Parser-Ersatzprüfung" in str(event.get("message")) for event in events)
+    assert any("ADB" in str(event.get("message")) or "Parser fallback check" in str(event.get("message")) for event in events)
 
 
 def test_file_parser_fallback_reports_and_excludes_only_failed_script(

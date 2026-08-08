@@ -18,7 +18,7 @@ def test_data_lab_has_live_catalog_delete_and_token_filters() -> None:
     assert "refreshDataCatalog(false)" in js
     assert "2500" in js
     assert '$("#dataset-token-count").textContent = formatNumber(summary.train_tokens || 0)' in js
-    assert "Maximalausbau · Richtung 20M" in html
+    assert "Max expansion · toward 20M" in html
 
 
 def test_service_worker_cache_is_bumped_for_maintenance_release() -> None:

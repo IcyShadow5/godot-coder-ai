@@ -1,4 +1,4 @@
-# Godot Coder AI v0.10.2
+# Godot Coder AI v0.10.3
 
 A local training studio for building a compact Godot/GDScript language model from scratch — train your own GPT-style model that actually understands GDScript. No cloud, no API keys, everything runs on your machine.
 
@@ -12,6 +12,18 @@ Three things bundled into one project:
 
 I built this because I wanted a model that knows *my* GDScript style. That's why the whole pipeline is private-first: local projects get their own license entry (`LicenseRef-User-Owned-Private`), are never redistributed, and only you can enable them for training.
 
+## What's New in v0.10.3
+
+A stability release. Corpus validation no longer hangs on large Mono projects, and a Studio job that goes silent gets killed instead of showing "running" forever.
+
+### 🩹 Corpus validation can no longer hang forever
+
+This one bit me mid-rebuild. `corpus validate` on big Mono projects (e.g. Pixelorama) froze at ~34% with 0% CPU, no progress, and a job stuck as "running" for over an hour. Root cause: Mono Godot spawns a grandchild that inherits the stdout/stderr pipes, and the old raw `subprocess.run` only kills the direct child on timeout — so `communicate()` blocks forever on a pipe the orphan still holds open. The validate path now runs Godot through the managed process runner (Windows job objects kill the whole tree), and the Studio JobManager has a **stall watchdog**: a job silent for `GODOT_CODER_JOB_STALL_TIMEOUT_SECONDS` (default 20 min, `0` disables) is killed and marked failed with a reason. No more unkillable phantom jobs.
+
+### 🩹 validate_dataset.py imported nothing
+
+It used `os.environ.copy()` without ever importing `os` — a guaranteed `NameError` on first run. Fixed.
+
 ## What's New in v0.10.2
 
 A correctness + cleanup release. The v0.10.1 speed work (fast import, error-rate abort, ETA caching) is still here — this release fixes two things that bugged me about it, adds Studio toggles for the fast-import flags, and finally puts the upgrade tooling into the repo where it belongs.
@@ -20,13 +32,13 @@ A correctness + cleanup release. The v0.10.1 speed work (fast import, error-rate
 
 This one was my fault. `GODOT_CODER_FAST_STATIC=1` was supposed to only skip the slow per-file AST walk, but it actually skipped the **secret scan** too — which is exactly how a stray `.env` or hardcoded API key ends up inside a training corpus. Fixed: secret scan and file-size checks **always run**; fast mode only skips the slow `_static_warnings()` analysis. Security is not a place to take shortcuts.
 
-### 🎛️ Studio toggles for fast import (Wissensaufbau → private import)
+### 🎛️ Studio toggles for fast import (Knowledge Building → private import)
 
 The fast-import env vars were CLI-only, which made them annoying to use. The private-import panel in the Studio now has three checkboxes:
 
-- **Godot-Projektimport überspringen** — skips the full `--import`, uses the per-file parser instead
-- **Statische AST-Prüfung überspringen** — the fast-static path (secret scan still runs!)
-- **Fehler-Abbruch verschärfen** — drops the error-abort threshold from 500 to 60 consecutive lines, useful for broken addon projects
+- **Skip Godot project import** — skips the full `--import`, uses the per-file parser instead
+- **Skip static AST analysis** — the fast-static path (secret scan still runs!)
+- **Tighten error abort** — drops the error-abort threshold from 500 to 60 consecutive lines, useful for broken addon projects
 
 They're forwarded to the import job as environment variables, so no shell needed.
 
@@ -63,7 +75,7 @@ Godot's `--import` can get stuck on broken addon projects, producing thousands o
 
 ### 🐛 v0.10.1 Bug Fixes (still relevant)
 - **Per-file loop double-execution** — `_static_warnings()` used to run even with `FAST_STATIC=1`, processing every file twice. Now properly guarded.
-- **ETA cache flickering** — the estimator preserves its last estimate when `remaining_files` hits zero, so the UI stops flashing "Restzeit wird berechnet".
+- **ETA cache flickering** — the estimator preserves its last estimate when `remaining_files` hits zero, so the UI stops flashing "Calculating remaining time".
 
 ## Key Environment Variables
 
@@ -72,6 +84,7 @@ Godot's `--import` can get stuck on broken addon projects, producing thousands o
 | `GODOT_CODER_SKIP_PROJECT_IMPORT` | unset | Skip Godot `--import`, use the per-file parser directly. Authoritative — works even with `FAST_STATIC=1` |
 | `GODOT_CODER_FAST_STATIC` | unset | Skip only the slow AST warning walk. Secret scan + file-size checks still run |
 | `GODOT_CODER_ERROR_ABORT_THRESHOLD` | 500 | Consecutive error lines before aborting a stuck Godot import |
+| `GODOT_CODER_JOB_STALL_TIMEOUT_SECONDS` | 1200 | Seconds a Studio job may be silent before its process tree is killed and the job is marked failed (0 disables) |
 | `GODOT_CODER_VALIDATION_TIMEOUT_SECONDS` | 120 | Max time for Godot `--import` per project |
 | `GODOT_CODER_VALIDATION_IDLE_TIMEOUT_SECONDS` | 30 | Idle timeout (no output) before aborting Godot |
 | `GODOT_CODER_PARSER_FILE_TIMEOUT_SECONDS` | 10 | Per-file timeout for the `--check-only` parser (also used by `validate_dataset.py`) |
@@ -144,7 +157,7 @@ Then open `http://127.0.0.1:8765`.
 
 ## Workflow
 
-1. **Open Studio** and select **Wissensaufbau** (Knowledge Building)
+1. **Open Studio** and select **Knowledge Building**
 2. **Import sources** — curated catalog sources, or drop your own Godot projects/ZIPs into `data/local_sources/inbox/`
 3. **Scan & validate** — each `.gd` file is parsed through Godot's GDScript parser; broken files are flagged
 4. **Corpus audit** — dedup, token counting, split into train/val/test
@@ -211,8 +224,8 @@ The Studio binds to `127.0.0.1:8765` by default. For phone/tablet access inside 
 - `ROADMAP.md` — what's done and what's next
 - `ARCHITECTURE.md` — pipeline and validation paths
 - `docs/CONFIG_REFERENCE.md` — YAML config key reference
-- `docs/INSTALL_v0.10.2.md` — install/upgrade guide
-- `docs/CHANGELOG_v0.10.2.md` — patch notes
+- `docs/INSTALL_v0.10.3.md` — install/upgrade guide
+- `docs/CHANGELOG_v0.10.3.md` — patch notes
 - `docs/PROGRESS_EVENT_SCHEMA_v1.md` — the progress event format
 - `docs/AUDIT_v0.6.md` — the v0.6 training-core audit (historical record)
 - `docs/INSTRUCTION_ROADMAP_v0.7.md` — the planned instruction/agent roadmap (historical draft)

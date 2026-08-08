@@ -2,23 +2,24 @@
   "use strict";
 
   const PHASE_LABELS = {
-    input_detection: "ZIP oder Ordner erkennen",
-    secure_extract: "Sicher entpacken",
-    project_detection: "project.godot erkennen",
-    inventory: "Dateien inventarisieren",
-    cache_exclusion: "Cache- und Importdateien ausschließen",
-    addon_classification: "Add-ons klassifizieren",
-    secret_scan: "Secret-Prüfung",
-    file_size_check: "Dateigrößenprüfung",
-    static_analysis: "Statische GDScript-Prüfung",
-    deduplication: "Quelle deduplizieren",
-    corpus_admission: "Bereinigte Arbeitskopie aufnehmen",
-    godot_validation: "Godot-Projektimport und Parserprüfung",
-    quarantine_decision: "Quarantäneentscheidung",
-    registry_update: "Corpus-Registry aktualisieren",
-    report_writing: "Abschlussbericht schreiben",
-    remote_link_validation: "Remote-Link sicher prüfen",
-    remote_download: "Quelle auf dem PC herunterladen",
+    input_detection: "Detect ZIP or folder",
+    secure_extract: "Extract safely",
+    project_detection: "Detect project.godot",
+    inventory: "Inventory files",
+    cache_exclusion: "Exclude cache and import files",
+    addon_classification: "Classify add-ons",
+    secret_scan: "Secret scan",
+    file_size_check: "File-size check",
+    static_analysis: "Static GDScript check",
+    deduplication: "Deduplicate source",
+    corpus_admission: "Adopt cleaned working copy",
+    godot_validation: "Godot project import and parser check",
+    quarantine_decision: "Quarantine decision",
+    registry_update: "Update corpus registry",
+    report_writing: "Write final report",
+    corpus_validation: "Project-based corpus validation",
+    remote_link_validation: "Check remote link safely",
+    remote_download: "Download source to this PC",
   };
 
   function levelFromText(text) {
@@ -41,15 +42,15 @@
 
   function formatEta(progressState) {
     const state = progressState || {};
-    if (state.eta_status === "calculating") return "Restzeit wird berechnet …";
+    if (state.eta_status === "calculating") return "Calculating remaining time…";
     const estimate = state.estimated_remaining_seconds;
-    if (estimate == null) return "Restzeit wird berechnet …";
+    if (estimate == null) return "Calculating remaining time…";
     const minimum = state.estimated_remaining_min_seconds;
     const maximum = state.estimated_remaining_max_seconds;
     if (minimum != null && maximum != null && Number(maximum) - Number(minimum) >= 20) {
-      return `geschätzt ${formatDuration(minimum)}–${formatDuration(maximum)}`;
+      return `about ${formatDuration(minimum)}–${formatDuration(maximum)}`;
     }
-    return `geschätzt ${formatDuration(estimate)}`;
+    return `about ${formatDuration(estimate)}`;
   }
 
   function normalizeLogEntries(job, mode = "simple") {

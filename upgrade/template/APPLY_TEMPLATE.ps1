@@ -87,16 +87,24 @@ Write-Host "$UpgradeVersion upgrade applied. Backup: $BackupDir" -ForegroundColo
 Write-Host ""
 
 # --- Post-upgrade verification (non-fatal) ----------------------------
+# Run doctor/pytest from the *target* project directory - otherwise pytest
+# would collect the package folder's tests instead of the real test suite.
 $VenvPython = Join-Path $Target ".venv\Scripts\python.exe"
 if (Test-Path $VenvPython) {
-    Write-Host 'Running godot_coder.doctor ...' -ForegroundColor Cyan
-    & $VenvPython -m godot_coder.doctor
-    $DoctorExit = $LASTEXITCODE
-    Write-Host ""
-    Write-Host 'Running pytest -q ...' -ForegroundColor Cyan
-    & $VenvPython -m pytest -q
-    $PytestExit = $LASTEXITCODE
-    Write-Host ""
+    Push-Location $Target
+    try {
+        Write-Host 'Running godot_coder.doctor ...' -ForegroundColor Cyan
+        & $VenvPython -m godot_coder.doctor
+        $DoctorExit = $LASTEXITCODE
+        Write-Host ""
+        Write-Host 'Running pytest -q ...' -ForegroundColor Cyan
+        & $VenvPython -m pytest -q
+        $PytestExit = $LASTEXITCODE
+        Write-Host ""
+    }
+    finally {
+        Pop-Location
+    }
     if ($DoctorExit -ne 0 -or $PytestExit -ne 0) {
         Write-Host 'VERIFICATION FAILED (doctor or pytest). Restore from the backup above.' -ForegroundColor Red
         Write-Host "  Backup: $BackupDir" -ForegroundColor Gray

@@ -43,19 +43,19 @@ def _public_addresses(host: str, port: int, resolver: Callable[..., Iterable[Any
     try:
         infos = resolver(host, port, type=socket.SOCK_STREAM)
     except socket.gaierror as exc:
-        raise RemoteSourceError(f"Host konnte nicht aufgelöst werden: {host}") from exc
+        raise RemoteSourceError(f"Could not resolve host: {host}") from exc
     addresses: list[str] = []
     for info in infos:
         address = str(info[4][0]).split("%", 1)[0]
         try:
             parsed = ipaddress.ip_address(address)
         except ValueError as exc:
-            raise RemoteSourceError(f"Ungültige Zieladresse: {address}") from exc
+            raise RemoteSourceError(f"Invalid target address: {address}") from exc
         if not parsed.is_global:
-            raise RemoteSourceError("Lokale, private oder reservierte Zieladressen sind für Link-Importe gesperrt.")
+            raise RemoteSourceError("Local, private or reserved target addresses are blocked for link imports.")
         addresses.append(str(parsed))
     if not addresses:
-        raise RemoteSourceError(f"Keine öffentliche Adresse für {host} gefunden.")
+        raise RemoteSourceError(f"No public address found for {host}.")
     return sorted(set(addresses))
 
 
@@ -66,20 +66,20 @@ def validate_remote_url(
 ) -> str:
     raw = value.strip()
     if len(raw) > 2048:
-        raise RemoteSourceError("Die URL ist zu lang.")
+        raise RemoteSourceError("The URL is too long.")
     parsed = urllib.parse.urlsplit(raw)
     if parsed.scheme.lower() != "https":
-        raise RemoteSourceError("Remote-Importe erlauben ausschließlich HTTPS-Links.")
+        raise RemoteSourceError("Remote imports only allow HTTPS links.")
     if parsed.username or parsed.password:
-        raise RemoteSourceError("Zugangsdaten dürfen nicht in der URL stehen.")
+        raise RemoteSourceError("Credentials must not be part of the URL.")
     if parsed.query or parsed.fragment:
-        raise RemoteSourceError("Query-Parameter und Fragmente sind für sichere Link-Importe nicht erlaubt.")
+        raise RemoteSourceError("Query parameters and fragments are not allowed for safe link imports.")
     host = (parsed.hostname or "").lower().rstrip(".")
     if host not in TRUSTED_REMOTE_HOSTS:
-        raise RemoteSourceError("Erlaubt sind derzeit GitHub, GitLab und Bitbucket. Andere Hosts bleiben gesperrt.")
+        raise RemoteSourceError("Currently allowed: GitHub, GitLab and Bitbucket. Other hosts stay blocked.")
     port = parsed.port or 443
     if port != 443:
-        raise RemoteSourceError("Nur der HTTPS-Standardport 443 ist erlaubt.")
+        raise RemoteSourceError("Only the HTTPS standard port 443 is allowed.")
     _public_addresses(host, port, resolver)
     normalized_path = re.sub(r"/{2,}", "/", parsed.path or "/")
     return urllib.parse.urlunsplit(("https", host, normalized_path, "", ""))
@@ -143,16 +143,16 @@ def _unique_destination(folder: Path, name: str) -> Path:
         alternative = folder / f"{stem}-{index}{suffix}"
         if not alternative.exists():
             return alternative
-    raise RemoteSourceError("Kein freier Dateiname im Importordner gefunden.")
+    raise RemoteSourceError("No free file name found in the import folder.")
 
 
 def validate_staged_zip(path: Path) -> dict[str, Any]:
     if not path.is_file() or path.stat().st_size < 4:
-        raise RemoteSourceError("Die übertragene Datei ist leer oder unvollständig.")
+        raise RemoteSourceError("The transferred file is empty or incomplete.")
     with path.open("rb") as handle:
         signature = handle.read(4)
     if signature[:2] != b"PK" or not zipfile.is_zipfile(path):
-        raise RemoteSourceError("Der Link oder Upload enthält kein gültiges ZIP-Archiv.")
+        raise RemoteSourceError("The link or upload does not contain a valid ZIP archive.")
     try:
         return _archive_preflight(path)
     except (ValueError, OSError, zipfile.BadZipFile) as exc:
@@ -202,10 +202,10 @@ def download_remote_source(
     progress.emit(
         "remote_source_started",
         phase="remote_link_validation",
-        phase_label="Remote-Link sicher prüfen",
+        phase_label="Check remote link safely",
         phase_status="completed",
         source_url=safe_url_for_log(url),
-        message="Remote-Link wurde gegen Host-, Protokoll- und Netzwerkregeln geprüft.",
+        message="The remote link was checked against host, protocol and network rules.",
     )
     for candidate_index, initial_url in enumerate(candidates, start=1):
         current_url = initial_url
@@ -219,20 +219,20 @@ def download_remote_source(
                 except urllib.error.HTTPError as exc:
                     if exc.code in {301, 302, 303, 307, 308} and exc.headers.get("Location"):
                         if redirects >= MAX_REDIRECTS:
-                            raise RemoteSourceError("Zu viele Weiterleitungen beim Download.") from exc
+                            raise RemoteSourceError("Too many redirects while downloading.") from exc
                         current_url = urllib.parse.urljoin(current_url, exc.headers["Location"])
                         redirects += 1
                         continue
                     if exc.code == 404 and candidate_index < len(candidates):
                         last_error = exc
                         break
-                    raise RemoteSourceError(f"Remote-Server antwortete mit HTTP {exc.code}.") from exc
+                    raise RemoteSourceError(f"Remote server responded with HTTP {exc.code}.") from exc
                 status = getattr(response, "status", 200)
                 if status in {301, 302, 303, 307, 308}:
                     location = response.headers.get("Location")
                     response.close()
                     if not location or redirects >= MAX_REDIRECTS:
-                        raise RemoteSourceError("Ungültige oder zu viele Weiterleitungen beim Download.")
+                        raise RemoteSourceError("Invalid or too many redirects during download.")
                     current_url = urllib.parse.urljoin(current_url, location)
                     redirects += 1
                     continue
@@ -240,7 +240,7 @@ def download_remote_source(
                 total = int(content_length) if content_length and content_length.isdigit() else None
                 if total is not None and total > max_bytes:
                     response.close()
-                    raise RemoteSourceError(f"Download ist größer als das Limit von {max_bytes // 1024**2} MiB.")
+                    raise RemoteSourceError(f"The download is larger than the limit of {max_bytes // 1024**2} MiB.")
                 disposition = response.headers.get("Content-Disposition", "")
                 filename_match = re.search(r"filename\*?=(?:UTF-8''|\")?([^\";]+)", disposition, flags=re.IGNORECASE)
                 remote_name = filename_match.group(1) if filename_match else Path(urllib.parse.urlsplit(current_url).path).name
@@ -259,20 +259,20 @@ def download_remote_source(
                                 break
                             received += len(chunk)
                             if received > max_bytes:
-                                raise RemoteSourceError(f"Download überschreitet das Limit von {max_bytes // 1024**2} MiB.")
+                                raise RemoteSourceError(f"The download exceeds the limit of {max_bytes // 1024**2} MiB.")
                             output.write(chunk)
                             digest.update(chunk)
                             if received - last_event_at >= 4 * 1024 * 1024 or (total and received == total):
                                 progress.emit(
                                     "remote_source_progress",
                                     phase="remote_download",
-                                    phase_label="Quelle auf dem PC herunterladen",
+                                    phase_label="Download source to this PC",
                                     phase_status="running",
                                     bytes_received=received,
                                     bytes_total=total,
                                     overall_progress=(received / total) if total else None,
                                     source_url=safe_url_for_log(current_url),
-                                    message=f"{received / 1024**2:.1f} MiB auf dem PC empfangen.",
+                                    message=f"{received / 1024**2:.1f} MiB received on the PC.",
                                 )
                                 last_event_at = received
                     preflight = validate_staged_zip(temporary)
@@ -301,14 +301,14 @@ def download_remote_source(
                 progress.emit(
                     "remote_source_completed",
                     phase="remote_download",
-                    phase_label="Quelle auf dem PC herunterladen",
+                    phase_label="Download source to this PC",
                     phase_status="completed",
                     job_status="completed",
                     bytes_received=received,
                     bytes_total=total,
                     overall_progress=1.0,
                     source_name=destination.name,
-                    message="ZIP wurde auf dem PC geprüft und in den privaten Importordner gelegt.",
+                    message="The ZIP was checked and placed into the private import folder.",
                 )
                 print("REMOTE_SOURCE_SUMMARY_JSON=" + json.dumps(report, ensure_ascii=True))
                 return report
@@ -317,7 +317,7 @@ def download_remote_source(
                 if candidate_index < len(candidates):
                     break
                 raise RemoteSourceError(str(exc)) from exc
-    raise RemoteSourceError(str(last_error or "Remote-Quelle konnte nicht geladen werden."))
+    raise RemoteSourceError(str(last_error or "The remote source could not be loaded."))
 
 
 def parse_args() -> argparse.Namespace:

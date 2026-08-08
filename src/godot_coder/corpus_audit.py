@@ -198,7 +198,7 @@ def audit_corpus(project_root: Path, *, near_duplicate_distance: int = 3) -> dic
     root = corpus_root(project_root)
     manifest_path = root / "corpus_manifest.json"
     if not manifest_path.exists():
-        raise FileNotFoundError("Korpus-Manifest fehlt. Führe zuerst Scannen und Godot-Prüfung aus.")
+        raise FileNotFoundError("Corpus manifest is missing. Run scan and Godot validation first.")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     source_by_id = _source_map(manifest)
     staged = root / "staged"
@@ -463,56 +463,56 @@ def build_preflight(project_root: Path, *, config_path: Path | None = None, mode
     configured_data_dir = (project_root / str(train_mapping.get("data_dir") or (data_manifest_path.parent if data_manifest_path else "data/processed/corpus_v06"))).resolve()
 
     if validation is None:
-        blockers.append("Projektbezogene Corpusvalidierung fehlt")
+        blockers.append("Project-based corpus validation missing")
     elif validation.get("validator") != "project-aware-v2":
-        blockers.append("Corpus wurde noch nicht mit der projektbezogenen Validierung geprüft")
+        blockers.append("The corpus has not been checked with project-based validation yet")
     elif int(validation.get("prepared") or 0) <= 0:
-        blockers.append("Validierung hat keine verwendbaren Dateien vorbereitet")
+        blockers.append("Validation did not prepare any usable files")
 
     if audit is None:
-        blockers.append("Corpus-Audit fehlt")
+        blockers.append("Corpus audit missing")
     else:
         summary = audit.get("summary") or {}
         if summary.get("group_leaks"):
-            blockers.append("Train/Validation/Test-Leakage erkannt")
+            blockers.append("Train/validation/test leakage detected")
         elif summary.get("content_leaks"):
-            warnings.append(f"Train/Validation/Test-Leakage in {summary['content_leaks']} Datei(en) erkannt. Betroffene Dateien wurden quarantänisiert und sind nicht in den Trainingsdaten.")
+            warnings.append(f"Train/validation/test leakage detected in {summary['content_leaks']} file(s). Affected files were quarantined and are not in the training data.")
         if mode == "full" and (int(summary.get("train_projects") or 0) < 10 or int(summary.get("val_projects") or 0) < 2 or int(summary.get("test_projects") or 0) < 2):
-            blockers.append("Zu wenige unabhängige Projekte in den Splits")
+            blockers.append("Too few independent projects in the splits")
         parser_rate = float(summary.get("parser_pass_rate") or 0)
         if parser_rate < 0.65:
-            warnings.append("Viele Dateien besitzen Kontext- oder Parserprobleme; Ursachenbericht prüfen")
+            warnings.append("Many files have context or parser issues; check the cause report")
         near_duplicates = int(summary.get("near_duplicates") or 0)
         records = int(summary.get("records") or 0)
         if near_duplicates > max(25, records * 0.20):
-            warnings.append("Hoher Anteil ähnlicher Dateien")
+            warnings.append("High share of similar files")
 
     if data is None or data_manifest_path is None:
-        blockers.append("Tokenisierte Corpus-Trainingsdaten fehlen")
+        blockers.append("Tokenized corpus training data missing")
     else:
         if not configured_data_dir.exists():
-            blockers.append("Der in der Konfiguration angegebene Datenordner fehlt")
+            blockers.append("The data folder specified in the configuration is missing")
         if freshness["stale"]:
-            blockers.append("Der aktive Tokenstream ist älter als Validierung, Audit oder Quelldaten")
+            blockers.append("The active token stream is older than the validation, audit or source data")
         train_tokens = int(data.get("train_tokens") or 0)
         minimum_tokens = SMOKE_MIN_TOKENS if mode == "smoke" else MIN_PROFILE_TOKENS.get(profile_id, 500_000)
         if train_tokens < minimum_tokens:
-            label = "Smoke-Test" if mode == "smoke" else f"Profil {profile_id}"
-            blockers.append(f"{label} benötigt mindestens {minimum_tokens:,} frische Trainingstokens; vorhanden sind {train_tokens:,}".replace(",", "."))
+            label = "Smoke test" if mode == "smoke" else f"Profile {profile_id}"
+            blockers.append(f"{label} needs at least {minimum_tokens:,} fresh training tokens; available are {train_tokens:,}".replace(",", "."))
         if int(data.get("val_tokens") or 0) <= 0:
-            blockers.append("Validation-Split enthält keine Tokens")
+            blockers.append("Validation split contains no tokens")
         if mode == "full" and int(data.get("test_tokens") or 0) <= 0:
-            warnings.append("Test-Split enthält keine Tokens")
+            warnings.append("Test split contains no tokens")
 
     if not tokenizer_path.is_file():
-        blockers.append(f"Tokenizer fehlt: {tokenizer_path.relative_to(project_root) if tokenizer_path.is_relative_to(project_root) else tokenizer_path}")
+        blockers.append(f"Tokenizer missing: {tokenizer_path.relative_to(project_root) if tokenizer_path.is_relative_to(project_root) else tokenizer_path}")
     elif tokenizer_report is None:
-        warnings.append("Tokenizer-Bericht fehlt; Fingerprint kann nicht gegen den Corpus abgeglichen werden")
+        warnings.append("Tokenizer report missing; the fingerprint cannot be matched against the corpus")
     elif data is not None and data.get("tokenizer_fingerprint") and tokenizer_report.get("fingerprint") and data.get("tokenizer_fingerprint") != tokenizer_report.get("fingerprint"):
-        blockers.append("Tokenizer-Fingerprint und Tokenstream stimmen nicht überein")
+        blockers.append("Tokenizer fingerprint and token stream do not match")
 
     if hardware is None:
-        warnings.append("Hardware-Autotuning fehlt")
+        warnings.append("Hardware autotuning missing")
 
     plan: dict[str, Any] | None = None
     checkpoint_status: dict[str, Any] | None = None
@@ -545,9 +545,9 @@ def build_preflight(project_root: Path, *, config_path: Path | None = None, mode
             }
             if mode == "full":
                 if passes > train.max_dataset_passes_block and not train.allow_excessive_dataset_passes:
-                    blockers.append(f"Geplante Datensatzdurchläufe ({passes:.1f}) überschreiten die Sicherheitsgrenze")
+                    blockers.append(f"Planned dataset passes ({passes:.1f}) exceed the safety limit")
                 elif passes > train.max_dataset_passes_warning:
-                    warnings.append(f"Hohe Zahl geplanter Datensatzdurchläufe: {passes:.1f}")
+                    warnings.append(f"High number of planned dataset passes: {passes:.1f}")
         except (ValueError, FileNotFoundError, TypeError) as exc:
             blockers.append(str(exc))
 

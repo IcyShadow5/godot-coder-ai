@@ -99,16 +99,16 @@ def test_unlisted_tailscale_identity_is_denied(tmp_path: Path) -> None:
     assert response.status_code == 403
     detail = response.json()["detail"]
     assert "intruder@example.com" in detail
-    assert "erlaubte" not in detail.lower()  # allowlist must not be leaked
+    assert "owner@example.com" not in detail.lower()  # allowlist must not be leaked
 
 
 def test_unlock_rate_limit_and_secret_masked_audit(tmp_path: Path) -> None:
     configure_remote_access(tmp_path, allowed_users=["owner@example.com"], pin="123456")
     manager = RemoteAccessManager(tmp_path)
     for _ in range(MAX_UNLOCK_ATTEMPTS):
-        with pytest.raises(RemoteAccessError, match="falsch"):
+        with pytest.raises(RemoteAccessError, match="wrong"):
             manager.unlock(REMOTE_HEADERS, "000000")
-    with pytest.raises(RemoteAccessError, match="Fehlversuche"):
+    with pytest.raises(RemoteAccessError, match="Too many failed attempts"):
         manager.unlock(REMOTE_HEADERS, "123456")
 
     manager.audit("test", identity="owner@example.com", message="api_key=super-secret-value")
@@ -296,7 +296,7 @@ def test_tagged_tailscale_device_without_identity_header_is_not_treated_as_local
     assert status.json()["identity"]["login"] is None
     assert status.json()["can_read"] is False
     assert denied.status_code == 403
-    assert "Keine Tailscale-Identität empfangen" in denied.json()["detail"]
+    assert "No Tailscale identity received" in denied.json()["detail"]
 
 
 def test_tailnet_fallback_allows_read_without_identity(tmp_path: Path) -> None:

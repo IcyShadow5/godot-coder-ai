@@ -100,3 +100,15 @@ def test_legacy_text_progress_remains_supported(tmp_path: Path) -> None:
     snapshot = _wait_for_terminal(manager)
     assert snapshot["progress_state"]["legacy_text_progress"] is True
     assert snapshot["progress_state"]["projects"][0]["project_name"] == "Old Demo"
+
+def test_silent_job_is_killed_by_stall_watchdog(tmp_path: Path, monkeypatch) -> None:
+    # Regression: a child that stops producing output (e.g. a Mono Godot grandchild
+    # that inherited the stdout pipe and hangs) must be killed by the stall watchdog
+    # instead of showing as "running" forever.
+    monkeypatch.setenv("GODOT_CODER_JOB_STALL_TIMEOUT_SECONDS", "0.6")
+    manager = JobManager(tmp_path)
+    manager.start("corpus-validate", ["-c", "import time; time.sleep(30)"])
+    snapshot = _wait_for_terminal(manager, timeout=10.0)
+    assert snapshot["status"] == "failed"
+    reason = snapshot["progress_state"].get("failure_reason", "")
+    assert "no output" in reason

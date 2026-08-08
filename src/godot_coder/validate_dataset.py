@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import json
 import shutil
 import warnings
@@ -53,7 +54,7 @@ def validate_dataset(
             )
             output = result.output.strip()
             if result.startup_error:
-                output = output or f"Godot konnte nicht gestartet werden: {result.startup_error}"
+                output = output or f"Godot could not be started: {result.startup_error}"
                 passed = False
                 return_code = -1
                 warnings.warn(

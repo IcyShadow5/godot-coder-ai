@@ -1,10 +1,10 @@
 profile:
   id: balanced
   title: Balanced · 91M
-  method: Mehr Kapazität + Activation Checkpointing
-  description: Empfohlenes Hauptprofil. Längerer Kontext und deutlich mehr Parameter,
-    mit Rechenzeit-gegen-VRAM-Tausch. v0.6 nutzt Tokenbudgets, feste Evaluation und
-    Early Stopping.
+  method: More capacity + activation checkpointing
+  description: Recommended main profile. Longer context and clearly more parameters,
+    trading compute time against VRAM. v0.6 uses token budgets, fixed evaluation and
+    early stopping.
   beginner_order: 2
   recommended: true
   risk: medium

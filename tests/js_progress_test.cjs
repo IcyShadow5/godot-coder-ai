@@ -4,10 +4,10 @@ const progress = require("../src/godot_coder/ui/static/progress.js");
 assert.equal(progress.shouldAutoFollow(true, 0), true);
 assert.equal(progress.shouldAutoFollow(true, 80), false);
 assert.equal(progress.shouldAutoFollow(false, 0), false);
-assert.equal(progress.formatEta({}), "Restzeit wird berechnet …");
-assert.equal(progress.formatEta({ eta_status: "calculating", estimated_remaining_seconds: 12 }), "Restzeit wird berechnet …");
+assert.equal(progress.formatEta({}), "Calculating remaining time…");
+assert.equal(progress.formatEta({ eta_status: "calculating", estimated_remaining_seconds: 12 }), "Calculating remaining time…");
 assert.match(progress.formatEta({ estimated_remaining_seconds: 65 }), /01:05/);
-assert.equal(progress.phaseLabel("remote_download"), "Quelle auf dem PC herunterladen");
+assert.equal(progress.phaseLabel("remote_download"), "Download source to this PC");
 
 const job = {
   command: ["python", "-m", "demo"],

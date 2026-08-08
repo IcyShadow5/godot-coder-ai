@@ -21,6 +21,7 @@ from urllib.parse import urlparse
 
 from . import __version__
 from .godot_cli import build_check_command, build_project_script_command, build_project_validation_command
+from .process_control import run_managed_process
 from .progress_events import serialize_event
 from .tokenizer import BPETokenizer
 
@@ -34,8 +35,8 @@ EXCLUDED_PARTS = {
 OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "godot-demo-projects",
-        "title": "Offizielle Godot-Demoprojekte",
-        "description": "Viele vollständige 2D-, 3D-, UI-, Netzwerk- und Physikbeispiele mit project.godot.",
+        "title": "Official Godot Demo Projects",
+        "description": "Many complete 2D, 3D, UI, network and physics examples with project.godot.",
         "url": "https://github.com/godotengine/godot-demo-projects.git",
         "branch": "4.7-6ad6167",
         "kind": "godot_projects",
@@ -50,8 +51,8 @@ OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     },
     {
         "id": "godot-docs",
-        "title": "Offizielle Godot-Dokumentation",
-        "description": "GDScript-Codeblöcke aus der offiziellen Dokumentation; nützlich für APIs und kleine Beispiele.",
+        "title": "Official Godot Documentation",
+        "description": "GDScript code snippets from the official documentation; useful for APIs and small examples.",
         "url": "https://github.com/godotengine/godot-docs.git",
         "branch": "4.7",
         "kind": "rst_gdscript",
@@ -68,7 +69,7 @@ OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "gdquest-learn-gdscript",
         "title": "GDQuest · Learn GDScript From Zero",
-        "description": "Großes, strukturiertes Godot-Lernprojekt mit vielen echten GDScript-Dateien. Quellcode MIT; Medien werden nicht eingelesen.",
+        "description": "Large, structured Godot learning project with many real GDScript files. MIT source code; media is not read in.",
         "url": "https://github.com/GDQuest/learn-gdscript.git",
         "branch": "main",
         "kind": "godot_projects",
@@ -85,7 +86,7 @@ OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "gdquest-getting-started-godot4",
         "title": "GDQuest · Getting Started with Godot 4",
-        "description": "Zwei vollständige, anfängerfreundliche Godot-4-Projekte mit MIT-lizenziertem Quellcode.",
+        "description": "Two complete, beginner-friendly Godot 4 projects with MIT-licensed source code.",
         "url": "https://github.com/gdquest-demos/getting-started-with-godot-4.git",
         "branch": "main",
         "kind": "godot_projects",
@@ -101,7 +102,7 @@ OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "gdquest-open-rpg",
         "title": "GDQuest · Godot Open RPG",
-        "description": "Größeres Godot-4-RPG-Projekt mit zusammenhängender Architektur und MIT-lizenziertem GDScript.",
+        "description": "Larger Godot 4 RPG project with a coherent architecture and MIT-licensed GDScript.",
         "url": "https://github.com/gdquest-demos/godot-open-rpg.git",
         "branch": "main",
         "kind": "godot_projects",
@@ -117,7 +118,7 @@ OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "gdquest-godot4-new-features",
         "title": "GDQuest · Godot 4 New Features",
-        "description": "Mehrere Godot-4-Demoprojekte zu neuen Engine-Funktionen. Nur MIT-lizenzierter Quellcode wird eingelesen; Medien bleiben ausgeschlossen.",
+        "description": "Several Godot 4 demo projects covering new engine features. Only MIT-licensed source code is read in; media stays excluded.",
         "url": "https://github.com/gdquest-demos/godot-4-new-features.git",
         "branch": "main",
         "kind": "godot_projects",
@@ -133,7 +134,7 @@ OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "gdquest-third-person-controller",
         "title": "GDQuest · 3D Third-Person Controller",
-        "description": "Zusammenhängendes Godot-4-Controllerprojekt mit Bewegung, Kamera und Zustandslogik. Nur MIT-lizenzierter Quellcode wird eingelesen.",
+        "description": "A coherent Godot 4 controller project with movement, camera and state logic. Only MIT-licensed source code is read in.",
         "url": "https://github.com/gdquest-demos/godot-4-3d-third-person-controller.git",
         "branch": "main",
         "kind": "godot_projects",
@@ -150,7 +151,7 @@ OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "gdquest-godot4-how-tos",
         "title": "GDQuest · Godot 4 How-Tos",
-        "description": "Viele fokussierte Godot-4-Beispiele zu UI, 2D, 3D, Ressourcen und Gameplay.",
+        "description": "Many focused Godot 4 examples covering UI, 2D, 3D, resources and gameplay.",
         "url": "https://github.com/gdquest-demos/godot-4-how-tos.git",
         "branch": "main", "kind": "godot_projects", "license": "MIT",
         "license_scope": "source-code", "attribution": "GDQuest and contributors",
@@ -161,7 +162,7 @@ OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "pixelorama",
         "title": "Pixelorama",
-        "description": "Große produktive Godot-4-Anwendung mit Editor-, UI-, Datei-, Zeichen- und Erweiterungsarchitektur.",
+        "description": "Large production Godot 4 application with editor, UI, file, drawing and extension architecture.",
         "url": "https://github.com/Orama-Interactive/Pixelorama.git",
         "branch": "master", "kind": "godot_projects", "license": "MIT",
         "license_scope": "source-code", "attribution": "Orama Interactive and contributors",
@@ -172,7 +173,7 @@ OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "material-maker",
         "title": "Material Maker",
-        "description": "Große Godot-Anwendung mit Graph-, Shader-, UI-, Export- und Projektlogik. Add-on-Kopien bleiben ausgeschlossen.",
+        "description": "Large Godot application with graph, shader, UI, export and project logic. Add-on copies stay excluded.",
         "url": "https://github.com/RodZill4/material-maker.git",
         "branch": "master", "kind": "godot_projects", "license": "MIT",
         "license_scope": "source-code", "attribution": "RodZill4 and contributors",
@@ -183,7 +184,7 @@ OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "dialogic",
         "title": "Dialogic",
-        "description": "Umfangreiches Godot-4-Dialogsystem mit Editor-Plugin, Laufzeit, Timeline- und Ereignislogik.",
+        "description": "Comprehensive Godot 4 dialog system with editor plugin, runtime, timeline and event logic.",
         "url": "https://github.com/dialogic-godot/dialogic.git",
         "branch": "main", "kind": "godot_projects", "license": "MIT",
         "license_scope": "source-code", "attribution": "Dialogic contributors",
@@ -194,7 +195,7 @@ OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "dialogue-manager",
         "title": "Dialogue Manager",
-        "description": "Produktives Godot-4-Dialog-Add-on mit Parser-, Editor-, Import- und Laufzeitcode.",
+        "description": "Production Godot 4 dialog add-on with parser, editor, import and runtime code.",
         "url": "https://github.com/nathanhoad/godot_dialogue_manager.git",
         "branch": "main", "kind": "godot_projects", "license": "MIT",
         "license_scope": "source-code", "attribution": "Nathan Hoad and contributors",
@@ -205,7 +206,7 @@ OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "beehave",
         "title": "Beehave · Behavior Trees",
-        "description": "Godot-4-Verhaltensbäume, Blackboard-, Debug-, Editor- und KI-Beispiele.",
+        "description": "Godot 4 behavior trees; blackboard, debug, editor and AI examples.",
         "url": "https://github.com/bitbrain/beehave.git",
         "branch": "godot-4.x", "kind": "godot_projects", "license": "MIT",
         "license_scope": "source-code", "attribution": "bitbrain and contributors",
@@ -216,7 +217,7 @@ OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "godot-xr-tools",
         "title": "Godot XR Tools",
-        "description": "Umfangreiche Godot-4-XR-Interaktions-, Bewegung-, UI- und Werkzeuglogik.",
+        "description": "Comprehensive Godot 4 XR interaction, movement, UI and tooling logic.",
         "url": "https://github.com/GodotVR/godot-xr-tools.git",
         "branch": "master", "kind": "godot_projects", "license": "MIT",
         "license_scope": "source-code", "attribution": "Godot XR contributors",
@@ -227,7 +228,7 @@ OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "godot-heightmap-plugin",
         "title": "Godot Heightmap Terrain",
-        "description": "Großes Godot-4-Terrainwerkzeug mit Editor-, Import-, LOD- und Laufzeitlogik.",
+        "description": "Large Godot 4 terrain tool with editor, import, LOD and runtime logic.",
         "url": "https://github.com/Zylann/godot_heightmap_plugin.git",
         "branch": "master", "kind": "godot_projects", "license": "MIT",
         "license_scope": "source-code", "attribution": "Zylann and contributors",
@@ -238,7 +239,7 @@ OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "gdunit4",
         "title": "GdUnit4",
-        "description": "Umfangreiches Godot-4-Testframework mit Runner, Assertions, Mocking, Reports und Editorintegration.",
+        "description": "Comprehensive Godot 4 test framework with runner, assertions, mocking, reports and editor integration.",
         "url": "https://github.com/MikeSchulze/gdUnit4.git",
         "branch": "master", "kind": "godot_projects", "license": "MIT",
         "license_scope": "source-code", "attribution": "Mike Schulze and contributors",
@@ -249,7 +250,7 @@ OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "godot-statecharts",
         "title": "Godot Statecharts",
-        "description": "Hierarchische und parallele Zustandsmaschinen für Godot 4 mit Editor- und Laufzeitcode.",
+        "description": "Hierarchical and parallel state machines for Godot 4 with editor and runtime code.",
         "url": "https://github.com/derkork/godot-statecharts.git",
         "branch": "main", "kind": "godot_projects", "license": "MIT",
         "license_scope": "source-code", "attribution": "derkork and contributors",
@@ -260,7 +261,7 @@ OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "phantom-camera",
         "title": "Phantom Camera",
-        "description": "Godot-4-Kamerasystem mit 2D/3D-Tracking, Tweening, Prioritäten und Editorwerkzeugen.",
+        "description": "Godot 4 camera system with 2D/3D tracking, tweening, priorities and editor tools.",
         "url": "https://github.com/ramokz/phantom-camera.git",
         "branch": "main", "kind": "godot_projects", "license": "MIT",
         "license_scope": "source-code", "attribution": "Phantom Camera contributors",
@@ -271,7 +272,7 @@ OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "escoria",
         "title": "Escoria",
-        "description": "Adventure-Game-Framework mit Inventar, Dialog, Befehlen, Savegames und Editorwerkzeugen.",
+        "description": "Adventure game framework with inventory, dialog, commands, savegames and editor tools.",
         "url": "https://github.com/godot-escoria/escoria.git",
         "branch": "main", "kind": "godot_projects", "license": "MIT",
         "license_scope": "source-code", "attribution": "Escoria contributors",
@@ -282,7 +283,7 @@ OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "godot-next",
         "title": "Godot Next",
-        "description": "Zusätzliche Godot-Komponenten und wiederverwendbare GDScript-Helfer.",
+        "description": "Additional Godot components and reusable GDScript helpers.",
         "url": "https://github.com/godot-extended-libraries/godot-next.git",
         "branch": "master", "kind": "godot_projects", "license": "MIT",
         "license_scope": "source-code", "attribution": "Godot Extended Libraries contributors",
@@ -293,7 +294,7 @@ OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "godot-mod-loader",
         "title": "Godot Mod Loader",
-        "description": "Godot-4-Mod-Lade-, Hook-, Konfigurations- und Integrationslogik.",
+        "description": "Godot 4 mod loading, hook, configuration and integration logic.",
         "url": "https://github.com/GodotModding/godot-mod-loader.git",
         "branch": "4.x-dev", "kind": "godot_projects", "license": "MIT",
         "license_scope": "source-code", "attribution": "Godot Modding contributors",
@@ -304,7 +305,7 @@ OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "maaack-game-template",
         "title": "Maaack · Game Template",
-        "description": "Godot-4-Spielgrundgerüst mit Menüs, Einstellungen, Pause, Save- und Szenenfluss.",
+        "description": "Godot 4 game scaffold with menus, settings, pause, save and scene flow.",
         "url": "https://github.com/Maaack/Godot-Game-Template.git",
         "branch": "main", "kind": "godot_projects", "license": "MIT",
         "license_scope": "source-code", "attribution": "Maaack and contributors",
@@ -315,7 +316,7 @@ OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "maaack-menus-template",
         "title": "Maaack · Menus Template",
-        "description": "Godot-4-Menü-, Options-, Eingabe- und Navigationssysteme.",
+        "description": "Godot 4 menu, options, input and navigation systems.",
         "url": "https://github.com/Maaack/Godot-Menus-Template.git",
         "branch": "main", "kind": "godot_projects", "license": "MIT",
         "license_scope": "source-code", "attribution": "Maaack and contributors",
@@ -326,7 +327,7 @@ OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "godot-input-helper",
         "title": "Godot Input Helper",
-        "description": "Godot-4-Eingabeabstraktion, Gerätewechsel, Glyphen und Rebinding.",
+        "description": "Godot 4 input abstraction, device switching, glyphs and rebinding.",
         "url": "https://github.com/nathanhoad/godot_input_helper.git",
         "branch": "main", "kind": "godot_projects", "license": "MIT",
         "license_scope": "source-code", "attribution": "Nathan Hoad and contributors",
@@ -337,7 +338,7 @@ OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "godot-sound-manager",
         "title": "Godot Sound Manager",
-        "description": "Godot-4-Audio-, Bus-, Musik-, Übergangs- und Poolinglogik.",
+        "description": "Godot 4 audio, bus, music, transition and pooling logic.",
         "url": "https://github.com/nathanhoad/godot_sound_manager.git",
         "branch": "main", "kind": "godot_projects", "license": "MIT",
         "license_scope": "source-code", "attribution": "Nathan Hoad and contributors",
@@ -348,7 +349,7 @@ OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "scatter",
         "title": "ProtonScatter",
-        "description": "Godot-4-Prozeduralverteilung mit Modifiern, Editorwerkzeugen und Laufzeitintegration.",
+        "description": "Godot 4 procedural distribution with modifiers, editor tools and runtime integration.",
         "url": "https://github.com/HungryProton/scatter.git",
         "branch": "main", "kind": "godot_projects", "license": "MIT",
         "license_scope": "source-code", "attribution": "HungryProton and contributors",
@@ -359,7 +360,7 @@ OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "tabletop-club",
         "title": "Tabletop Club",
-        "description": "Große Godot-4-Anwendung mit Multiplayer-, UI-, Save-, Workshop-, Physik- und Spielzustandslogik.",
+        "description": "Large Godot 4 application with multiplayer, UI, save, workshop, physics and game state logic.",
         "url": "https://github.com/drwhut/tabletop-club.git",
         "branch": "master", "kind": "godot_projects", "license": "MIT",
         "license_scope": "source-code", "attribution": "Benjamin Beddows and Tabletop Club contributors",
@@ -370,7 +371,7 @@ OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "godot-rl-agents",
         "title": "Godot RL Agents",
-        "description": "Godot-4-Agenten-, Sensor-, Aktions-, Trainingsschnittstellen- und Beispielszenen in GDScript.",
+        "description": "Godot 4 agent, sensor, action and training interface examples in GDScript.",
         "url": "https://github.com/edbeeching/godot_rl_agents.git",
         "branch": "main", "kind": "godot_projects", "license": "MIT",
         "license_scope": "source-code", "attribution": "Edward Beeching and contributors",
@@ -381,7 +382,7 @@ OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "godot-open-rts",
         "title": "Godot Open RTS",
-        "description": "Godot-4-RTS-Beispiel mit Auswahl, Einheitensteuerung, Navigation, Kamera und UI.",
+        "description": "Godot 4 RTS example with selection, unit control, navigation, camera and UI.",
         "url": "https://github.com/lampe-games/godot-open-rts.git",
         "branch": "main", "kind": "godot_projects", "license": "MIT",
         "license_scope": "source-code", "attribution": "Lampe Games and contributors",
@@ -392,7 +393,7 @@ OFFICIAL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "godot-firebase",
         "title": "Godot Firebase",
-        "description": "Godot-4-Firebase-Integration mit Authentifizierung, Datenbank-, Storage- und HTTP-Logik.",
+        "description": "Godot 4 Firebase integration with authentication, database, storage and HTTP logic.",
         "url": "https://github.com/GodotNuts/GodotFirebase.git",
         "branch": "main", "kind": "godot_projects", "license": "MIT",
         "license_scope": "source-code", "attribution": "Kyle Szklenski and Godot Firebase contributors",
@@ -572,7 +573,40 @@ def load_registry(project_root: Path) -> dict[str, Any]:
         if source.get("id") == "godot-demo-projects" and source.get("branch") == "4.7":
             source["branch"] = "4.7-6ad6167"
             migrated = True
-    if migrated or catalog_changed or version != CORPUS_FORMAT_VERSION:
+
+    # v0.10.3: heal stale catalog metadata (e.g. pre-anglicization German
+    # titles/descriptions) for known catalog entries. User choices such as
+    # ``enabled``, ``branch`` or custom refs are never overwritten.
+    healed = False
+    for preset in OFFICIAL_PRESETS:
+        current = existing_by_id.get(preset["id"])
+        if current is None:
+            continue
+        for key in ("title", "description"):
+            if preset.get(key) and current.get(key) != preset[key]:
+                current[key] = preset[key]
+                healed = True
+
+    # v0.10.3: local-* entries written before the anglicization kept the
+    # German ``Privat ·`` title and German description template. The import
+    # already regenerates these on the next run; this migration simply heals
+    # registries that were saved in between. Names and URLs stay untouched.
+    for source in payload.get("sources", []):
+        if not str(source.get("id", "")).startswith("local-"):
+            continue
+        title = str(source.get("title", ""))
+        if title.startswith("Privat · "):
+            source["title"] = "Private · " + title[len("Privat · "):]
+            healed = True
+        description = str(source.get("description", ""))
+        if description == "Lokales, vom Nutzer bestätigtes Godot-Projekt. Nur lokal trainieren; nicht weiterverteilen.":
+            source["description"] = (
+                "A local Godot project confirmed by the user. "
+                "Train locally only; do not redistribute."
+            )
+            healed = True
+
+    if migrated or healed or catalog_changed or version != CORPUS_FORMAT_VERSION:
         _json_write(path, payload)
     return payload
 
@@ -606,7 +640,7 @@ def save_registry(project_root: Path, sources: list[dict[str, Any]]) -> dict[str
         normalized.append({
             "id": source_id,
             "title": str(source.get("title") or source_id),
-            "description": str(source.get("description") or "Benutzerdefinierte Quelle"),
+            "description": str(source.get("description") or "Custom source"),
             "url": url,
             "branch": reference,
             "kind": kind,
@@ -754,7 +788,7 @@ def verify_declared_license(repo: Path, source: dict[str, Any]) -> dict[str, Any
             "file": None,
             "license_file": None,
             "reason_code": None if confirmed else "ownership-not-confirmed",
-            "reason": None if confirmed else "Lokale Eigentumsbestätigung fehlt.",
+            "reason": None if confirmed else "Local ownership confirmation is missing.",
             "checked_at": time.time(),
         }
     candidates: list[Path] = []
@@ -789,7 +823,7 @@ def verify_declared_license(repo: Path, source: dict[str, Any]) -> dict[str, Any
         "file": candidates[0].relative_to(repo).as_posix() if candidates else None,
         "license_file": candidates[0].relative_to(repo).as_posix() if candidates else None,
         "reason_code": "license-mismatch" if candidates else "license-file-not-found",
-        "reason": "Keine lokale Lizenzdatei stimmt mit der deklarierten Lizenz überein.",
+        "reason": "No local license file matches the declared license.",
         "checked_at": time.time(),
     }
 
@@ -886,9 +920,9 @@ def fetch_sources(project_root: Path, *, source_ids: set[str] | None = None, upd
     if source_ids is not None:
         enabled = [source for source in enabled if source["id"] in source_ids]
     if not enabled:
-        raise ValueError("Keine aktivierte Quelle ausgewählt.")
+        raise ValueError("No activated source selected.")
     if any(not str(source.get("url", "")).startswith("local://") for source in enabled) and not _git_available():
-        raise RuntimeError("Git wurde nicht gefunden. Installiere Git for Windows oder nutze ausschließlich lokale Importe.")
+        raise RuntimeError("Git was not found. Install Git for Windows or use local imports only.")
 
     for index, source in enumerate(enabled, start=1):
         source_id = source["id"]
@@ -917,7 +951,7 @@ def fetch_sources(project_root: Path, *, source_ids: set[str] | None = None, upd
         if not license_verification.get("verified"):
             results.append({
                 "id": source_id, "status": "license_failed", "ref": source["branch"],
-                "error": license_verification.get("reason", "Lizenzprüfung fehlgeschlagen"),
+                "error": license_verification.get("reason", "License verification failed"),
                 "license_verification": license_verification,
             })
             print(f"source={index}/{len(enabled)} id={source_id} phase=license_failed", file=sys.stderr)
@@ -946,7 +980,7 @@ def fetch_sources(project_root: Path, *, source_ids: set[str] | None = None, upd
     report["failed"] = len(failed)
     _json_write(corpus_root(project_root) / "fetch_report.json", report)
     if failed:
-        print(f"WARNING: {len(failed)} Quelle(n) sind noch nicht bereit. Erfolgreiche Quellen bleiben nutzbar.", file=sys.stderr)
+        print(f"WARNING: {len(failed)} source(s) are not ready yet. Successful sources remain usable.", file=sys.stderr)
     return report
 
 
@@ -1139,7 +1173,7 @@ def build_staging(project_root: Path) -> dict[str, Any]:
 
     enabled = [source for source in registry["sources"] if source.get("enabled")]
     if not enabled:
-        raise ValueError("Keine Quelle ist aktiviert.")
+        raise ValueError("No source is activated.")
 
     hash_lock = threading.Lock()
     max_workers = min(8, (os.cpu_count() or 4))
@@ -1185,7 +1219,7 @@ def build_staging(project_root: Path) -> dict[str, Any]:
 
     if not records:
         shutil.rmtree(staging_work, ignore_errors=True)
-        raise RuntimeError("Keine nutzbare Quelle konnte gescannt werden. Prüfe Download- und Lizenzstatus.")
+        raise RuntimeError("No usable source could be scanned. Check the download and license status.")
     _replace_directory(staging_work, staging)
     manifest = {
         "format": "godot-coder-licensed-corpus",
@@ -1231,14 +1265,6 @@ def _find_godot() -> str | None:
     return None
 
 
-def _first_error(output: str) -> str | None:
-    for line in output.splitlines():
-        stripped = line.strip()
-        if "Parse Error:" in stripped or "SCRIPT ERROR:" in stripped or stripped.startswith("ERROR:"):
-            return stripped[:500]
-    return None
-
-
 def _validation_cache_path(project_root: Path) -> Path:
     # v2 is intentionally separate: v1 cached false failures from invoking
     # ordinary Node/Resource scripts through ``--script --check-only``.
@@ -1258,9 +1284,35 @@ def _load_validation_cache(project_root: Path) -> dict[str, Any]:
     return {"format_version": 2, "validator": "project-aware-v2", "entries": {}}
 
 
+def _validation_timeout_seconds() -> float:
+    """Max seconds for one Godot --import / --check-only run in corpus validation.
+
+    Same variable and default as local_sources.py (GODOT_CODER_VALIDATION_TIMEOUT_SECONDS,
+    default 120). corpus.py must keep its own copy - local_sources imports corpus,
+    so importing back would create a cycle.
+    """
+    raw = os.environ.get("GODOT_CODER_VALIDATION_TIMEOUT_SECONDS", "120")
+    try:
+        return min(1800.0, max(1.0, float(raw)))
+    except (TypeError, ValueError):
+        return 120.0
+
+
+def _validation_idle_timeout_seconds() -> float:
+    """Idle timeout (no output) for Godot runs. Same variable as local_sources.py."""
+    raw = os.environ.get("GODOT_CODER_VALIDATION_IDLE_TIMEOUT_SECONDS", "30")
+    try:
+        return min(600.0, max(5.0, float(raw)))
+    except (TypeError, ValueError):
+        return 30.0
+
+
 def _godot_version(executable: str) -> str:
-    result = _run([executable, "--version"], timeout=20)
-    return (result.stdout or result.stderr).strip().splitlines()[0] if result.returncode == 0 else "unknown"
+    result = run_managed_process([executable, "--version"], timeout_seconds=20, idle_timeout_seconds=10.0)
+    if result.return_code != 0:
+        return "unknown"
+    text = (result.output or "").strip()
+    return text.splitlines()[0] if text else "unknown"
 
 
 _ANSI_ESCAPE_RE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
@@ -1454,19 +1506,22 @@ def _validate_project_group(
         "status": "pending", "return_code": None, "warning_count": 0, "hard_failures": 0,
     }
     if generation == "godot3":
-        message = "Godot-3-Projekt erkannt (project.godot config_version <= 4); nicht in den Godot-4-Corpus übernommen."
+        message = "Godot 3 project detected (project.godot config_version <= 4); not taken into the Godot 4 corpus."
         for item in records:
             result_map[item["record_id"]] = {
                 "status": "failed", "classification": "legacy_godot3", "error": message,
             }
         project_result.update(status="legacy_godot3", hard_failures=len(records))
     elif not (project / "project.godot").exists():
-        message = "Kein zugehöriges project.godot gefunden."
+        # The project directory vanished between staging and validation. Not a
+        # syntax error and not a Godot-3 file - keep the records as warnings
+        # instead of discarding them (policy: only those two are hard excludes).
+        message = "No matching project.godot found; keep the file as a context warning without project validation."
         for item in records:
             result_map[item["record_id"]] = {
-                "status": "failed", "classification": "missing_project", "error": message,
+                "status": "passed", "classification": "context_warning", "error": message,
             }
-        project_result.update(status="missing_project", hard_failures=len(records))
+        project_result.update(status="missing_project", warning_count=len(records))
     else:
         relative_by_record = {
             item["record_id"]: _record_project_path(project_root, item)
@@ -1474,28 +1529,39 @@ def _validate_project_group(
         }
         relative_paths = sorted({path for path in relative_by_record.values() if path})
         import_timed_out = False
-        try:
-            import_process = _run(build_project_validation_command(godot, project), timeout=60)
-            import_output = "\n".join(
-                part for part in ((import_process.stdout or "").strip(), (import_process.stderr or "").strip()) if part
-            )
-            import_return_code = import_process.returncode
-        except subprocess.TimeoutExpired as exc:
+        # Managed runner: a Mono Godot build spawns a grandchild that inherits the
+        # stdout/stderr pipe handles. Raw subprocess.run with capture_output can
+        # then deadlock forever on timeout (only the direct child is killed, so
+        # communicate() blocks reading a pipe the grandchild still holds open).
+        # The job object inside run_managed_process terminates the whole tree.
+        import_result = run_managed_process(
+            build_project_validation_command(godot, project),
+            timeout_seconds=_validation_timeout_seconds(),
+            idle_timeout_seconds=_validation_idle_timeout_seconds(),
+        )
+        import_output = import_result.output.strip()
+        import_return_code = import_result.return_code
+        if import_result.timed_out:
             import_timed_out = True
-            import_output = "\n".join(str(part or "") for part in (exc.stdout, exc.stderr) if part)
+            import_return_code = None
+        if import_result.startup_error:
+            import_output = import_output or f"Godot could not be started: {import_result.startup_error}"
             import_return_code = None
 
         checker = _write_project_checker(project_root, key, relative_paths)
         checker_timed_out = False
-        try:
-            checker_process = _run(build_project_script_command(godot, project, checker), timeout=120)
-            checker_output = "\n".join(
-                part for part in ((checker_process.stdout or "").strip(), (checker_process.stderr or "").strip()) if part
-            )
-            checker_return_code = checker_process.returncode
-        except subprocess.TimeoutExpired as exc:
+        checker_result = run_managed_process(
+            build_project_script_command(godot, project, checker),
+            timeout_seconds=max(120.0, _validation_timeout_seconds()),
+            idle_timeout_seconds=_validation_idle_timeout_seconds(),
+        )
+        checker_output = checker_result.output.strip()
+        checker_return_code = checker_result.return_code
+        if checker_result.timed_out:
             checker_timed_out = True
-            checker_output = "\n".join(str(part or "") for part in (exc.stdout, exc.stderr) if part)
+            checker_return_code = None
+        if checker_result.startup_error:
+            checker_output = checker_output or f"Godot could not be started: {checker_result.startup_error}"
             checker_return_code = None
 
         output = "\n--- project import ---\n" + import_output + "\n--- project script checker ---\n" + checker_output
@@ -1507,17 +1573,17 @@ def _validate_project_group(
         marker_count = len(checker_passed | checker_null)
         warning_summary = None
         if checker_timed_out:
-            warning_summary = "Projektbezogene Skriptprüfung überschritt 120 Sekunden; nicht bestätigte Skripte bleiben mit Kontextwarnung erhalten."
+            warning_summary = "The project script check exceeded its time limit; unconfirmed scripts stay as context warnings."
         elif import_timed_out:
-            warning_summary = "Godot-Projektimport überschritt 60 Sekunden; die dateibezogene Prüfung wurde trotzdem ausgeführt."
+            warning_summary = "The Godot project import exceeded its time limit; the per-file check still ran."
         elif warnings:
             warning_summary = warnings[0]
         elif unmatched:
-            warning_summary = "Godot meldete einen nicht eindeutig einer Datei zuordenbaren Parserfehler; keine Datei wurde pauschal verworfen."
+            warning_summary = "Godot reported a parser error that could not be clearly attributed to a file; no file was rejected outright."
         elif checker_return_code not in (0, None):
-            warning_summary = f"Der Projektprüfer endete mit Exitcode {checker_return_code}; nur eindeutig zugeordnete Syntaxfehler werden verworfen."
+            warning_summary = f"The project checker exited with code {checker_return_code}; only clearly attributed syntax errors are rejected."
         elif import_return_code not in (0, None):
-            warning_summary = f"Godot-Projektimport endete mit Exitcode {import_return_code}, aber ohne eindeutigen dateibezogenen Syntaxfehler."
+            warning_summary = f"The Godot project import exited with code {import_return_code} but without a clear file-related syntax error."
 
         hard_count = 0
         for item in records:
@@ -1538,12 +1604,19 @@ def _validate_project_group(
 
             classification = "project_passed"
             error = None
-            if rel in checker_null:
+            if rel is None:
+                # The script lives outside the resolved project directory (for
+                # example a stray file next to the repo root). We cannot
+                # attribute any checker result to it, but per policy a missing
+                # mapping is no syntax error - keep it with a warning.
                 classification = "context_warning"
-                error = warning_summary or "Skript konnte im unvollständigen Quellprojekt nicht geladen werden; kein eindeutiger Syntaxfehler erkannt."
+                error = "The script lies outside the project; no clear attribution is possible."
+            elif rel in checker_null:
+                classification = "context_warning"
+                error = warning_summary or "The script could not be loaded in the incomplete source project; no clear syntax error detected."
             elif marker_count and rel not in checker_passed:
                 classification = "context_warning"
-                error = warning_summary or "Der Projektprüfer lieferte für diese Datei kein Ergebnis; sie wird nicht pauschal verworfen."
+                error = warning_summary or "The project checker returned no result for this file; it is not rejected outright."
             elif warning_summary is not None and not checker_passed:
                 classification = "context_warning"
                 error = warning_summary
@@ -1577,10 +1650,85 @@ def _validate_project_group(
     return result_map, project_result, False
 
 
+def _validate_standalone_records(
+    project_root: Path,
+    records: list[dict[str, Any]],
+    godot: str,
+    godot_version: str,
+    cache_entries: dict[str, Any],
+) -> int:
+    """Validate project-less records (addon-only repos) per file with --check-only.
+
+    Returns the number of hard failures. Records with a clear syntax error are
+    failed; everything else is kept as a context warning. Results are cached in
+    the same validation cache under a ``standalone:`` key prefix.
+    """
+    per_file_timeout = _validation_timeout_seconds()
+    hard_count = 0
+    for item in records:
+        source_root = corpus_root(project_root) / "downloads" / item["source_id"]
+        script = source_root / item["original_path"]
+        cache_key = hashlib.sha256(
+            f"standalone:{item['source_id']}:{item['original_path']}:{item['content_sha256']}:{godot_version}".encode("utf-8")
+        ).hexdigest()
+        cached = cache_entries.get(cache_key)
+        if isinstance(cached, dict):
+            status = cached.get("status", "passed")
+            classification = cached.get("classification", "context_warning")
+            error = cached.get("error")
+        elif not script.exists():
+            # Intentional: the downloads copy is gone, but the staged copy (which
+            # is what actually lands in prepared/) still exists. Per policy a
+            # missing source file is no syntax error - keep the record with a
+            # warning instead of silently dropping it.
+            status, classification = "passed", "context_warning"
+            error = "Source file missing while checking; keep as a context warning."
+        else:
+            result = run_managed_process(
+                build_check_command(godot, source_root, script),
+                timeout_seconds=per_file_timeout,
+                idle_timeout_seconds=min(per_file_timeout, _validation_idle_timeout_seconds()),
+            )
+            output = result.output.strip()
+            if result.startup_error:
+                output = output or f"Godot could not be started: {result.startup_error}"
+            relative = script.resolve().relative_to(source_root.resolve()).as_posix().lower()
+            analysis = _classify_project_output(output)
+            matched = analysis["hard_failures"].get(relative)
+            if matched is None:
+                matches = [
+                    error for path, error in analysis["hard_failures"].items()
+                    if path.endswith("/" + relative) or relative.endswith("/" + path)
+                ]
+                if len(matches) == 1:
+                    matched = matches[0]
+            if matched:
+                status, classification, error = "failed", "syntax_error", matched
+            else:
+                status, classification = "passed", "context_warning"
+                if result.timed_out:
+                    error = "The per-file check exceeded its time limit; no clear syntax error - keep as a context warning."
+                elif warnings_ := analysis["context_warnings"]:
+                    error = warnings_[0]
+                else:
+                    error = "Checked as an add-on script without project.godot; no clear syntax error detected."
+        item["validation_status"] = status
+        item["validation_error"] = error
+        item["validation_classification"] = classification
+        item["validation_engine"] = "project-aware-v2"
+        hard_count += int(status == "failed")
+        if not isinstance(cached, dict):
+            cache_entries[cache_key] = {
+                "validator": "project-aware-v2-standalone", "checked_at": time.time(),
+                "godot": godot_version, "status": status, "classification": classification, "error": error,
+            }
+    return hard_count
+
+
 def validate_and_finalize(project_root: Path, *, include_docs: bool = True, minimum_accepted: int = 10) -> dict[str, Any]:
     manifest_path = corpus_root(project_root) / "corpus_manifest.json"
     if not manifest_path.exists():
-        raise FileNotFoundError("Korpus wurde noch nicht gescannt.")
+        raise FileNotFoundError("The corpus has not been scanned yet.")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     records: list[dict[str, Any]] = manifest["records"]
 
@@ -1599,7 +1747,7 @@ def validate_and_finalize(project_root: Path, *, include_docs: bool = True, mini
     pending = [item for item in records if item.get("validation_status") == "pending"]
     godot = _find_godot()
     if pending and not godot:
-        raise FileNotFoundError("Godot wurde nicht gefunden. Die Codequellen können noch nicht sicher geprüft werden.")
+        raise FileNotFoundError("Godot was not found. The code sources cannot be reliably validated yet.")
     godot_version = _godot_version(godot) if godot else "unavailable"
     validation_cache = _load_validation_cache(project_root)
     cache_entries = validation_cache.setdefault("entries", {})
@@ -1616,12 +1764,37 @@ def validate_and_finalize(project_root: Path, *, include_docs: bool = True, mini
     cache_hits = 0
     project_results: list[dict[str, Any]] = []
     processed = sum(item.get("validation_status") != "pending" for item in records)
-    for item in missing_project_records:
-        item["validation_status"] = "failed"
-        item["validation_error"] = "Kein zugehöriges project.godot gefunden."
-        item["validation_classification"] = "missing_project"
-        item["validation_engine"] = "project-aware-v2"
-        processed += 1
+    # Records without a project.godot (pure addon repos like dialogic or
+    # phantom-camera) are still real GDScript. Per policy only clear syntax
+    # errors and Godot-3 files are hard excludes, so validate each file
+    # standalone with Godot's --check-only parser instead of discarding it.
+    standalone_hard = _validate_standalone_records(
+        project_root, missing_project_records, str(godot), godot_version, cache_entries,
+    ) if missing_project_records and godot else 0
+    if missing_project_records:
+        processed += len(missing_project_records)
+        print(serialize_event({
+            "event": "corpus_validation_progress",
+            "level": "warning" if standalone_hard else "info",
+            "phase": "corpus_validation",
+            "phase_label": "Project-based corpus validation",
+            "phase_status": "running",
+            "project_index": 0,
+            "project_total": len(project_groups),
+            "project_name": "(no project)",
+            "source_name": missing_project_records[0].get("source_id"),
+            "file_index": processed,
+            "file_total": len(records),
+            "passed": sum(item.get("validation_status") == "passed" for item in records),
+            "failed": standalone_hard,
+            "warnings": sum(item.get("validation_classification") == "context_warning" for item in records),
+            "accepted": sum(item.get("validation_status") == "passed" for item in records),
+            "overall_progress": processed / max(1, len(records)),
+            "message": (
+                f"Add-on scripts without a project: {len(missing_project_records)} checked individually · "
+                f"{standalone_hard} hard exclusions"
+            ),
+        }))
 
     total_projects = len(project_groups)
     for project_index, (project_value, group_records) in enumerate(project_groups.items(), start=1):
@@ -1650,7 +1823,7 @@ def validate_and_finalize(project_root: Path, *, include_docs: bool = True, mini
             "event": "corpus_validation_progress",
             "level": "warning" if project_result.get("hard_failures") else "info",
             "phase": "corpus_validation",
-            "phase_label": "Projektbezogene Corpusprüfung",
+            "phase_label": "Project-based corpus validation",
             "phase_status": "running",
             "project_index": project_index,
             "project_total": total_projects,
@@ -1664,8 +1837,8 @@ def validate_and_finalize(project_root: Path, *, include_docs: bool = True, mini
             "accepted": accepted_now,
             "overall_progress": processed / max(1, len(records)),
             "message": (
-                f"Projekt {project_index}/{total_projects} geprüft · "
-                f"{len(group_records)} Skripte · Status {project_result.get('status')}"
+                f"Checked project {project_index}/{total_projects} · "
+                f"{len(group_records)} scripts · Status {project_result.get('status')}"
             ),
         }))
 
@@ -1687,7 +1860,7 @@ def validate_and_finalize(project_root: Path, *, include_docs: bool = True, mini
         if not source.exists():
             record["validation_status"] = "failed"
             record["validation_classification"] = "missing_staged_file"
-            record["validation_error"] = "Bereinigte Staging-Datei fehlt."
+            record["validation_error"] = "The cleaned staging file is missing."
             record.pop("prepared_path", None)
             continue
         destination = prepared_work / record["split"] / record["source_id"] / source.name
@@ -1740,6 +1913,8 @@ def validate_and_finalize(project_root: Path, *, include_docs: bool = True, mini
         "godot_version": godot_version,
         "revalidated_legacy_records": revalidated_records,
         "cache_hits": cache_hits,
+        "standalone_records": len(missing_project_records),
+        "standalone_hard_excludes": standalone_hard,
         "projects": len(project_results),
         "records": len(records),
         "passed": passed,
@@ -1770,7 +1945,7 @@ def validate_and_finalize(project_root: Path, *, include_docs: bool = True, mini
         "event": "corpus_validation_completed",
         "level": "warning" if failures else "info",
         "phase": "corpus_validation",
-        "phase_label": "Projektbezogene Corpusprüfung",
+        "phase_label": "Project-based corpus validation",
         "phase_status": "completed",
         "file_index": len(records),
         "file_total": len(records),
@@ -1780,12 +1955,12 @@ def validate_and_finalize(project_root: Path, *, include_docs: bool = True, mini
         "accepted": accepted,
         "overall_progress": 1.0,
         "message": (
-            f"Corpusprüfung abgeschlossen · {accepted} akzeptiert · "
-            f"{failures} eindeutige Ausschlüsse · {context_warnings} Kontextwarnungen"
+            f"Corpus validation finished · {accepted} accepted · "
+            f"{failures} hard exclusions · {context_warnings} context warnings"
         ),
     }))
     if accepted < minimum_accepted:
-        raise RuntimeError("Zu wenige geprüfte Beispiele wurden vorbereitet. Prüfe Quellen und Fehlerbericht.")
+        raise RuntimeError("Too few validated examples were prepared. Check the sources and the error report.")
     return report
 
 def train_bpe(project_root: Path, *, vocab_size: int = 8192, min_frequency: int = 2) -> dict[str, Any]:
@@ -1794,7 +1969,7 @@ def train_bpe(project_root: Path, *, vocab_size: int = 8192, min_frequency: int 
         prepared = corpus_root(project_root) / "prepared" / "train"
     files = sorted(prepared.rglob("*.gd")) if prepared.exists() else []
     if len(files) < 10:
-        raise FileNotFoundError("Noch nicht genug geprüfte Trainingsdateien. Führe zuerst Download, Scan und Prüfung aus.")
+        raise FileNotFoundError("Not enough validated training files yet. Run download, scan and validation first.")
     tokenizer = BPETokenizer.train(files, vocab_size=vocab_size, min_frequency=min_frequency)
     output = project_root / "artifacts" / "tokenizer_bpe_godot.json"
     tokenizer.save(output)

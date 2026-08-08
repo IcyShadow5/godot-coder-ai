@@ -307,7 +307,7 @@ def _recommendation(profiles: list[dict[str, Any]]) -> dict[str, Any]:
     if not passing:
         return {
             "profile_id": None,
-            "reason": "Keines der Profile bestand den Probelauf. Reduziere Modell oder Kontext; CPU ist kein sinnvoller Ersatz für den Hauptlauf.",
+            "reason": "None of the profiles passed the probe run. Reduce the model or context; CPU is not a sensible replacement for the main run.",
         }
 
     comfortable = [
@@ -327,12 +327,12 @@ def _recommendation(profiles: list[dict[str, Any]]) -> dict[str, Any]:
     experimental = next((item for item in passing if item.get("profile_id") == "experimental"), None)
     extra = ""
     if experimental is not None and selected.get("profile_id") != "experimental":
-        extra = " Das Experimental-Profil bestand ebenfalls, bleibt aber bewusst ein Grenztest statt der Standardempfehlung."
+        extra = " The experimental profile also passed, but deliberately remains an edge test rather than the standard recommendation."
     return {
         "profile_id": selected.get("profile_id"),
         "profile_title": selected.get("profile_title"),
         "reason": (
-            "Empfohlenes Profil mit kontrollierter VRAM-Reserve"
+            "Recommended profile with controlled VRAM headroom"
             + (f" ({headroom:.2f} GiB gemessener Headroom)." if isinstance(headroom, (int, float)) else ".")
             + extra
         ),

@@ -1,49 +1,49 @@
-# Instruction- und Agenten-Roadmap
+# Instruction and agent roadmap
 
-> Dieser Entwurf stammt aus der v0.7-Phase und ist bis heute die Grundlage für
-> die geplanten Stufen. Instruction-Tuning und Agenten sind bewusst noch keine
-> Meilensteine von v0.10.x — erst wenn die Domainbasis und die Verifier-Schleife
-> stehen. Der aktuelle Stand dazu steht in `ROADMAP.md`.
+> This draft comes from the v0.7 phase and is still the basis for
+> the planned stages. Instruction tuning and agents are deliberately not yet
+> milestones of v0.10.x - only when the domain base and the verifier loop
+> are in place. The current state on this is in `ROADMAP.md`.
 
-## Stufe 1 — Domain-Pretraining
+## Stage 1 - Domain pretraining
 
-Das Basismodell lernt GDScript, Godot-APIs, Projektstrukturen und häufige
-Implementierungsmuster aus sauberem Quellcode. Mehr Rohcode verbessert die
-Sprach- und Domainbasis, erzeugt aber allein noch keinen zuverlässigen
-Aufgabenassistenten.
+The base model learns GDScript, Godot APIs, project structures and common
+implementation patterns from clean source code. More raw code improves the
+language and domain base but alone does not produce a reliable
+task assistant.
 
-## Stufe 2 — Supervised Instruction Tuning
+## Stage 2 - Supervised instruction tuning
 
-Benötigt geprüfte Paare aus:
+Requires verified pairs of:
 
-- Anweisung und gewünschtem Code
-- fehlerhaftem Code und Reparatur
-- Projektkontext, Plan und Patch
-- Aufgabe, Tests und verifiziertem Ergebnis
+- instruction and desired code
+- buggy code and repair
+- project context, plan and patch
+- task, tests and verified result
 
-Der Loss soll später nur auf der Assistentenantwort liegen. Die v0.7-Seedarbeiten
-erzeugen dafür deterministische Seed-Aufgaben, markieren sie aber noch nicht als
-trainingsfertigen Ersatz für kuratierte Aufgaben.
+The loss should later only lie on the assistant answer. The v0.7 seed work
+generates deterministic seed tasks for this but does not yet mark them as
+training-ready replacement for curated tasks.
 
-## Stufe 3 — Verifier und Reparaturschleife
+## Stage 3 - Verifier and repair loop
 
-Generierte Lösungen werden mit Godot, Tests und statischen Prüfungen bewertet.
-Erfolgreiche Ergebnisse können als hochwertige Nachschulungsdaten übernommen
-werden; fehlgeschlagene Ausgaben bleiben getrennt und werden nicht blind
-trainiert. Die Bausteine dafür wachsen schon heute: der Managed-Process-Runner,
-die Godot-Parserprüfung mit Fallback und der Error-Rate-Abort sind im Prinzip
-dieselbe Infrastruktur, die ein Verifier später braucht.
+Generated solutions are evaluated with Godot, tests and static checks.
+Successful results can be adopted as high-quality retraining data;
+failed outputs stay separate and are not blindly trained.
+The building blocks already grow today: the managed-process runner,
+the Godot parser check with fallback and the error-rate abort are in principle
+the same infrastructure a verifier needs later.
 
-## Stufe 4 — Agentenlaufzeit
+## Stage 4 - Agent runtime
 
-Ein Agent ist mehr als das Sprachmodell. Er braucht begrenzte Werkzeuge und
-einen kontrollierten Ablauf:
+An agent is more than the language model. It needs limited tools and
+a controlled flow:
 
-1. Dateien und Projektstatus lesen
-2. Aufgabe in überprüfbare Schritte zerlegen
-3. Patch erstellen
-4. Godot oder Tests ausführen
-5. Fehler auswerten und begrenzt reparieren
-6. Änderungen und Nachweise berichten
+1. Read files and project status
+2. Break the task into verifiable steps
+3. Create a patch
+4. Run Godot or tests
+5. Evaluate errors and repair in a limited way
+6. Report changes and evidence
 
-Diese Stufe darf erst auf einer stabilen Instruction- und Verifier-Basis folgen.
+This stage may only follow on a stable instruction and verifier base.

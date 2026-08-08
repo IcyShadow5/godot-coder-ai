@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from pathlib import Path
 
 import pytest
 
 from godot_coder.corpus import validate_and_finalize
 from godot_coder.godot_cli import build_project_validation_command
+from godot_coder.process_control import ManagedProcessResult
 
 
 def _workspace(tmp_path: Path, files: dict[str, str], *, config_version: int = 5, old_status: str = "failed") -> tuple[Path, Path]:
@@ -63,11 +63,19 @@ def _patch_godot(monkeypatch: pytest.MonkeyPatch, output: str, return_code: int 
     monkeypatch.setattr("godot_coder.corpus._find_godot", lambda: "godot.exe")
     monkeypatch.setattr("godot_coder.corpus._godot_version", lambda executable: "4.7.test")
 
-    def fake_run(command: list[str], **kwargs):
+    def fake_managed(command: list[str], **kwargs):
         commands.append(command)
-        return subprocess.CompletedProcess(command, return_code, output, "")
+        return ManagedProcessResult(
+            command=command,
+            return_code=return_code,
+            output=output,
+            timed_out=False,
+            duration_seconds=0.1,
+            pid=None,
+            termination_attempted=False,
+        )
 
-    monkeypatch.setattr("godot_coder.corpus._run", fake_run)
+    monkeypatch.setattr("godot_coder.corpus.run_managed_process", fake_managed)
     return commands
 
 
@@ -156,3 +164,164 @@ def test_corpus_progress_event_is_structured(tmp_path: Path, monkeypatch: pytest
     assert "GCAI_EVENT " in output
     assert '"event": "corpus_validation_progress"' in output
     assert "validate=1/1" not in output
+
+def test_validate_runs_godot_through_job_object_managed_runner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Regression: validation previously used raw subprocess.run with capture_output,
+    # which only kills the direct child on timeout. A Mono Godot build spawns a
+    # grandchild that inherits the stdout pipe handles, so communicate() then
+    # blocks forever. The managed runner (Windows job objects) kills the whole
+    # tree - assert the validate path goes through it with sane timeouts.
+    root, _ = _workspace(tmp_path, {"a.gd": "extends Node\n"})
+    captured: list[dict[str, object]] = []
+    monkeypatch.setattr("godot_coder.corpus._find_godot", lambda: "godot.exe")
+    monkeypatch.setattr("godot_coder.corpus._godot_version", lambda executable: "4.7.test")
+
+    def fake_managed(command: list[str], **kwargs):
+        captured.append(kwargs)
+        return ManagedProcessResult(
+            command=command, return_code=0, output="Godot Engine v4.7\n[ DONE ]",
+            timed_out=False, duration_seconds=0.1, pid=None, termination_attempted=False,
+        )
+
+    monkeypatch.setattr("godot_coder.corpus.run_managed_process", fake_managed)
+    validate_and_finalize(root, minimum_accepted=0)
+    assert len(captured) == 2  # project import + script checker
+    assert captured[0]["timeout_seconds"] == 120  # default from GODOT_CODER_VALIDATION_TIMEOUT_SECONDS
+    assert captured[1]["timeout_seconds"] == 120  # checker floor of 120s
+    assert captured[0]["idle_timeout_seconds"] == 30.0  # default from GODOT_CODER_VALIDATION_IDLE_TIMEOUT_SECONDS
+
+
+def test_managed_timeout_keeps_records_with_context_warning(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Regression: a hung Godot caught by the managed runner must not take the
+    # whole validate job down. Records survive with a context warning instead of
+    # being rejected, and the job returns a normal report.
+    root, _ = _workspace(tmp_path, {"a.gd": "extends Node\nfunc a() -> void:\n\tpass\n"})
+    monkeypatch.setattr("godot_coder.corpus._find_godot", lambda: "godot.exe")
+    monkeypatch.setattr("godot_coder.corpus._godot_version", lambda executable: "4.7.test")
+
+    def fake_managed(command: list[str], **kwargs):
+        return ManagedProcessResult(
+            command=command, return_code=None, output="", timed_out=True,
+            duration_seconds=61.0, pid=None, termination_attempted=True, idle_timed_out=True,
+        )
+
+    monkeypatch.setattr("godot_coder.corpus.run_managed_process", fake_managed)
+    report = validate_and_finalize(root, minimum_accepted=0)
+    assert report["failed"] == 0
+    assert report["passed"] == 1
+    assert report["context_warnings"] == 1
+def test_validation_timeout_env_var_is_honored(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The README documents GODOT_CODER_VALIDATION_TIMEOUT_SECONDS / IDLE as
+    # configurable; corpus.py must honor them instead of hardcoding.
+    monkeypatch.setenv("GODOT_CODER_VALIDATION_TIMEOUT_SECONDS", "240")
+    monkeypatch.setenv("GODOT_CODER_VALIDATION_IDLE_TIMEOUT_SECONDS", "45")
+    root, _ = _workspace(tmp_path, {"a.gd": "extends Node\n"})
+    captured: list[dict[str, object]] = []
+    monkeypatch.setattr("godot_coder.corpus._find_godot", lambda: "godot.exe")
+    monkeypatch.setattr("godot_coder.corpus._godot_version", lambda executable: "4.7.test")
+
+    def fake_managed(command: list[str], **kwargs):
+        captured.append(kwargs)
+        return ManagedProcessResult(
+            command=command, return_code=0, output="Godot Engine v4.7\n[ DONE ]",
+            timed_out=False, duration_seconds=0.1, pid=None, termination_attempted=False,
+        )
+
+    monkeypatch.setattr("godot_coder.corpus.run_managed_process", fake_managed)
+    validate_and_finalize(root, minimum_accepted=0)
+    assert captured[0]["timeout_seconds"] == 240
+    assert captured[1]["timeout_seconds"] == 240  # checker floor is 120 but env wins above it
+    assert captured[0]["idle_timeout_seconds"] == 45
+
+
+def test_project_less_record_is_validated_per_file_and_kept(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Regression: pure addon repos (no project.godot) were hard-excluded as
+    # "missing_project". Policy: only clear syntax errors + Godot-3 are hard
+    # excludes - project-less scripts get a standalone --check-only parse and
+    # are kept with a context warning at worst.
+    root = tmp_path
+    corpus = root / "data" / "corpus"
+    source_root = corpus / "downloads" / "demo-addon"
+    (source_root / "addons" / "demo").mkdir(parents=True, exist_ok=True)
+    (source_root / "addons" / "demo" / "util.gd").write_text(
+        "extends Node\nfunc util() -> int:\n\treturn 1\n", encoding="utf-8"
+    )
+    staged = corpus / "staged" / "demo-addon"
+    staged.mkdir(parents=True)
+    (staged / "r0.gd").write_text("extends Node\n", encoding="utf-8")
+    records = [{
+        "record_id": "r0", "source_id": "demo-addon", "source_title": "Demo Addon",
+        "group_id": "demo-addon::addons/demo", "kind": "godot_projects",
+        "original_path": "addons/demo/util.gd", "staged_path": "demo-addon/r0.gd",
+        "split": "train", "content_sha256": "sha-0", "bytes": 40, "license": "MIT",
+        "attribution": "Test", "source_commit": "abc", "project_root": None,
+        "validation_status": "pending", "validation_error": None,
+    }]
+    manifest = {
+        "format": "godot-coder-licensed-corpus", "format_version": 3,
+        "records": records, "sources": [], "skipped": [],
+    }
+    (corpus / "corpus_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    monkeypatch.setattr("godot_coder.corpus._find_godot", lambda: "godot.exe")
+    monkeypatch.setattr("godot_coder.corpus._godot_version", lambda executable: "4.7.test")
+
+    def fake_managed(command: list[str], **kwargs):
+        # Standalone --check-only on a valid script: no errors, exit 0.
+        return ManagedProcessResult(
+            command=command, return_code=0, output="Godot Engine v4.7",
+            timed_out=False, duration_seconds=0.1, pid=None, termination_attempted=False,
+        )
+
+    monkeypatch.setattr("godot_coder.corpus.run_managed_process", fake_managed)
+    report = validate_and_finalize(root, minimum_accepted=0)
+    assert report["failed"] == 0
+    assert report["passed"] == 1
+    assert report["prepared"] == 1
+    manifest_now = json.loads((corpus / "corpus_manifest.json").read_text(encoding="utf-8"))
+    assert manifest_now["records"][0]["validation_classification"] == "context_warning"
+
+
+def test_project_less_record_with_clear_syntax_error_is_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A project-less addon script with a real parse error must still be hard
+    # excluded - the standalone path classifies hard syntax errors.
+    root = tmp_path
+    corpus = root / "data" / "corpus"
+    source_root = corpus / "downloads" / "demo-addon"
+    source_root.mkdir(parents=True)
+    (source_root / "broken.gd").write_text("extends Node\nvar broken =\n", encoding="utf-8")
+    staged = corpus / "staged" / "demo-addon"
+    staged.mkdir(parents=True)
+    (staged / "r0.gd").write_text("extends Node\nvar broken =\n", encoding="utf-8")
+    records = [{
+        "record_id": "r0", "source_id": "demo-addon", "source_title": "Demo Addon",
+        "group_id": "demo-addon::root", "kind": "godot_projects",
+        "original_path": "broken.gd", "staged_path": "demo-addon/r0.gd",
+        "split": "train", "content_sha256": "sha-0", "bytes": 40, "license": "MIT",
+        "attribution": "Test", "source_commit": "abc", "project_root": None,
+        "validation_status": "pending", "validation_error": None,
+    }]
+    manifest = {
+        "format": "godot-coder-licensed-corpus", "format_version": 3,
+        "records": records, "sources": [], "skipped": [],
+    }
+    (corpus / "corpus_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    monkeypatch.setattr("godot_coder.corpus._find_godot", lambda: "godot.exe")
+    monkeypatch.setattr("godot_coder.corpus._godot_version", lambda executable: "4.7.test")
+
+    def fake_managed(command: list[str], **kwargs):
+        output = (
+            "SCRIPT ERROR: Parse Error: Expected expression after '='.\n"
+            "   at: GDScript::reload (res://broken.gd:2)\n"
+        )
+        return ManagedProcessResult(
+            command=command, return_code=1, output=output,
+            timed_out=False, duration_seconds=0.1, pid=None, termination_attempted=False,
+        )
+
+    monkeypatch.setattr("godot_coder.corpus.run_managed_process", fake_managed)
+    report = validate_and_finalize(root, minimum_accepted=0)
+    assert report["failed"] == 1
+    assert report["classifications"]["syntax_error"] == 1
+    assert report["prepared"] == 0

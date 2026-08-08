@@ -79,7 +79,7 @@ def test_remote_url_rejects_unsafe_forms(url: str) -> None:
 
 
 def test_remote_url_rejects_private_dns_resolution() -> None:
-    with pytest.raises(RemoteSourceError, match="private|reservierte|Lokale"):
+    with pytest.raises(RemoteSourceError, match="private|reserved|local"):
         validate_remote_url("https://github.com/a/b.zip", resolver=private_resolver)
 
 
@@ -107,7 +107,7 @@ def test_upload_staging_rejects_zip_path_traversal(tmp_path: Path) -> None:
     temporary = tmp_path / "unsafe.zip"
     with zipfile.ZipFile(temporary, "w") as archive:
         archive.writestr("../escape.gd", "extends Node")
-    with pytest.raises(RemoteSourceError, match="Unsicherer ZIP-Pfad"):
+    with pytest.raises(RemoteSourceError, match="Unsafe ZIP path"):
         stage_uploaded_zip(tmp_path, temporary, "unsafe.zip")
 
 
@@ -135,7 +135,7 @@ def test_server_side_download_stages_private_zip_and_writes_report(tmp_path: Pat
 
 def test_download_rejects_declared_oversize_before_writing(tmp_path: Path) -> None:
     opener = FakeOpener(FakeResponse(b"PK\x03\x04", headers={"Content-Length": "999999"}))
-    with pytest.raises(RemoteSourceError, match="größer"):
+    with pytest.raises(RemoteSourceError, match="larger than the limit"):
         download_remote_source(
             tmp_path,
             "https://github.com/a/b/archive.zip",

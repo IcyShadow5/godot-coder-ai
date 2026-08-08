@@ -1,10 +1,10 @@
 profile:
   id: starter
   title: Starter · 30M
-  method: Durchsatz zuerst
-  description: Kleiner echter Korpuslauf ohne Activation Checkpointing. Schnellster
-    Vergleich und sicherster Einstieg. v0.6 nutzt Tokenbudgets, feste Evaluation und
-    Early Stopping.
+  method: Throughput first
+  description: Small real corpus run without activation checkpointing. Fastest
+    comparison and safest entry point. v0.6 uses token budgets, fixed evaluation and
+    early stopping.
   beginner_order: 1
   recommended: false
   risk: low

@@ -48,8 +48,8 @@ def _completion_task(code: str, source: str, split: str) -> dict[str, Any] | Non
         "task_id": task_id,
         "split": split,
         "task_type": "function_completion",
-        "system": "Du bist ein präziser Godot-4-GDScript-Assistent. Antworte nur mit gültigem GDScript.",
-        "instruction": "Vervollständige die angefangene GDScript-Funktion. Behalte Signatur, Einrückung und vorhandene Logik bei.",
+        "system": "You are a precise Godot 4 GDScript assistant. Reply only with valid GDScript.",
+        "instruction": "Complete the unfinished GDScript function. Keep the signature, indentation and existing logic.",
         "input": prefix,
         "output": code,
         "source_path": source,
@@ -67,8 +67,8 @@ def _repair_task(code: str, source: str, split: str) -> dict[str, Any] | None:
         "task_id": task_id,
         "split": split,
         "task_type": "syntax_repair",
-        "system": "Du reparierst Godot-4-GDScript und gibst ausschließlich den korrigierten Code zurück.",
-        "instruction": "Repariere den Syntaxfehler im folgenden GDScript, ohne die beabsichtigte Funktion zu verändern.",
+        "system": "You fix Godot 4 GDScript and return only the corrected code.",
+        "instruction": "Fix the syntax error in the following GDScript without changing the intended behavior.",
         "input": broken,
         "output": code,
         "source_path": source,
@@ -81,7 +81,7 @@ def build_instruction_dataset(project_root: Path, *, max_tasks_per_file: int = 2
     if not source_root.exists():
         source_root = project_root / "data" / "corpus" / "prepared"
     if not source_root.exists():
-        raise FileNotFoundError("Kein auditierter oder vorbereiteter Corpus gefunden.")
+        raise FileNotFoundError("No audited or prepared corpus found.")
     output_root = project_root / "data" / "instructions" / "v07"
     output_root.mkdir(parents=True, exist_ok=True)
     counts: dict[str, int] = {"train": 0, "val": 0, "test": 0}

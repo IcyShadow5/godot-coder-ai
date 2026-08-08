@@ -52,7 +52,7 @@ def normalize_autotuned_config(root: Path) -> bool:
             "id": "autotuned-night",
             "title": f"Autotuned Night · {matrix_label}",
             "method": "Hardware-Autotuner",
-            "description": "Gemessene lokale Hardware-Empfehlung. Batch, Kontext und Speichertechnik stammen aus dem isolierten Autotuner.",
+            "description": "Measured local hardware recommendation. Batch, context and memory technique come from the isolated autotuner.",
             "beginner_order": 0,
             "recommended": True,
         }

@@ -38,14 +38,14 @@ def test_safe_zip_rejects_path_traversal(tmp_path: Path) -> None:
     archive = tmp_path / "unsafe.zip"
     with zipfile.ZipFile(archive, "w") as handle:
         handle.writestr("../escape.txt", "no")
-    with pytest.raises(ValueError, match="Unsicherer ZIP-Pfad"):
+    with pytest.raises(ValueError, match="Unsafe ZIP path"):
         _safe_extract(archive, tmp_path / "out")
 
 
 def test_private_import_requires_ownership_confirmation(tmp_path: Path) -> None:
     inbox = inbox_path(tmp_path)
     _write_project(inbox / "project")
-    with pytest.raises(ValueError, match="Bestätige"):
+    with pytest.raises(ValueError, match="First confirm"):
         import_inbox(tmp_path, ownership_confirmed=False)
 
 

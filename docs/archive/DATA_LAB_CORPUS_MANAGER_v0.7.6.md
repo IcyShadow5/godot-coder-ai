@@ -1,57 +1,56 @@
 # Data Lab & Corpus Manager v0.7.6
 
-> **Veraltet / Archiv.** Beschreibt den Data-Lab-Stand von v0.7.6. Das Data Lab
-> existiert weiterhin (Filter, Sicherungen, Hot Reload), Details stehen in
-> `STUDIO.md`.
+> **Superseded / Archive.** Describes the Data Lab state of v0.7.6. The Data Lab
+> still exists (filters, backups, hot reload); details are in `STUDIO.md`.
 
 # Data Lab & Corpus Manager v0.7.6
 
-## Welche Daten Data Lab zeigt
+## Which data Data Lab shows
 
-Data Lab unterscheidet vier Zustände:
+Data Lab distinguishes four states:
 
-- **Aktiver Tokenstream:** Dokumente, die im letzten vorbereiteten Train-/Validation-/Test-Manifest enthalten sind. Für jedes Dokument werden die tatsächlich verwendeten Tokens angezeigt.
-- **Neu/pending:** neue Roh- oder auditierte Dateien, die noch nicht erneut tokenisiert wurden.
-- **Rohdaten:** eigene Dateien unter `data/raw`; diese sind bearbeitbar und löschbar.
-- **Aufgabendaten:** erzeugte Instruction-Beispiele. Sie werden als Aufgaben gezählt und nicht als neue unabhängige Corpusvielfalt ausgegeben.
+- **Active token stream:** documents contained in the last prepared train/validation/test manifest. The actually used tokens are shown for every document.
+- **New/pending:** new raw or audited files that have not been tokenized again yet.
+- **Raw data:** own files under `data/raw`; these are editable and deletable.
+- **Task data:** generated instruction examples. They are counted as tasks and not reported as new independent corpus diversity.
 
-Die frühere Curriculum-Anzeige kann den Corpus-Tokenwert nicht mehr überschreiben.
+The former curriculum view can no longer override the corpus token value.
 
-## Löschen
+## Deleting
 
-Nur eigene Dateien unter `data/raw` können direkt gelöscht werden. Das verhindert, dass generierte Shards, auditierte Quellen oder abgeleitete Aufgaben inkonsistent einzeln verändert werden.
+Only own files under `data/raw` can be deleted directly. This prevents generated shards, audited sources or derived tasks from being inconsistently changed individually.
 
-Vor der Löschung entsteht ein Backup unter:
+Before deletion a backup is created under:
 
 ```text
 .studio_backups/data_lab/deleted/
 ```
 
-Nach einer Löschung oder Änderung gilt der bisher vorbereitete Tokenstream als veraltet. Die Datenpipeline muss ab dem betroffenen Schritt erneut ausgeführt werden.
+After a deletion or change the previously prepared token stream counts as stale. The data pipeline must be run again from the affected step.
 
-## Hot Reload
+## Hot reload
 
-Solange Data Lab geöffnet ist, fragt die Oberfläche alle 2,5 Sekunden eine kompakte Revision ab. Neue, geänderte oder gelöschte Dateien werden ohne kompletten Seitenneustart übernommen. Ungespeicherte Editoränderungen werden dabei nicht überschrieben.
+While Data Lab is open, the interface polls a compact revision every 2.5 seconds. New, changed or deleted files are adopted without a complete page reload. Unsaved editor changes are not overwritten.
 
-## Große Corpus-Erweiterung
+## Large corpus expansion
 
-Der neue Katalog enthält 30 Quellen. 23 davon bilden die neue Erweiterung und starten bei bestehenden Installationen deaktiviert.
+The new catalog contains 30 sources. 23 of them form the new expansion and start disabled on existing installations.
 
-- **5M-Kandidaten:** acht größere Quellen, Katalogschätzung 6,0 Mio. Tokens.
-- **Richtung 20M:** zusätzlich 15 weitere Quellen, Gesamtschätzung 12,44 Mio. Tokens.
+- **5M candidates:** eight larger sources, catalog estimate 6.0M tokens.
+- **Toward 20M:** additionally 15 further sources, total estimate 12.44M tokens.
 
-Die Schätzung basiert auf erwarteter GDScript-Menge und ist kein gemessener Endwert. Erst der lokale Ablauf liefert den belastbaren Wert:
+The estimate is based on the expected amount of GDScript and is not a measured final value. Only the local run delivers a reliable value:
 
-1. Lizenz lokal verifizieren
-2. Quellcode selektiv laden
-3. Godot-4-Dateien erkennen
-4. Parserprüfung
-5. Duplikate und Leaks entfernen
-6. Split bilden
-7. mit dem aktuellen BPE-Tokenizer zählen
+1. verify license locally
+2. selectively load source code
+3. detect Godot-4 files
+4. parser check
+5. remove duplicates and leaks
+6. form the split
+7. count with the current BPE tokenizer
 
-Eine Quelle mit fehlender oder nicht passender Lizenzdatei wird nicht in den Corpus aufgenommen.
+A source with a missing or mismatching license file is not admitted to the corpus.
 
-## Speicher- und Downloadverhalten
+## Storage and download behavior
 
-Große Repositories werden mit partiellem Git-Clone und Sparse Checkout geladen. Standardmäßig werden nur Godot-Projektdateien, GDScript und wenige textbasierte Ressourcen angefordert. Bilder, Audio, Videos, Buildordner und Caches sind nicht Teil des Trainingscorpus.
+Large repositories are loaded with a partial Git clone and sparse checkout. By default only Godot project files, GDScript and a few text-based resources are requested. Images, audio, videos, build folders and caches are not part of the training corpus.
