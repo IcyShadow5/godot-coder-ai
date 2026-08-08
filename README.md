@@ -17,116 +17,31 @@ Three things bundled into one project:
 
 I built this because I wanted a model that knows *my* GDScript style. That's why the whole pipeline is private-first: local projects get their own license entry (`LicenseRef-User-Owned-Private`), are never redistributed, and only you can enable them for training.
 
-## What's New in v0.10.6
+## Recent Changes
 
-A small correctness release that unblocks synthetic-curriculum runs and future-proofs the preflight.
+I keep the full history in `CHANGELOG.md` (per-version detail in
+`docs/CHANGELOG_v0.10.x.md`), so here is just the short version - the last
+few releases in one breath:
 
-### 🚦 Preflight stops pretending old things are new
+- **v0.10.6** - preflight correctness. The validator-version check stopped
+  being hardcoded, the freshness check only judges what a dataset actually
+  depends on, and token minimums apply to corpus profiles only. Also made
+  the repo publish-ready (CI, community files).
+- **v0.10.5** - no record is ever kept unverified: scripts that could only
+  get a context warning inside their project now also get a standalone
+  per-file Godot parse.
+- **v0.10.4** - hard syntax errors can't slip through the classifier
+  anymore, and the per-file checker survives strict projects like gdUnit4.
+- **v0.10.3** - corpus validation can no longer hang forever on large Mono
+  projects (managed processes + a Studio stall watchdog).
+- **v0.10.2** - fast mode no longer skips the secret scan, and the Studio
+  got toggles for the fast-import flags.
+- **v0.10.1** - fast import mode and error-rate abort: ~4s per project
+  instead of 13-37s, and stuck Godot imports fall back to the per-file
+  parser.
 
-Three fixes in the training preflight, all discovered while running the very first real training runs:
-
-- **Validator version no longer hardcoded.** The check pinned the validator to `project-aware-v2`; the pipeline has written `v4` since v0.10.4, so every preflight after a fresh validation was blocked. It now accepts any `project-aware-v*` revision.
-- **Freshness only judges what the dataset actually depends on.** Corpus pipeline stages (validation, audit, tokenizer reports) are inputs only for corpus-derived streams. Synthetic datasets like the curriculum have their own raw source and were being flagged stale by corpus files they never touch. The freshness check is now dataset-aware.
-- **Token minimums apply to corpus profiles only.** Full-mode preflight demanded ≥500k tokens for the `legacy` profile - nonsense for a deliberately small curriculum set (88k tokens). The gate now applies to corpus-derived profiles (starter/balanced/experimental); synthetic streams pass it.
-
-The `_is_corpus_stream()` helper centralises “is this data from the corpus pipeline?” and is shared by both checks. Tests went from 178 to 183.
-
-## What's New in v0.10.5
-
-### ✅ No record is ever kept unverified
-
-The rule is simple: a script either gets verified by Godot or it doesn't get in. A `context_warning` means a script could not be positively checked inside its project (the resource did not load, no checker marker was produced, or the project import/checker itself failed or timed out). Since v0.10.5 every such record is additionally parsed standalone with Godot `--check-only`:
-
-- a real syntax error still becomes a hard exclusion (`syntax_error`), and
-- a clean parse keeps the record as a *verified* context warning, with the per-file result appended to the warning text.
-
-Only a truly missing source file skips the parse — and that is recorded explicitly instead of being silent. Nothing slips into the dataset unverified anymore.
-
-### 🔁 Validation cache bumped to v4
-
-Validation decisions are cached in `data/corpus/cache/godot_project_validation_v4.json`. The v3 cache predates the per-file step, so the next `validate` run re-checks every project with the complete pipeline. The v0.10.5 upgrade package is **cumulative from v0.10.3**: one apply brings every v0.10.4 + v0.10.5 change, one re-`validate` re-checks with the v4 cache.
-
-## What's New in v0.10.4
-
-### 🩹 Hard syntax errors can no longer slip through
-
-Found this while auditing a previous validation run. Two leaks in the classifier were closed:
-
-- The hard-error allowlist was too narrow: unambiguous syntax errors whose message text isn't `expected ...` (e.g. `Invalid statement.`) were kept as context warnings and included in the dataset. The marker list now covers `invalid statement`, `invalid use of`, `invalid assignment`, `expected identifier`, `expected variable name`, `constant expected` and `invalid declaration`.
-- Hard vs. context was decided on the ±3-line block around an error, so a benign context error (missing resource, RID leak) printed next to a real parse error demoted it to a warning. Only the error line itself now decides; the surrounding block is used for message text and path attribution only.
-
-### 🧪 The per-file checker survives strict projects
-
-Projects like gdUnit4 promote GDScript warnings to errors. The generated checker's untyped loop variable then failed to compile inside such a project (`Parse Error: "for" iterator variable ... has no static type`), leaving every file unverified. The checker now carries an `@warning_ignore_start(...)` region and explicit types (`Array[String]`, `for path_value: String in paths:`) — verified against gdUnit4 with Godot 4.7.
-
-### 🏷️ Stale catalog titles healed
-
-Manifest records and source manifests that still carried German catalog titles (`Offizielle Godot-Demoprojekte`) are refreshed from the English registry during validation. Local user sources are never touched. Also cosmetic: `index.html` now declares `lang="en"`.
-
-## What's New in v0.10.3
-
-A stability release. Corpus validation no longer hangs on large Mono projects, and a Studio job that goes silent gets killed instead of showing "running" forever.
-
-### 🩹 Corpus validation can no longer hang forever
-
-This one bit me mid-rebuild. `corpus validate` on big Mono projects (e.g. Pixelorama) froze at ~34% with 0% CPU, no progress, and a job stuck as "running" for over an hour. Root cause: Mono Godot spawns a grandchild that inherits the stdout/stderr pipes, and the old raw `subprocess.run` only kills the direct child on timeout — so `communicate()` blocks forever on a pipe the orphan still holds open. The validate path now runs Godot through the managed process runner (Windows job objects kill the whole tree), and the Studio JobManager has a **stall watchdog**: a job silent for `GODOT_CODER_JOB_STALL_TIMEOUT_SECONDS` (default 20 min, `0` disables) is killed and marked failed with a reason. No more unkillable phantom jobs.
-
-### 🩹 validate_dataset.py imported nothing
-
-It used `os.environ.copy()` without ever importing `os` — a guaranteed `NameError` on first run. Fixed.
-
-## What's New in v0.10.2
-
-A correctness + cleanup release. The v0.10.1 speed work (fast import, error-rate abort, ETA caching) is still here — this release fixes two things that bugged me about it, adds Studio toggles for the fast-import flags, and finally puts the upgrade tooling into the repo where it belongs.
-
-### 🔒 FAST_STATIC no longer skips the secret scan
-
-This one was my fault. `GODOT_CODER_FAST_STATIC=1` was supposed to only skip the slow per-file AST walk, but it actually skipped the **secret scan** too — which is exactly how a stray `.env` or hardcoded API key ends up inside a training corpus. Fixed: secret scan and file-size checks **always run**; fast mode only skips the slow `_static_warnings()` analysis. Security is not a place to take shortcuts.
-
-### 🎛️ Studio toggles for fast import (Knowledge Building → private import)
-
-The fast-import env vars were CLI-only, which made them annoying to use. The private-import panel in the Studio now has three checkboxes:
-
-- **Skip Godot project import** — skips the full `--import`, uses the per-file parser instead
-- **Skip static AST analysis** — the fast-static path (secret scan still runs!)
-- **Tighten error abort** — drops the error-abort threshold from 500 to 60 consecutive lines, useful for broken addon projects
-
-They're forwarded to the import job as environment variables, so no shell needed.
-
-### ⏱️ validate_dataset.py honors the same timeout as the Studio
-
-It used a hardcoded 30s timeout and raw `subprocess.run` — a timed-out Godot check could leave an orphaned process behind on Windows. It now reads `GODOT_CODER_PARSER_FILE_TIMEOUT_SECONDS` (default 10s, same as the import pipeline) and runs through the managed process runner with job-object cleanup.
-
-### 📦 Upgrade packages are built from templates in `upgrade/`
-
-The v0.10.1 upgrade package was built ad-hoc outside the repo and only shipped 12 files — the docs and version metadata never made it to the live install. v0.10.2 fixed that (everything that changed now ships together), and the repo carries the mechanics: `upgrade/` contains **templates** for the apply script and payload builder. A ready-made package is assembled from them per release and distributed with the release — the repo itself stays free of built payloads.
-
-### 🧪 Tests
-
-- `test_eta_preserves_last_estimate_on_zero_remaining` — ETA cache carries through zero
-- `test_error_line_re_matches_godot_error_output` — abort regex vs. progress regex
-- `test_fast_static_still_scans_for_secrets` — v0.10.2 security fix
-- `test_fast_static_skips_static_warnings_and_never_double_processes` — fast mode is fast, exactly once
-- `test_skip_project_import_wins_over_fast_static` — skip-import is authoritative
-- `test_error_rate_abort_triggers_parser_fallback` — stuck `--import` falls back to per-file parser
-- `test_local_import_extra_env_maps_request_flags` — Studio toggle → env var mapping
-
-## v0.10.1 Recap (Fast Import & Error-Rate Abort)
-
-### 🚀 Fast Import Mode
-- **`GODOT_CODER_SKIP_PROJECT_IMPORT=1`** — skips Godot `--import` entirely; validates each `.gd` file individually via Godot's per-file parser. **Massive speedup**: ~4s/project vs 13–37s/project. For 800+ projects that cuts import from 5–7 hours to under 1 hour.
-- **`GODOT_CODER_FAST_STATIC=1`** — skips the redundant per-file AST walk and byte counting during import. Secret scan, file-size check and dedup still run (see the v0.10.2 fix above).
-
-### 🔴 Error-Rate Abort
-Godot's `--import` can get stuck on broken addon projects, producing thousands of error lines without progress — and the old `idle_timeout` never triggered because errors count as output. Now:
-- Consecutive error lines are tracked via regex (`ERROR:`, `SCRIPT ERROR:`, `Parse Error:`, `failed to load`, `invalid UID`, …)
-- The counter resets on progress markers (`[ XX% ]`, `first_scan_filesystem`)
-- Default threshold: **500 consecutive errors** (`GODOT_CODER_ERROR_ABORT_THRESHOLD`)
-- On abort: the Godot process tree is killed and the safe per-file parser takes over
-
-### 🐛 v0.10.1 Bug Fixes (still relevant)
-- **Per-file loop double-execution** — `_static_warnings()` used to run even with `FAST_STATIC=1`, processing every file twice. Now properly guarded.
-- **ETA cache flickering** — the estimator preserves its last estimate when `remaining_files` hits zero, so the UI stops flashing "Calculating remaining time".
+The fast-import flags and their recommended combos are in
+[Key Environment Variables](#key-environment-variables) below.
 
 ## Key Environment Variables
 
@@ -148,15 +63,15 @@ Godot's `--import` can get stuck on broken addon projects, producing thousands o
 ```powershell
 # Fastest import — skip Godot import entirely, validate per file
 $env:GODOT_CODER_SKIP_PROJECT_IMPORT = "1"
-.\.venv\Scripts\python.exe -m godot_coder.studio
+..\.venv\Scripts\python.exe -m godot_coder.studio
 
 # Fastest without skipping Godot: keep full project validation, skip the AST walk
 $env:GODOT_CODER_FAST_STATIC = "1"
-.\.venv\Scripts\python.exe -m godot_coder.studio
+..\.venv\Scripts\python.exe -m godot_coder.studio
 
 # Stuck addon projects? Abort earlier (the Studio toggle uses 60)
 $env:GODOT_CODER_ERROR_ABORT_THRESHOLD = "60"
-.\.venv\Scripts\python.exe -m godot_coder.studio
+..\.venv\Scripts\python.exe -m godot_coder.studio
 ```
 
 When you skip the project import, full validation is deferred: `validate_dataset.py` runs a complete Godot pass over the assembled dataset (same env-var timeout, managed process runner). For maximum thoroughness during import, leave the env vars off or use only `FAST_STATIC=1`. Either way nothing is kept unverified: since v0.10.5, any script that could not be positively checked inside its project (a `context_warning`) is additionally parsed standalone per file.
@@ -198,14 +113,15 @@ Checkpoints land in the config's `output_dir` with `best` / `latest` plus step c
 
 ```powershell
 python -m venv .venv
+# PyTorch is not a pip dependency on purpose (CUDA builds are
+# environment-specific). Pick your build at pytorch.org/get-started
+# and install it into the venv, e.g. for CUDA 12.x:
+.\.venv\Scripts\pip install torch --index-url https://download.pytorch.org/whl/cu124
 .\.venv\Scripts\pip install -e .
 .\.venv\Scripts\python.exe -m godot_coder.doctor
 .\.venv\Scripts\python.exe -m pytest -q
 .\.venv\Scripts\python.exe -m godot_coder.studio
 ```
-
-Then open `http://127.0.0.1:8765`.
-
 ## Workflow
 
 1. **Open Studio** and select **Knowledge Building**
@@ -251,7 +167,7 @@ Only runtime data is gitignored (`data/`, `reports/`, `checkpoints/`, `artifacts
 
 ## Helper Scripts
 
-No helper scripts are tracked in the repo — everything is a `python -m godot_coder.<module>` command (see below). Remote Tailscale setup runs through `remote_access configure | disable`.
+The repo tracks a few small Windows launchers (`start_studio.bat`, `start_studio.ps1`, `CHECK_INSTALLATION.bat`, …) for convenience; everything else runs as a `python -m godot_coder.<module>` command (see below). Remote Tailscale setup runs through `remote_access configure | disable`.
 
 ## Command Line
 
@@ -309,7 +225,8 @@ src/godot_coder/
 
 - Python ≥ 3.10
 - Godot 4.x (for GDScript validation)
-- CUDA-capable GPU (for training; CPU-only works for corpus work)
+- PyTorch with CUDA for training (a CPU-only build works for corpus work)
+- CUDA-capable GPU (recommended for training)
 
 ## License
 

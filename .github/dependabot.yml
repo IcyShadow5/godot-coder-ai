@@ -1,0 +1,14 @@
+# Dependency updates: keeps the Python + Actions dependencies current.
+# Security updates are handled automatically by GitHub for these ecosystems.
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
