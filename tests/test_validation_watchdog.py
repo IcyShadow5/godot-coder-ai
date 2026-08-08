@@ -479,7 +479,9 @@ def test_job_assign_returns_false_when_process_not_found(monkeypatch):
         return 0  # OpenProcess fails -> process not found
 
     kernel32 = SimpleNamespace(OpenProcess=_open_process)
-    monkeypatch.setattr("ctypes.WinDLL", lambda name, **kwargs: kernel32)
+    # WinDLL only exists on Windows; raising=False makes the patch work (and
+    # clean up) on every platform.
+    monkeypatch.setattr("ctypes.WinDLL", lambda name, **kwargs: kernel32, raising=False)
     assert _windows_job_assign(42, 99999) is False
 
 
@@ -490,7 +492,9 @@ def test_job_close_removes_handle_from_global_list(monkeypatch):
         pass
 
     kernel32 = SimpleNamespace(CloseHandle=_close_handle)
-    monkeypatch.setattr("ctypes.WinDLL", lambda name, **kwargs: kernel32)
+    # WinDLL only exists on Windows; raising=False makes the patch work (and
+    # clean up) on every platform.
+    monkeypatch.setattr("ctypes.WinDLL", lambda name, **kwargs: kernel32, raising=False)
     import godot_coder.process_control as pc
     pc._WIN_JOB_HANDLES.clear()
     pc._WIN_JOB_HANDLES.append(42)
@@ -511,7 +515,9 @@ def test_job_close_handles_nonexistent_handle_gracefully(monkeypatch):
         pass
 
     kernel32 = SimpleNamespace(CloseHandle=_close_handle)
-    monkeypatch.setattr("ctypes.WinDLL", lambda name, **kwargs: kernel32)
+    # WinDLL only exists on Windows; raising=False makes the patch work (and
+    # clean up) on every platform.
+    monkeypatch.setattr("ctypes.WinDLL", lambda name, **kwargs: kernel32, raising=False)
     import godot_coder.process_control as pc
     pc._WIN_JOB_HANDLES.clear()
     # Should not raise when handle is not in the list
@@ -526,7 +532,9 @@ def test_terminate_job_returns_false_on_failure(monkeypatch):
         return 0  # failure
 
     kernel32 = SimpleNamespace(TerminateJobObject=_terminate_job_object)
-    monkeypatch.setattr("ctypes.WinDLL", lambda name, **kwargs: kernel32)
+    # WinDLL only exists on Windows; raising=False makes the patch work (and
+    # clean up) on every platform.
+    monkeypatch.setattr("ctypes.WinDLL", lambda name, **kwargs: kernel32, raising=False)
     assert _windows_job_terminate(42) is False
 
 
