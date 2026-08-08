@@ -338,10 +338,12 @@ def process_command_line(pid: int) -> str | None:
         return path.read_bytes().replace(b"\0", b" ").decode("utf-8", errors="replace").strip() or None
     except OSError:
         pass
-    # macOS and BSD have no /proc; ps gives the same answer.
+    # macOS and BSD have no /proc. The -ww flag disables ps's fixed-width
+    # truncation (132 chars by default), which would otherwise cut off the
+    # tail of the command line - exactly the part the recovery check needs.
     try:
         completed = subprocess.run(
-            ["ps", "-p", str(pid), "-o", "command="],
+            ["ps", "-ww", "-p", str(pid), "-o", "command="],
             capture_output=True,
             text=True,
             timeout=5,
