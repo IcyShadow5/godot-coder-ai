@@ -67,6 +67,45 @@ class _WideTokenizer:
         Path(path).write_text("{}", encoding="utf-8")
 
 
+def test_prepare_data_cli_exits_cleanly_with_piped_stdout(tmp_path: Path, monkeypatch) -> None:
+    """Regression: prepare_data used to print the whole manifest (~10MB with
+    per-document metadata) to stdout. On a pipe nobody drains, that print
+    blocks forever and the job looks "finished but frozen". It must print a
+    short summary instead and exit promptly.
+    """
+    import os
+    import subprocess
+    import sys
+    import time
+
+    from godot_coder.tokenizer import ByteTokenizer
+
+    src = tmp_path / "raw"; src.mkdir()
+    for index in range(6):
+        (src / f"s{index}.gd").write_text(f"extends Node\nfunc f{index}():\n\treturn {index}\n" * 300, encoding="utf-8")
+    out = tmp_path / "out"
+    tokenizer_path = tmp_path / "tok.json"
+    ByteTokenizer().save(tokenizer_path)
+
+    env = {**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src")}
+    started = time.monotonic()
+    completed = subprocess.run(
+        [sys.executable, "-u", "-m", "godot_coder.prepare_data",
+         "--input", str(src), "--output", str(out), "--tokenizer", str(tokenizer_path),
+         "--val-ratio", "0.15"],
+        capture_output=True, text=True, timeout=60, env=env,
+    )
+    elapsed = time.monotonic() - started
+
+    assert completed.returncode == 0, completed.stderr
+    assert elapsed < 30, "prepare_data must exit quickly, not hang on a stdout dump"
+    assert "Prepared " in completed.stdout
+    assert "split(s):" in completed.stdout
+    # The giant per-document dump is gone: summary output stays small.
+    assert len(completed.stdout) < 500
+    assert (out / "manifest.json").exists()
+
+
 def test_prepare_uses_uint32_for_wide_vocabularies(tmp_path: Path) -> None:
     raw = tmp_path / "raw"
     processed = tmp_path / "processed"

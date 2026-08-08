@@ -23,7 +23,7 @@ from ..checkpoint import load_checkpoint
 from ..config import ModelConfig
 from ..godot_cli import build_check_command
 from ..model import TinyGPT
-from ..runtime import mps_available, resolve_device
+from ..runtime import mps_available, resolve_device, rocm_available
 from ..tokenizer import TokenizerLike, load_tokenizer
 from .paths import safe_child
 
@@ -522,6 +522,7 @@ def find_godot() -> str | None:
 def system_status(project_root: Path) -> dict[str, Any]:
     cuda_available = torch.cuda.is_available()
     mps_present = mps_available()
+    rocm_present = rocm_available()
     gpu = None
     if cuda_available:
         props = torch.cuda.get_device_properties(0)
@@ -552,7 +553,9 @@ def system_status(project_root: Path) -> dict[str, Any]:
         "platform": platform.platform(),
         "torch": torch.__version__,
         "torch_cuda": torch.version.cuda,
+        "torch_hip": getattr(torch.version, "hip", None),
         "cuda_available": cuda_available,
+        "rocm_available": rocm_present,
         "mps_available": mps_present,
         "gpu": gpu,
         "godot": godot,

@@ -3,6 +3,20 @@
 Patch notes, so I still know later what I was thinking. Detailed notes for
 each version live in `docs/CHANGELOG_v0.10.x.md`; this file is the quick tour.
 
+## v0.10.8 (2026-08-09)
+
+AMD GPUs and a clean exit:
+
+- ROCm (HIP) support: `rocm_available()` detection, an explicit
+  `device: rocm` config request, "ROCm ready" in the Studio system panel,
+  and a HIP build line in doctor/overview.
+- prepare_data no longer prints the whole manifest (per-document metadata,
+  ~10MB) to stdout - on a pipe nobody drains that print blocked forever and
+  the finished job sat frozen with zero CPU. It prints a one-line summary
+  and exits.
+- 5 new tests (ROCm device selection + prepare_data clean-exit regression).
+  193 total.
+
 ## v0.10.7 (2026-08-08)
 
 Cross-platform release - the CI matrix caught real macOS bugs, so this one

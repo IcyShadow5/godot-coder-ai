@@ -156,7 +156,7 @@ function renderRuntime() {
   const o = state.overview;
   if (!o) return;
   const dot = $("#runtime-dot");
-  const accelerator = o.cuda_available ? "CUDA" : o.mps_available ? "MPS" : null;
+  const accelerator = o.rocm_available ? "ROCm" : o.cuda_available ? "CUDA" : o.mps_available ? "MPS" : null;
   dot.classList.toggle("online", Boolean(accelerator && o.godot));
   $("#runtime-label").textContent = accelerator ? `${accelerator} ready` : "CPU mode";
   $("#runtime-gpu").textContent = o.gpu?.name || "No GPU";
@@ -1403,7 +1403,8 @@ function renderSystem() {
   const items = [
     ["Python", o.python],
     ["PyTorch", o.torch],
-    ["CUDA Build", o.torch_cuda || "CPU"],
+    ["CUDA Build", o.torch_cuda || (o.torch_hip ? "n/a (HIP build)" : "CPU")],
+    ["ROCm Build", o.torch_hip || "off"],
     ["GPU", o.gpu?.name || "Not active"],
     ["MPS", o.mps_available ? "available" : "off"],
     ["VRAM", o.gpu ? `${o.gpu.vram_gib} GiB` : "–"],

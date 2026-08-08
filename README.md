@@ -23,6 +23,10 @@ I keep the full history in `CHANGELOG.md` (per-version detail in
 `docs/CHANGELOG_v0.10.x.md`), so here is just the short version - the last
 few releases in one breath:
 
+- **v0.10.8** - AMD GPUs and a clean exit. ROCm (HIP) builds are detected and
+  reported ("ROCm ready" in the Studio, `device: rocm` in configs), and
+  prepare_data stops printing the 10MB manifest to stdout - the reason a
+  finished tokenization job used to sit frozen instead of exiting.
 - **v0.10.7** - runs everywhere. The full test suite now runs on Windows, Linux
   and macOS in CI, Apple Silicon gets real MPS acceleration instead of a
   silent CPU fallback, and macOS/BSD process handling was hardened (zombie
@@ -195,8 +199,8 @@ The Studio binds to `127.0.0.1:8765` by default. For phone/tablet access inside 
 - `ROADMAP.md` — what's done and what's next
 - `ARCHITECTURE.md` — pipeline and validation paths
 - `docs/CONFIG_REFERENCE.md` — YAML config key reference
-- `docs/INSTALL_v0.10.7.md` — install/upgrade guide (latest)
-- `docs/CHANGELOG_v0.10.7.md` — patch notes (latest; earlier `CHANGELOG_v0.10.x.md` files stay for history)
+- `docs/INSTALL_v0.10.8.md` — install/upgrade guide (latest)
+- `docs/CHANGELOG_v0.10.8.md` — patch notes (latest; earlier `CHANGELOG_v0.10.x.md` files stay for history)
 - `docs/PROGRESS_EVENT_SCHEMA_v1.md` — the progress event format
 - `docs/AUDIT_v0.6.md` — the v0.6 training-core audit (historical record)
 - `docs/INSTRUCTION_ROADMAP_v0.7.md` — the planned instruction/agent roadmap (historical draft)
@@ -243,12 +247,13 @@ picked automatically at run time (`device: auto` in the configs):
 | Hardware | Device | Notes |
 |---|---|---|
 | NVIDIA GPU | `cuda` | fp16/bf16 mixed precision, the primary path |
+| AMD GPU (ROCm build) | `cuda` | ROCm exposes AMD GPUs as `cuda` devices; `device: rocm` maps onto it |
 | Apple Silicon (M-series) | `mps` | picked automatically when no CUDA is present |
 | Anything else | `cpu` | slow but works; corpus work is fine on CPU |
 
-You can also force a device with `device: cuda`, `device: mps` or
-`device: cpu` in a config — the preflight and trainer will refuse to start
-if the requested device is not actually available.
+You can also force a device with `device: cuda`, `device: rocm`,
+`device: mps` or `device: cpu` in a config — the preflight and trainer will
+refuse to start if the requested device is not actually available.
 
 **Why there is no GPU in CI:** GitHub-hosted runners have no GPU, so
 continuous integration runs the full suite on CPU builds only. GPU
@@ -263,7 +268,8 @@ gate is for:
    `configs/autotuned_*.yaml` from the probe results
 
 The Studio surfaces the same information on the system panel (a green
-"CUDA ready" / "MPS ready" label, or CPU mode when neither is present).
+"CUDA ready" / "ROCm ready" / "MPS ready" label, or CPU mode when none
+of the backends is present).
 
 ## License
 

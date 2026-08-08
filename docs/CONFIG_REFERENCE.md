@@ -69,7 +69,7 @@ train:
 | `tokenizer_path` | `artifacts/tokenizer.json` | BPE tokenizer file. |
 | `data_dir` | `data/processed` | Training/validation data. |
 | `output_dir` | `checkpoints/tiny` | Checkpoint target. |
-| `device` | `auto` | `auto`, `cuda` or `cpu`. |
+| `device` | `auto` | `auto`, `cuda`, `rocm`, `mps` or `cpu`. |
 | `dtype` | `float16` | `float32`, `float16` or `bfloat16`. |
 | `seed` | 1337 | Seed for data shuffling and evaluation. |
 

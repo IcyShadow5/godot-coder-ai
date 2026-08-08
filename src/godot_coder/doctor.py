@@ -40,6 +40,7 @@ def collect_status(root: Path) -> tuple[dict[str, Any], bool]:
         "platform": platform.platform(),
         "pytorch": torch.__version__,
         "pytorch_cuda_build": torch.version.cuda,
+        "pytorch_hip_build": getattr(torch.version, "hip", None),
         "cuda_available": torch.cuda.is_available(),
         "cuda_test": None,
         "gpu": None,

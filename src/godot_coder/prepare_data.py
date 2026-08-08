@@ -44,7 +44,13 @@ def main() -> None:
         shard_tokens=args.shard_tokens,
         sampling_policy=args.sampling_policy,
     )
-    print(json.dumps(manifest, indent=2))
+    # The full manifest (per-document metadata) lives in manifest.json; never
+    # dump it to stdout. A ~10MB print blocks forever on a pipe nobody drains,
+    # leaving the job "finished but frozen". A summary is all the console needs.
+    splits = {str(split): meta["tokens"] for split, meta in manifest["splits"].items()}
+    total = sum(splits.values())
+    print(f"Prepared {total:,} tokens across {len(splits)} split(s): " + ", ".join(f"{k}={v:,}" for k, v in splits.items()))
+    print(f"Dataset fingerprint: {manifest['dataset_fingerprint']}")
     print(f"Tokenizer {action}: {tokenizer_path.resolve()} ({tokenizer.vocab_size:,} tokens)")
 
 
