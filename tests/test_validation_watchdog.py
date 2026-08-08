@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import time
@@ -463,6 +464,43 @@ def test_recorded_validation_recovery_never_reports_success_while_pid_is_alive(
 
 
 
+
+
+def test_process_is_alive_reports_zombie_as_dead_without_proc(monkeypatch) -> None:
+    """macOS/BSD have no /proc; ps state 'Z' (zombie) must count as dead.
+
+    Without this, os.kill(pid, 0) reports a SIGTERM'd zombie as alive and the
+    termination wait-loop spins to its deadline, making validation recovery
+    falsely report failure.
+    """
+    import godot_coder.process_control as pc
+
+    # Fake a system without /proc: the stat path never exists.
+    class _FakePath:
+        def __init__(self, _root: str = "") -> None:
+            pass
+
+        def __truediv__(self, _other) -> "_FakePath":
+            return self
+
+        def is_file(self) -> bool:
+            return False
+
+    monkeypatch.setattr(pc, "Path", _FakePath)
+
+    def fake_ps(command, **kwargs):
+        state = "Z\n" if str(command[-1]).startswith("stat") else ""
+        return subprocess.CompletedProcess(command, 0, stdout=state, stderr="")
+
+    monkeypatch.setattr(pc.subprocess, "run", fake_ps)
+    assert pc.process_is_alive(12345) is False
+
+    if os.name != "nt":  # Windows branch never reaches the ps fallback
+        def fake_ps_alive(command, **kwargs):
+            return subprocess.CompletedProcess(command, 0, stdout="S\n", stderr="")
+
+        monkeypatch.setattr(pc.subprocess, "run", fake_ps_alive)
+        assert pc.process_is_alive(12345) is True
 
 
 def test_job_create_returns_none_on_non_windows(monkeypatch):

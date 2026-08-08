@@ -296,12 +296,40 @@ def process_is_alive(pid: int) -> bool:
                 opened[0].CloseHandle(opened[1])
             except Exception:
                 pass
-    try:
-        stat_path = Path("/proc") / str(pid) / "stat"
-        if stat_path.is_file():
+    # Linux: /proc gives the exact process state, including zombies.
+    stat_path = Path("/proc") / str(pid) / "stat"
+    if stat_path.is_file():
+        try:
             fields = stat_path.read_text(encoding="utf-8", errors="replace").split()
             if len(fields) > 2 and fields[2] == "Z":
                 return False
+            return True
+        except OSError:
+            pass
+    # macOS and BSD have no /proc, and os.kill(pid, 0) reports zombies as
+    # alive, which would make the termination wait-loop hang until its
+    # deadline. Read the state from ps instead so a zombie (state 'Z') or
+    # dead ('X') process is treated as gone.
+    try:
+        completed = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "stat="],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        if completed.returncode == 0:
+            state = completed.stdout.strip()
+            if not state:
+                return False
+            if state[0] in "ZX":  # zombie / dead
+                return False
+            return True
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    # Last resort: signal-0 probe. It reports zombies as alive, but is only
+    # reached when ps itself could not run.
+    try:
         os.kill(pid, 0)
     except ProcessLookupError:
         return False
@@ -343,7 +371,7 @@ def process_command_line(pid: int) -> str | None:
     # tail of the command line - exactly the part the recovery check needs.
     try:
         completed = subprocess.run(
-            ["ps", "-ww", "-p", str(pid), "-o", "command="],
+            ["ps", "-ww", "-p", str(pid), "-o", "args="],
             capture_output=True,
             text=True,
             timeout=5,
