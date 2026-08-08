@@ -313,4 +313,9 @@ src/godot_coder/
 
 ## License
 
-This is a private/local training tool. Individual corpus sources retain their original licenses — always check before redistributing trained models. Local imports are marked `LicenseRef-User-Owned-Private` and are never redistributed.
+The code is MIT-licensed (see `LICENSE`). Two things stay separate from the code:
+
+- **Corpus sources** keep their original licenses — always check before redistributing trained models. Local imports are marked `LicenseRef-User-Owned-Private` and are never redistributed.
+- **Trained model weights** are released separately, under their own terms — the code and the models are not the same license.
+
+If you train a model on your own projects, it is yours. If you train on third-party sources, the source licenses decide what you may share.
