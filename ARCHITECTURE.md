@@ -1,4 +1,4 @@
-# Architecture v0.10.5
+# Architecture v0.10.6
 
 ```text
 Licensed Godot sources

@@ -1,6 +1,6 @@
 # Roadmap
 
-## Current stable scope: v0.10.5
+## Current stable scope: v0.10.6
 
 - licensed Godot corpus (local + cataloged)
 - BPE tokenizer
@@ -14,6 +14,7 @@
 - upgrade package buildable and applicable from `upgrade/` (v0.10.2)
 - corpus validation via job-object runner (no more Mono hangs) + job stall watchdog (v0.10.3)
 - no record is ever kept unverified: hard error list extended, line-only classification, strict-project checker, per-file verification of context warnings (v0.10.4/v0.10.5)
+- preflight correctness: validator revision check, dataset-aware freshness, corpus-only token gate (v0.10.6)
 
 ## v0.10.1 - completed
 
