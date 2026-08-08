@@ -471,16 +471,26 @@ def test_job_create_returns_none_on_non_windows(monkeypatch):
 
 
 def test_job_assign_returns_false_when_process_not_found(monkeypatch):
-    monkeypatch.setattr("os.name", "nt")
-    monkeypatch.setattr(
-        "godot_coder.process_control._windows_job_assign",
-        lambda _job, _pid: False,
-    )
+    # Plain functions, not class methods: the real code sets .argtypes/.restype
+    # on the kernel32 functions, which bound methods reject with AttributeError.
+    from types import SimpleNamespace
+
+    def _open_process(access, inherit_handle, pid) -> int:
+        return 0  # OpenProcess fails -> process not found
+
+    kernel32 = SimpleNamespace(OpenProcess=_open_process)
+    monkeypatch.setattr("ctypes.WinDLL", lambda name, **kwargs: kernel32)
     assert _windows_job_assign(42, 99999) is False
 
 
 def test_job_close_removes_handle_from_global_list(monkeypatch):
-    monkeypatch.setattr("os.name", "nt")
+    from types import SimpleNamespace
+
+    def _close_handle(handle) -> None:
+        pass
+
+    kernel32 = SimpleNamespace(CloseHandle=_close_handle)
+    monkeypatch.setattr("ctypes.WinDLL", lambda name, **kwargs: kernel32)
     import godot_coder.process_control as pc
     pc._WIN_JOB_HANDLES.clear()
     pc._WIN_JOB_HANDLES.append(42)
@@ -495,7 +505,13 @@ def test_job_close_removes_handle_from_global_list(monkeypatch):
 
 
 def test_job_close_handles_nonexistent_handle_gracefully(monkeypatch):
-    monkeypatch.setattr("os.name", "nt")
+    from types import SimpleNamespace
+
+    def _close_handle(handle) -> None:
+        pass
+
+    kernel32 = SimpleNamespace(CloseHandle=_close_handle)
+    monkeypatch.setattr("ctypes.WinDLL", lambda name, **kwargs: kernel32)
     import godot_coder.process_control as pc
     pc._WIN_JOB_HANDLES.clear()
     # Should not raise when handle is not in the list
@@ -504,11 +520,13 @@ def test_job_close_handles_nonexistent_handle_gracefully(monkeypatch):
 
 
 def test_terminate_job_returns_false_on_failure(monkeypatch):
-    monkeypatch.setattr("os.name", "nt")
-    monkeypatch.setattr(
-        "godot_coder.process_control._windows_job_terminate",
-        lambda _handle: False,
-    )
+    from types import SimpleNamespace
+
+    def _terminate_job_object(handle, exit_code) -> int:
+        return 0  # failure
+
+    kernel32 = SimpleNamespace(TerminateJobObject=_terminate_job_object)
+    monkeypatch.setattr("ctypes.WinDLL", lambda name, **kwargs: kernel32)
     assert _windows_job_terminate(42) is False
 
 

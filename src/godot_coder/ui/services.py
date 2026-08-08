@@ -23,7 +23,7 @@ from ..checkpoint import load_checkpoint
 from ..config import ModelConfig
 from ..godot_cli import build_check_command
 from ..model import TinyGPT
-from ..runtime import resolve_device
+from ..runtime import mps_available, resolve_device
 from ..tokenizer import TokenizerLike, load_tokenizer
 from .paths import safe_child
 
@@ -521,6 +521,7 @@ def find_godot() -> str | None:
 
 def system_status(project_root: Path) -> dict[str, Any]:
     cuda_available = torch.cuda.is_available()
+    mps_present = mps_available()
     gpu = None
     if cuda_available:
         props = torch.cuda.get_device_properties(0)
@@ -528,6 +529,12 @@ def system_status(project_root: Path) -> dict[str, Any]:
             "name": torch.cuda.get_device_name(0),
             "compute_capability": ".".join(map(str, torch.cuda.get_device_capability(0))),
             "vram_gib": round(props.total_memory / 1024**3, 2),
+        }
+    elif mps_present:
+        gpu = {
+            "name": "Apple Silicon (MPS)",
+            "compute_capability": None,
+            "vram_gib": None,
         }
     godot = find_godot()
     godot_version = None
@@ -546,6 +553,7 @@ def system_status(project_root: Path) -> dict[str, Any]:
         "torch": torch.__version__,
         "torch_cuda": torch.version.cuda,
         "cuda_available": cuda_available,
+        "mps_available": mps_present,
         "gpu": gpu,
         "godot": godot,
         "godot_version": godot_version,

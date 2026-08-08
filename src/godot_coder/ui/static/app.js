@@ -156,11 +156,12 @@ function renderRuntime() {
   const o = state.overview;
   if (!o) return;
   const dot = $("#runtime-dot");
-  dot.classList.toggle("online", Boolean(o.cuda_available && o.godot));
-  $("#runtime-label").textContent = o.cuda_available ? "CUDA ready" : "CPU mode";
-  $("#runtime-gpu").textContent = o.gpu?.name || "No CUDA GPU";
-  $("#runtime-vram").textContent = o.gpu ? `${o.gpu.vram_gib} GiB VRAM` : "CPU";
-  $("#runtime-meter-fill").style.width = o.cuda_available ? "100%" : "28%";
+  const accelerator = o.cuda_available ? "CUDA" : o.mps_available ? "MPS" : null;
+  dot.classList.toggle("online", Boolean(accelerator && o.godot));
+  $("#runtime-label").textContent = accelerator ? `${accelerator} ready` : "CPU mode";
+  $("#runtime-gpu").textContent = o.gpu?.name || "No GPU";
+  $("#runtime-vram").textContent = o.gpu?.vram_gib ? `${o.gpu.vram_gib} GiB VRAM` : accelerator ? "Unified memory" : "CPU";
+  $("#runtime-meter-fill").style.width = accelerator ? "100%" : "28%";
   const brandVersion = $("#brand-version");
   if (brandVersion && o.app_version) brandVersion.textContent = `v${o.app_version}`;
 }
@@ -1404,6 +1405,7 @@ function renderSystem() {
     ["PyTorch", o.torch],
     ["CUDA Build", o.torch_cuda || "CPU"],
     ["GPU", o.gpu?.name || "Not active"],
+    ["MPS", o.mps_available ? "available" : "off"],
     ["VRAM", o.gpu ? `${o.gpu.vram_gib} GiB` : "–"],
     ["Godot", o.godot_version || "Not found"],
     ["Data files", formatNumber(o.dataset_file_count)],

@@ -225,8 +225,41 @@ src/godot_coder/
 
 - Python ≥ 3.10
 - Godot 4.x (for GDScript validation)
-- PyTorch with CUDA for training (a CPU-only build works for corpus work)
-- CUDA-capable GPU (recommended for training)
+- PyTorch for training — pick the build that matches your machine (see
+  [Platforms & GPUs](#platforms--gpus))
+- A GPU is recommended for training; a CPU-only build works fine for
+  corpus work
+
+## Platforms & GPUs
+
+The code runs on Windows, Linux and macOS, and the test suite is exercised
+on all three in CI (the full test suite, CPU build). The training device is
+picked automatically at run time (`device: auto` in the configs):
+
+| Hardware | Device | Notes |
+|---|---|---|
+| NVIDIA GPU | `cuda` | fp16/bf16 mixed precision, the primary path |
+| Apple Silicon (M-series) | `mps` | picked automatically when no CUDA is present |
+| Anything else | `cpu` | slow but works; corpus work is fine on CPU |
+
+You can also force a device with `device: cuda`, `device: mps` or
+`device: cpu` in a config — the preflight and trainer will refuse to start
+if the requested device is not actually available.
+
+**Why there is no GPU in CI:** GitHub-hosted runners have no GPU, so
+continuous integration runs the full suite on CPU builds only. GPU
+verification stays local — that is exactly what the three-step hardware
+gate is for:
+
+1. `python -m godot_coder.doctor` — reports the torch build, CUDA/MPS
+   availability and runs a real tensor smoke test on the GPU
+2. `python -m godot_coder.profile_probe` — measures what actually fits on
+   your GPU (VRAM, context length, batch)
+3. `python -m godot_coder.autotune` — writes a measured
+   `configs/autotuned_*.yaml` from the probe results
+
+The Studio surfaces the same information on the system panel (a green
+"CUDA ready" / "MPS ready" label, or CPU mode when neither is present).
 
 ## License
 

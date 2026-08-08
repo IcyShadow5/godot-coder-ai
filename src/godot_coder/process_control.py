@@ -337,7 +337,21 @@ def process_command_line(pid: int) -> str | None:
     try:
         return path.read_bytes().replace(b"\0", b" ").decode("utf-8", errors="replace").strip() or None
     except OSError:
-        return None
+        pass
+    # macOS and BSD have no /proc; ps gives the same answer.
+    try:
+        completed = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "command="],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        if completed.returncode == 0:
+            return completed.stdout.strip() or None
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return None
 
 
 def run_managed_process(

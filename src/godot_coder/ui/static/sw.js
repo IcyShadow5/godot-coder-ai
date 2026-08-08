@@ -1,4 +1,4 @@
-const CACHE_NAME = "godot-coder-shell-v0.10.6-2";
+const CACHE_NAME = "godot-coder-shell-v0.10.6-3";
 const SHELL = [
   "/",
   "/manifest.webmanifest",

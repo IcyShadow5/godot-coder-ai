@@ -9,7 +9,7 @@ The Studio continues to run locally on `127.0.0.1` and requires no cloud API. Op
 - **Knowledge Building:** five guided steps from the Git repository to the token stream.
 - **Data Lab:** read/edit GDScript; existing files are backed up first.
 - **Models:** select `best`, `latest` and retained step checkpoints.
-- **System:** check Python, PyTorch, CUDA, GPU, Godot and the project path.
+- **System:** check Python, PyTorch, CUDA/MPS, GPU, Godot and the project path. On Apple Silicon the GPU shows up via the MPS backend; without any GPU the panel falls back to CPU mode.
 
 ## Chat & Code
 
