@@ -1,6 +1,6 @@
 # Roadmap
 
-## Current stable scope: v0.10.6
+## Current stable scope: v0.10.8
 
 - licensed Godot corpus (local + cataloged)
 - BPE tokenizer

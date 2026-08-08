@@ -56,17 +56,17 @@ reports/studio_jobs/<job_id>.log.txt
 | `current_file` | String | Current relative file or current work step. |
 | `scripts_found`, `trainable_scripts` | Integer | Detected and trainable GDScript files. |
 | `passed`, `warnings`, `failed`, `quarantined` | Integer | Result counters. |
-| `addon_files`, `generated_files` | Integer | Excluded add-on resp. cache/import files. |
+| `addon_files`, `generated_files` | Integer | Excluded add-on and cache/import files. |
 | `accepted` | Integer | Accepted entries, e.g. in the corpus check. |
 | `bytes_received`, `bytes_total` | Integer | Download progress in bytes (remote sources). |
 | `next_project`, `next_project_scripts`, `next_phase` | mixed | Preview of the next work step. |
 | `job_status` | String | Job end state, e.g. `completed` (remote sources). |
-| `source_url`, `source_name` | String | Shortened URL resp. file name of the remote source (always masked). |
+| `source_url`, `source_name` | String | Shortened URL or file name of the remote source (always masked). |
 | `elapsed_seconds` | Number | Time elapsed since start. |
 | `estimated_remaining_seconds` | Number or `null` | Mean remaining-time estimate. |
 | `estimated_remaining_min_seconds`, `estimated_remaining_max_seconds` | Number or `null` | Optional estimate span. |
 | `overall_progress`, `project_progress` | Number 0-1 | Overall and project progress. |
-| `message` | String | Comprehensible status message. |
+| `message` | String | Human-readable status message. |
 | `return_code` | Integer or `null` | Exit code of a technical subprocess. |
 | `command`, `parser_output`, `failure_reason` | mixed | Technical view; masked before storing. |
 

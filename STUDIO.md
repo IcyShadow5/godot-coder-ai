@@ -1,4 +1,4 @@
-# Godot Coder Studio v0.10.6
+# Godot Coder Studio v0.10.8
 
 The Studio continues to run locally on `127.0.0.1` and requires no cloud API. Optionally, Tailscale Serve provides a private HTTPS entry point within your own tailnet.
 
@@ -23,9 +23,9 @@ The Data Lab is a small editor for the local corpus: read and edit GDScript file
 
 1. **Select sources** - the official Godot sources are preselected; they can be disabled, plus extension packages (small / large build · 5M / max build · 20M). Own Git sources can only be added with a permitted license.
 2. **Fetch & clean sources** - `fetch` downloads the selected repositories, `build` creates the staging manifest (licenses, splits, deduplication).
-3. **Check** - `validate` runs the code through the Godot parser; afterwards the corpus audit with token counting follows.
+3. **Check** - `validate` runs the code through the Godot parser; then the corpus audit with token counting follows.
 4. **Token stream** - `train-bpe` builds the byte-BPE tokenizer and the versioned token stream.
-5. **Prepare dataset** - the final training dataset with shards and hashes; afterwards training can start.
+5. **Prepare dataset** - the final training dataset with shards and hashes; then training can start.
 
 For the private import of own projects, the options in the "Import options for large volumes" section apply.
 

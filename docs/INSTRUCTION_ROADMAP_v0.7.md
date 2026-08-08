@@ -31,7 +31,7 @@ Generated solutions are evaluated with Godot, tests and static checks.
 Successful results can be adopted as high-quality retraining data;
 failed outputs stay separate and are not blindly trained.
 The building blocks already grow today: the managed-process runner,
-the Godot parser check with fallback and the error-rate abort are in principle
+the Godot parser check with fallback and the error-rate abort are essentially
 the same infrastructure a verifier needs later.
 
 ## Stage 4 - Agent runtime
