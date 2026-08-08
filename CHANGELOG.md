@@ -3,6 +3,17 @@
 Patch notes, so I still know later what I was thinking. Detailed notes for
 each version live in `docs/CHANGELOG_v0.10.x.md`; this file is the quick tour.
 
+## v0.10.9 (2026-08-09)
+
+Docs-only release - a voice pass over the documentation:
+
+- Removed leftover translation artifacts ("resp." -> "and"/"or",
+  "Comprehensible" -> "Human-readable", "in principle" -> "essentially",
+  "afterwards ... follows" -> "then ... follows").
+- Bumped stale version stamps in STUDIO/ARCHITECTURE/ROADMAP to v0.10.9
+  (current stable scope).
+- No code changed; 193 tests stay green.
+
 ## v0.10.8 (2026-08-09)
 
 AMD GPUs and a clean exit:

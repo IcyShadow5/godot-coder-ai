@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "godot-coder-ai"
-version = "0.10.8"
+version = "0.10.9"
 description = "A local training studio for building a compact Godot/GDScript language model from scratch."
 readme = "README.md"
 license = {text = "MIT"}
