@@ -23,6 +23,10 @@ I keep the full history in `CHANGELOG.md` (per-version detail in
 `docs/CHANGELOG_v0.10.x.md`), so here is just the short version - the last
 few releases in one breath:
 
+- **v0.10.7** - runs everywhere. The full test suite now runs on Windows, Linux
+  and macOS in CI, Apple Silicon gets real MPS acceleration instead of a
+  silent CPU fallback, and macOS/BSD process handling was hardened (zombie
+  detection, untruncated command lines).
 - **v0.10.6** - preflight correctness. The validator-version check stopped
   being hardcoded, the freshness check only judges what a dataset actually
   depends on, and token minimums apply to corpus profiles only. Also made
@@ -191,8 +195,8 @@ The Studio binds to `127.0.0.1:8765` by default. For phone/tablet access inside 
 - `ROADMAP.md` — what's done and what's next
 - `ARCHITECTURE.md` — pipeline and validation paths
 - `docs/CONFIG_REFERENCE.md` — YAML config key reference
-- `docs/INSTALL_v0.10.6.md` — install/upgrade guide (latest)
-- `docs/CHANGELOG_v0.10.6.md` — patch notes (latest; earlier `CHANGELOG_v0.10.x.md` files stay for history)
+- `docs/INSTALL_v0.10.7.md` — install/upgrade guide (latest)
+- `docs/CHANGELOG_v0.10.7.md` — patch notes (latest; earlier `CHANGELOG_v0.10.x.md` files stay for history)
 - `docs/PROGRESS_EVENT_SCHEMA_v1.md` — the progress event format
 - `docs/AUDIT_v0.6.md` — the v0.6 training-core audit (historical record)
 - `docs/INSTRUCTION_ROADMAP_v0.7.md` — the planned instruction/agent roadmap (historical draft)

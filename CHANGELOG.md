@@ -3,6 +3,26 @@
 Patch notes, so I still know later what I was thinking. Detailed notes for
 each version live in `docs/CHANGELOG_v0.10.x.md`; this file is the quick tour.
 
+## v0.10.7 (2026-08-08)
+
+Cross-platform release - the CI matrix caught real macOS bugs, so this one
+makes "runs on your machine" true instead of assumed:
+
+- The full test suite now runs on Ubuntu, Windows and macOS in CI (CPU
+  torch, fail-fast off). It immediately caught a Linux-only test bug and
+  two macOS-only process bugs.
+- Apple Silicon (MPS) support: device auto-selection is now cuda -> mps ->
+  cpu, the Studio panel reports MPS + unified memory, and four new tests
+  cover it.
+- Windows job-object tests were rewritten with plain-function kernel32
+  fakes instead of os.name patching (the old patch silently tested the
+  wrong function and crashed pytest's failure formatter on Linux).
+- process_is_alive now detects zombies on macOS/BSD (no /proc there), so
+  validation crash-recovery terminates reliably; command lines are read
+  untruncated via `ps -ww -o args=`.
+- CI actions bumped to v7 (kills the Node 20 deprecation warning).
+- 188 tests total.
+
 ## v0.10.6 (2026-08-08)
 
 Preflight correctness fixes, found while running the first real training runs:
