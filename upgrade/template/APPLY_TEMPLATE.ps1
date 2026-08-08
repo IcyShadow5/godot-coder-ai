@@ -37,22 +37,9 @@ $files = @(
     # "docs\CHANGELOG_v0.11.0.md",
 )
 
-# --- Confirm ----------------------------------------------------------
-if (-not $ConfirmStopped) {
-    Write-Host "Target : $Target" -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "Files that will be upgraded ($($files.Count) total):" -ForegroundColor White
-    foreach ($f in $files) {
-        Write-Host "  $f" -ForegroundColor Green
-    }
-    Write-Host ""
-    Write-Host 'The Studio must be STOPPED before applying.' -ForegroundColor Yellow
-    $answer = Read-Host "Type JA to proceed"
-    if ($answer -ne "JA") {
-        Write-Host "Aborted." -ForegroundColor Red
-        exit 0
-    }
-}
+# The Studio must be STOPPED before applying. The apply runs non-interactively
+# (no prompt) so it also works from a scheduled task or a double-click .bat.
+# $ConfirmStopped is kept for backwards-compatible invocations; it is not used.
 
 # --- Backup -----------------------------------------------------------
 $BackupRoot = Join-Path $Target ".upgrade_backups"

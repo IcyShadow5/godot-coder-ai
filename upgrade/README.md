@@ -13,7 +13,8 @@ upgrade package that copies exactly those files and nothing else.
 
 ## How to build an upgrade package
 
-1. Copy `template/APPLY_TEMPLATE.ps1` to e.g. `APPLY_V0110_UPGRADE.ps1` and
+1. Copy `template/APPLY_TEMPLATE.ps1` to e.g. `APPLY_V0110_UPGRADE.ps1`,
+   `template/APPLY_TEMPLATE.bat` to `APPLY_V0110_UPGRADE.bat`, and
    `template/build_TEMPLATE_payload.ps1` to `build_V0110_payload.ps1`.
 2. In both copies set `$UpgradeVersion = "v0.11.0"` and fill `$files` with the
    relative path of every file that changed in this release (same list in both).
@@ -21,7 +22,7 @@ upgrade package that copies exactly those files and nothing else.
    from the listed files (gitignored build output).
 4. Hand the folder to the live install and run:
    `APPLY_V0110_UPGRADE.ps1 -ExistingProject "C:\path\to\CodingAi"`
-   (wrap it in a small `.bat` for a double-click experience).
+   or double-click `APPLY_V0110_UPGRADE.bat` and paste the project path.
 5. The apply script backs up every replaced file to
    `.upgrade_backups\v0.11.0_<timestamp>` and then runs `doctor` + `pytest -q`
    automatically. It never touches `.venv`, `data`, `checkpoints`, `artifacts`,
@@ -30,4 +31,5 @@ upgrade package that copies exactly those files and nothing else.
 ## Layout
 
 - `template/APPLY_TEMPLATE.ps1` — versioned apply script (backup → copy → verify)
+- `template/APPLY_TEMPLATE.bat` — double-click wrapper that asks for the project path
 - `template/build_TEMPLATE_payload.ps1` — payload assembler
