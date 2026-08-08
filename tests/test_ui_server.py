@@ -179,3 +179,85 @@ def test_local_import_extra_env_maps_request_flags() -> None:
         "GODOT_CODER_FAST_STATIC": "1",
         "GODOT_CODER_ERROR_ABORT_THRESHOLD": "60",
     }
+
+
+
+def test_train_endpoint_accepts_config_with_null_max_steps(tmp_path: Path, monkeypatch) -> None:
+    """A config with max_steps: null (passes-driven run) must not crash the handler."""
+    (tmp_path / "configs").mkdir()
+    (tmp_path / "data" / "raw").mkdir(parents=True)
+    (tmp_path / "checkpoints").mkdir()
+    (tmp_path / "artifacts").mkdir()
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='test'\n", encoding="utf-8")
+    (tmp_path / "configs" / "null_steps.yaml").write_text(
+        "model:\n"
+        "  vocab_size: 256\n"
+        "  max_seq_len: 32\n"
+        "  n_layers: 1\n"
+        "  d_model: 64\n"
+        "  d_ff: 128\n"
+        "  n_heads: 2\n"
+        "train:\n"
+        "  output_dir: checkpoints/null_steps\n"
+        "  batch_size: 1\n"
+        "  gradient_accumulation_steps: 1\n"
+        "  max_steps: null\n"
+        "  target_dataset_passes: 1\n"
+        "  dtype: float32\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("godot_coder.ui.server.build_preflight", lambda *a, **k: {"can_start": True})
+    started: dict[str, object] = {}
+
+    def fake_start(kind, args, *, max_steps=None, extra_env=None):
+        started["kind"] = kind
+        started["max_steps"] = max_steps
+        return {"id": "fake", "kind": kind, "status": "starting"}
+
+    app = create_app(tmp_path)
+    app.state.jobs.start = fake_start  # type: ignore[method-assign]
+    with TestClient(app) as client:
+        response = client.post("/api/jobs/train", json={"config": "configs/null_steps.yaml", "resume": None})
+    assert response.status_code == 200
+    assert started["kind"] == "training"
+    assert started["max_steps"] is None
+
+
+def test_train_endpoint_passes_explicit_max_steps_through(tmp_path: Path, monkeypatch) -> None:
+    """An explicit max_steps in the config is forwarded to the job progress bar."""
+    (tmp_path / "configs").mkdir()
+    (tmp_path / "data" / "raw").mkdir(parents=True)
+    (tmp_path / "checkpoints").mkdir()
+    (tmp_path / "artifacts").mkdir()
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='test'\n", encoding="utf-8")
+    (tmp_path / "configs" / "fixed_steps.yaml").write_text(
+        "model:\n"
+        "  vocab_size: 256\n"
+        "  max_seq_len: 32\n"
+        "  n_layers: 1\n"
+        "  d_model: 64\n"
+        "  d_ff: 128\n"
+        "  n_heads: 2\n"
+        "train:\n"
+        "  output_dir: checkpoints/fixed_steps\n"
+        "  batch_size: 1\n"
+        "  gradient_accumulation_steps: 1\n"
+        "  max_steps: 600\n"
+        "  dtype: float32\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("godot_coder.ui.server.build_preflight", lambda *a, **k: {"can_start": True})
+    started: dict[str, object] = {}
+
+    def fake_start(kind, args, *, max_steps=None, extra_env=None):
+        started["kind"] = kind
+        started["max_steps"] = max_steps
+        return {"id": "fake", "kind": kind, "status": "starting"}
+
+    app = create_app(tmp_path)
+    app.state.jobs.start = fake_start  # type: ignore[method-assign]
+    with TestClient(app) as client:
+        response = client.post("/api/jobs/train", json={"config": "configs/fixed_steps.yaml", "resume": None})
+    assert response.status_code == 200
+    assert started["kind"] == "training"
+    assert started["max_steps"] == 600

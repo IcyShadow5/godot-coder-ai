@@ -3,6 +3,17 @@
 Patch notes, so I still know later what I was thinking. Detailed notes for
 each version live in `docs/CHANGELOG_v0.10.x.md`; this file is the quick tour.
 
+## v0.10.10 (2026-08-09)
+
+Training-start fix - no more silent crash on passes-driven configs:
+
+- Starting training with `max_steps: null` (the autotuned and balanced
+  profiles) crashed the train endpoint with an HTTP 500 - `int(None)` on
+  an unhandled path. Null/absent `max_steps` now means "the run is driven
+  by `target_dataset_passes`" and the request succeeds.
+- 2 new regression tests for the train endpoint (null and explicit
+  `max_steps`). 195 total.
+
 ## v0.10.9 (2026-08-09)
 
 Docs voice pass plus smoother upgrade tooling - no product code changed

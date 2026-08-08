@@ -690,7 +690,9 @@ def create_app(project_root: Path) -> FastAPI:
             readiness = await asyncio.to_thread(build_preflight, root, config_path=config_path, mode="full")
             if not readiness.get("can_start"):
                 raise ValueError("Training blocked: " + " · ".join(readiness.get("blockers") or ["Preflight failed"]))
-            max_steps = int(raw.get("train", {}).get("max_steps", 0)) or None
+            # max_steps may be null in the config (runs are then driven by
+            # target_dataset_passes) - treat null/absent as 0 before int().
+            max_steps = int(raw.get("train", {}).get("max_steps") or 0) or None
             await asyncio.to_thread(app.state.generation.unload)
             args = ["-m", "godot_coder.train", "--config", str(config_path)]
             if request.resume:

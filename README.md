@@ -23,6 +23,12 @@ I keep the full history in `CHANGELOG.md` (per-version detail in
 `docs/CHANGELOG_v0.10.x.md`), so here is just the short version - the last
 few releases in one breath:
 
+- **v0.10.10** - training-start fix. Profiles driven by
+  `target_dataset_passes` (autotuned, balanced) set `max_steps: null`;
+  the train endpoint crashed on `int(None)` with an HTTP 500, so "Start
+  training" failed silently. Null/absent `max_steps` is now treated as a
+  passes-driven run and the job starts. 2 regression tests added
+  (195 total).
 - **v0.10.9** - docs voice pass + smoother upgrades. A review pass removed
   leftover translation artifacts ("resp.", "Comprehensible", "in principle")
   and bumped stale version stamps; the upgrade template now applies
@@ -204,8 +210,8 @@ The Studio binds to `127.0.0.1:8765` by default. For phone/tablet access inside 
 - `ROADMAP.md` — what's done and what's next
 - `ARCHITECTURE.md` — pipeline and validation paths
 - `docs/CONFIG_REFERENCE.md` — YAML config key reference
-- `docs/INSTALL_v0.10.9.md` — install/upgrade guide (latest)
-- `docs/CHANGELOG_v0.10.9.md` — patch notes (latest; earlier `CHANGELOG_v0.10.x.md` files stay for history)
+- `docs/INSTALL_v0.10.10.md` — install/upgrade guide (latest)
+- `docs/CHANGELOG_v0.10.10.md` — patch notes (latest; earlier `CHANGELOG_v0.10.x.md` files stay for history)
 - `docs/PROGRESS_EVENT_SCHEMA_v1.md` — the progress event format
 - `docs/AUDIT_v0.6.md` — the v0.6 training-core audit (historical record)
 - `docs/INSTRUCTION_ROADMAP_v0.7.md` — the planned instruction/agent roadmap (historical draft)
