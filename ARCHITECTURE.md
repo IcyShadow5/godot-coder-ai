@@ -1,4 +1,4 @@
-# Architecture v0.10.3
+# Architecture v0.10.5
 
 ```text
 Licensed Godot sources
@@ -56,6 +56,15 @@ grandchild processes that inherit the stdout/stderr pipes can no longer cause
 deadlocks or orphans. The Studio JobManager additionally terminates jobs that
 have been silent for longer than `GODOT_CODER_JOB_STALL_TIMEOUT_SECONDS`
 (default 1200s).
+
+Since v0.10.4 the classification is strict: only the error line itself
+decides hard vs. context (a benign context error no longer demotes a real
+parse error), and the hard-error list covers unambiguous syntax errors beyond
+`expected ...` phrasing. Since v0.10.5 every context-warning record is
+additionally parsed standalone with `--check-only` - no record is kept
+unverified. Decisions are cached per validator version
+(`godot_project_validation_v4.json`), so a classifier change forces a clean
+re-check.
 
 ## v0.6 Professional Training Core
 

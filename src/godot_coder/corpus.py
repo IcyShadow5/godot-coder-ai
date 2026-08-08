@@ -1265,23 +1265,57 @@ def _find_godot() -> str | None:
     return None
 
 
+
+def _heal_manifest_titles(manifest: dict[str, Any], project_root: Path) -> None:
+    """Refresh stale catalog titles persisted by older scans.
+
+    Older scans stored German catalog titles in each record and in the source
+    manifests (the registry itself was translated later). The UI renders the
+    persisted values, so heal them from the current English registry whenever a
+    source id matches. Only the display title is refreshed - user choices such
+    as enabled/branch and the user's own local-* source content are untouched.
+    """
+    registry_path = corpus_root(project_root) / "sources.json"
+    try:
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return
+    titles = {s.get("id"): s.get("title") for s in registry.get("sources", []) if s.get("id")}
+    if not titles:
+        return
+    for record in manifest.get("records", []):
+        source_id = record.get("source_id")
+        title = titles.get(source_id) if source_id else None
+        if title and record.get("source_title") != title:
+            record["source_title"] = title
+    for source in manifest.get("sources", []):
+        source_id = source.get("id")
+        title = titles.get(source_id) if source_id else None
+        if title and source.get("title") != title:
+            source["title"] = title
+
+
 def _validation_cache_path(project_root: Path) -> Path:
-    # v2 is intentionally separate: v1 cached false failures from invoking
-    # ordinary Node/Resource scripts through ``--script --check-only``.
-    return corpus_root(project_root) / "cache" / "godot_project_validation_v2.json"
+    # Each validator version gets its own file: v1 cached false failures from
+    # invoking ordinary Node/Resource scripts through ``--script --check-only``,
+    # v2/v3 predate the corrected classification and per-file verification, so
+    # replaying their decisions would keep the old leniency. The current file
+    # is v4 (v0.10.5): hard-error classification, strict-project checker and
+    # per-file verification of context warnings.
+    return corpus_root(project_root) / "cache" / "godot_project_validation_v4.json"
 
 
 def _load_validation_cache(project_root: Path) -> dict[str, Any]:
     path = _validation_cache_path(project_root)
     if not path.exists():
-        return {"format_version": 2, "validator": "project-aware-v2", "entries": {}}
+        return {"format_version": 4, "validator": "project-aware-v4", "entries": {}}
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-        if payload.get("format_version") == 2 and payload.get("validator") == "project-aware-v2":
+        if payload.get("format_version") == 4 and payload.get("validator") == "project-aware-v4":
             return payload
     except (OSError, ValueError, TypeError):
         pass
-    return {"format_version": 2, "validator": "project-aware-v2", "entries": {}}
+    return {"format_version": 4, "validator": "project-aware-v4", "entries": {}}
 
 
 def _validation_timeout_seconds() -> float:
@@ -1332,6 +1366,12 @@ _HARD_SYNTAX_MARKERS = (
     "unterminated", "unclosed", "invalid numeric constant", "invalid escape sequence",
     "expected end of statement", "expected closing", "expected expression", "expected statement",
     "parser bug", "tokenizer error",
+    # Additional unambiguous GDScript syntax errors that Godot 4 reports without
+    # the "expected ..." phrasing. Kept deliberately narrow: semantic errors
+    # (missing type, nonexistent function, bad call) stay context warnings.
+    "invalid statement", "invalid use of", "invalid assignment",
+    "expected identifier", "expected variable name", "constant expected",
+    "invalid declaration",
 )
 
 
@@ -1400,10 +1440,13 @@ def _classify_project_output(output: str) -> dict[str, Any]:
         is_error = "parse error" in lower or "script error" in lower or lower.startswith("error:")
         if not is_error:
             continue
+        # Only the error line itself decides hard vs context. Using the
+        # surrounding block let a benign context error (missing resource, RID
+        # leak, autoload) printed next to a real parse error demote it to a
+        # warning. The block is kept for message text and path attribution.
         block = " ".join(lines[max(0, index - 1): min(len(lines), index + 3)]).strip()
-        block_lower = block.lower()
-        is_context = any(marker in block_lower for marker in _CONTEXT_ERROR_MARKERS)
-        is_hard = any(marker in block_lower for marker in _HARD_SYNTAX_MARKERS)
+        is_context = any(marker in lower for marker in _CONTEXT_ERROR_MARKERS)
+        is_hard = any(marker in lower for marker in _HARD_SYNTAX_MARKERS)
         paths = _paths_near_error(lines, index)
         if is_hard and not is_context:
             if paths:
@@ -1436,7 +1479,7 @@ def _project_cache_key(
         for item in records
     )
     payload = "\0".join([
-        "project-aware-v2", str(project.resolve()), project_settings_hash, godot_version,
+        "project-aware-v4", str(project.resolve()), project_settings_hash, godot_version,
         *record_fingerprints,
     ])
     return hashlib.sha256(payload.encode("utf-8", errors="replace")).hexdigest()
@@ -1448,20 +1491,31 @@ def _write_project_checker(project_root: Path, cache_key: str, relative_paths: l
     helper = helper_dir / f"project_check_{cache_key[:16]}.gd"
     resource_paths = [f"res://{path}" for path in relative_paths]
     payload = json.dumps(resource_paths, ensure_ascii=False)
+    # Strict projects (gdUnit4, Pixelorama, ...) promote GDScript warnings to
+    # errors. The generated checker must never fail to compile because of its
+    # own style: an untyped loop variable or an unused local would otherwise
+    # break the per-file check for the entire project. Ignore the warning
+    # classes we do not care about and keep every variable explicitly typed as
+    # a second safety net.
     helper.write_text(
-        "extends SceneTree\n\n"
+        "extends SceneTree\n"
+        "@warning_ignore_start(\"untyped_declaration\", \"inference_on_variant\", "
+        "\"shadowed_variable\", \"unused_variable\", \"unused_parameter\", "
+        "\"redundant_await\", \"unsafe_method_access\", \"unsafe_property_access\", "
+        "\"unsafe_cast\", \"unsafe_call_argument\", \"int_as_enum_without_cast\", "
+        "\"int_as_enum_without_match\", \"narrowing_conversion\", \"integer_division\", "
+        "\"return_value_discarded\")\n"
         "func _initialize() -> void:\n"
-        f"\tvar paths: Array = {payload}\n"
+        f"\tvar paths: Array[String] = {payload}\n"
         "\tvar failed := 0\n"
-        "\tfor path_value in paths:\n"
-        "\t\tvar path := str(path_value)\n"
-        "\t\tprint(\"GCAI_CHECK_BEGIN\\t\" + path)\n"
-        "\t\tvar resource := ResourceLoader.load(path, \"\", ResourceLoader.CACHE_MODE_IGNORE)\n"
+        "\tfor path_value: String in paths:\n"
+        "\t\tprint(\"GCAI_CHECK_BEGIN\\t\" + path_value)\n"
+        "\t\tvar resource := ResourceLoader.load(path_value, \"\", ResourceLoader.CACHE_MODE_IGNORE)\n"
         "\t\tif resource == null:\n"
         "\t\t\tfailed += 1\n"
-        "\t\t\tprint(\"GCAI_CHECK_NULL\\t\" + path)\n"
+        "\t\t\tprint(\"GCAI_CHECK_NULL\\t\" + path_value)\n"
         "\t\telse:\n"
-        "\t\t\tprint(\"GCAI_CHECK_OK\\t\" + path)\n"
+        "\t\t\tprint(\"GCAI_CHECK_OK\\t\" + path_value)\n"
         "\tprint(\"GCAI_CHECK_SUMMARY\\ttotal=\" + str(paths.size()) + \"\\tfailed=\" + str(failed))\n"
         "\tquit(failed)\n",
         encoding="utf-8",
@@ -1483,6 +1537,77 @@ def _checker_results(output: str) -> tuple[set[str], set[str]]:
     return passed, null
 
 
+
+def _run_perfile_syntax_check(
+    project_root: Path,
+    item: dict[str, Any],
+    godot: str,
+    godot_version: str,
+    cache_entries: dict[str, Any],
+    *,
+    project: Path | None,
+) -> dict[str, Any] | None:
+    """Parse one record's script standalone with Godot --check-only.
+
+    Used for project-group records that could not be positively verified in
+    the project context (context warnings: the resource did not load, no
+    checker marker was produced, or the project import/checker itself failed).
+    A real syntax error is then still a hard exclusion instead of being kept
+    as an unverified warning. Returns None when the source file cannot be
+    located (the record is kept with an explicit note in that case).
+    """
+    source_root = corpus_root(project_root) / "downloads" / item["source_id"]
+    script = source_root / item["original_path"]
+    cache_key = hashlib.sha256(
+        f"perfile:{item['source_id']}:{item['original_path']}:{item.get('content_sha256')}:{godot_version}".encode("utf-8")
+    ).hexdigest()
+    cached = cache_entries.get(cache_key)
+    if isinstance(cached, dict) and cached.get("validator") == "project-aware-v4-perfile":
+        return cached.get("result")
+    if not script.exists():
+        return None
+    context_root = project if project is not None else source_root
+    result = run_managed_process(
+        build_check_command(godot, context_root, script),
+        timeout_seconds=_validation_timeout_seconds(),
+        idle_timeout_seconds=min(_validation_timeout_seconds(), _validation_idle_timeout_seconds()),
+    )
+    output = result.output.strip()
+    if result.startup_error:
+        output = output or f"Godot could not be started: {result.startup_error}"
+    try:
+        relative = script.resolve().relative_to(source_root.resolve()).as_posix().lower()
+    except ValueError:
+        # The script path escapes the source root (should not happen with
+        # manifest-built paths). Nothing can be attributed; keep the record
+        # with the original warning instead of failing the whole validate.
+        return None
+    analysis = _classify_project_output(output)
+    matched = analysis["hard_failures"].get(relative)
+    if matched is None:
+        matches = [
+            error for path, error in analysis["hard_failures"].items()
+            if path.endswith("/" + relative) or relative.endswith("/" + path)
+        ]
+        if len(matches) == 1:
+            matched = matches[0]
+    if matched:
+        out = {"status": "failed", "classification": "syntax_error", "error": matched}
+    else:
+        if result.timed_out:
+            note = "The per-file parse exceeded its time limit; no clear syntax error."
+        elif analysis["context_warnings"]:
+            note = analysis["context_warnings"][0]
+        else:
+            note = "Per-file parse finished without a clear syntax error."
+        out = {"status": "passed", "classification": "context_warning", "error": note}
+    cache_entries[cache_key] = {
+        "validator": "project-aware-v4-perfile", "checked_at": time.time(),
+        "godot": godot_version, "result": out,
+    }
+    return out
+
+
 def _validate_project_group(
     project_root: Path,
     project: Path,
@@ -1494,7 +1619,7 @@ def _validate_project_group(
     """Validate one project once and classify each record conservatively."""
     key = _project_cache_key(project_root, project, records, godot_version)
     cached = cache_entries.get(key)
-    if isinstance(cached, dict) and cached.get("validator") == "project-aware-v2":
+    if isinstance(cached, dict) and cached.get("validator") == "project-aware-v4":
         result_map = cached.get("records") or {}
         if all(item.get("record_id") in result_map for item in records):
             return result_map, cached.get("project_result") or {}, True
@@ -1620,6 +1745,27 @@ def _validate_project_group(
             elif warning_summary is not None and not checker_passed:
                 classification = "context_warning"
                 error = warning_summary
+            if classification == "context_warning":
+                # v0.10.5: never keep a record unverified. A context warning
+                # means the file was not positively checked inside the project
+                # (load failed, no checker marker, or the import/checker
+                # itself failed). Run the same standalone --check-only parse
+                # used for project-less addons: a real syntax error still
+                # becomes a hard exclusion; a clean parse keeps the warning
+                # but records that the file was verified.
+                perfile = _run_perfile_syntax_check(
+                    project_root, item, godot, godot_version, cache_entries, project=project,
+                )
+                if perfile is None:
+                    error = (error or "") + " | Per-file parse skipped (source file not found); record kept unverified."
+                elif perfile["status"] == "failed":
+                    hard_count += 1
+                    result_map[item["record_id"]] = {
+                        "status": "failed", "classification": "syntax_error", "error": perfile["error"],
+                    }
+                    continue
+                else:
+                    error = (error or "") + " | " + perfile["error"]
             result_map[item["record_id"]] = {
                 "status": "passed", "classification": classification, "error": error,
             }
@@ -1644,7 +1790,7 @@ def _validate_project_group(
         )
 
     cache_entries[key] = {
-        "validator": "project-aware-v2", "checked_at": time.time(), "godot": godot_version,
+        "validator": "project-aware-v4", "checked_at": time.time(), "godot": godot_version,
         "records": result_map, "project_result": project_result,
     }
     return result_map, project_result, False
@@ -1715,11 +1861,11 @@ def _validate_standalone_records(
         item["validation_status"] = status
         item["validation_error"] = error
         item["validation_classification"] = classification
-        item["validation_engine"] = "project-aware-v2"
+        item["validation_engine"] = "project-aware-v4"
         hard_count += int(status == "failed")
         if not isinstance(cached, dict):
             cache_entries[cache_key] = {
-                "validator": "project-aware-v2-standalone", "checked_at": time.time(),
+                "validator": "project-aware-v4-standalone", "checked_at": time.time(),
                 "godot": godot_version, "status": status, "classification": classification, "error": error,
             }
     return hard_count
@@ -1731,12 +1877,13 @@ def validate_and_finalize(project_root: Path, *, include_docs: bool = True, mini
         raise FileNotFoundError("The corpus has not been scanned yet.")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     records: list[dict[str, Any]] = manifest["records"]
+    _heal_manifest_titles(manifest, project_root)
 
     # v0.7.6 and earlier may have persisted false failures. Force one clean
     # project-aware pass even when the old job completed or was interrupted.
     previous_engine = manifest.get("validation_engine")
     revalidated_records = 0
-    if previous_engine != "project-aware-v2":
+    if previous_engine != "project-aware-v4":
         for record in records:
             if record.get("kind") == "godot_projects":
                 record["validation_status"] = "pending"
@@ -1813,7 +1960,7 @@ def validate_and_finalize(project_root: Path, *, include_docs: bool = True, mini
             record["validation_status"] = result["status"]
             record["validation_error"] = result.get("error")
             record["validation_classification"] = result.get("classification")
-            record["validation_engine"] = "project-aware-v2"
+            record["validation_engine"] = "project-aware-v4"
             processed += 1
         passed_now = sum(item.get("validation_status") == "passed" for item in records)
         failed_now = sum(item.get("validation_status") == "failed" for item in records)
@@ -1894,21 +2041,21 @@ def validate_and_finalize(project_root: Path, *, include_docs: bool = True, mini
         source["classifications"][classification] = source["classifications"].get(classification, 0) + 1
 
     manifest["validated_at"] = time.time()
-    manifest["validation_engine"] = "project-aware-v2"
+    manifest["validation_engine"] = "project-aware-v4"
     manifest["validation_godot"] = godot_version
     manifest["summary"] = _summary(records, manifest.get("skipped", [])) | {
         "prepared": accepted, "context_warnings": context_warnings,
     }
     _json_write(manifest_path, manifest)
     validation_cache.update({
-        "format_version": 2, "validator": "project-aware-v2", "godot_version": godot_version,
+        "format_version": 4, "validator": "project-aware-v4", "godot_version": godot_version,
         "updated_at": time.time(),
     })
     _json_write(_validation_cache_path(project_root), validation_cache)
 
     report = {
         "created_at": time.time(),
-        "validator": "project-aware-v2",
+        "validator": "project-aware-v4",
         "godot": godot,
         "godot_version": godot_version,
         "revalidated_legacy_records": revalidated_records,

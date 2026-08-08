@@ -1,0 +1,22 @@
+# Line endings -----------------------------------------------------------------
+# Store everything as LF in the repository and check it out as LF, so the
+# working tree never depends on the local core.autocrlf setting.
+* text=auto eol=lf
+
+# Windows command scripts are the exception: cmd.exe is happier with CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files - never apply any conversion -------------------------------------
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.pyc binary
+*.pyd binary
+*.so binary
+*.dll binary

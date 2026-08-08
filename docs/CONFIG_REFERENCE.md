@@ -161,3 +161,28 @@ The validation on load rejects when e.g. `d_model` is not divisible by `n_heads`
 the head width is odd, `dtype`/`evaluation_mode`/`compile_mode`
 are unknown, `warmup_steps >= max_steps`, or `max_dataset_passes_block`
 is below the warning threshold. Error texts name the affected field directly.
+
+## Corpus validation behavior (pipeline context, not YAML)
+
+The sections above configure training only. Corpus validation
+(`corpus validate`) is pipeline behavior; since v0.10.5 no record is kept
+unverified:
+
+- Every `.gd` script is verified by Godot itself — a full project import for
+  projects, standalone `--check-only` parses for addon scripts and for any
+  record that could not be positively checked inside its project (a
+  `context_warning`: the resource did not load, no checker marker was
+  produced, or the project import/checker failed or timed out).
+- An unambiguous syntax error always becomes a hard exclusion
+  (`syntax_error`); incompatible Godot-3 projects are hard-excluded too.
+  Everything else is admitted.
+- Only a truly missing source file skips the parse, and that is recorded
+  explicitly instead of being silent.
+- Per-file parses respect the same `GODOT_CODER_VALIDATION_TIMEOUT_SECONDS`
+  and idle timeouts as project imports.
+- The validation cache (`godot_project_validation_v4.json`) keys decisions
+  by validator version, so older v3 decisions are never replayed — the next
+  `validate` re-checks everything with the current pipeline.
+
+Details and patch notes: `README.md`, `docs/CHANGELOG_v0.10.4.md`,
+`docs/CHANGELOG_v0.10.5.md`.

@@ -1,4 +1,4 @@
-# Godot Coder AI v0.10.3
+# Godot Coder AI v0.10.5
 
 A local training studio for building a compact Godot/GDScript language model from scratch — train your own GPT-style model that actually understands GDScript. No cloud, no API keys, everything runs on your machine.
 
@@ -6,11 +6,43 @@ A local training studio for building a compact Godot/GDScript language model fro
 
 Three things bundled into one project:
 
-1. **Corpus curation** — imports open-source Godot projects (or your own), scans for secrets, validates syntax through Godot's own parser, deduplicates, and assembles a clean training dataset.
+1. **Corpus curation** — imports open-source Godot projects (or your own), scans for secrets, validates syntax through Godot's own parser, deduplicates, and assembles a clean training dataset. Every script is verified by Godot itself — via a full project import or a standalone per-file parse — so nothing is kept unverified.
 2. **Training** — a from-scratch decoder-only transformer trained on your local GPU (PyTorch/CUDA).
 3. **Studio (web UI)** — import projects, monitor training, inspect the corpus. Runs on `127.0.0.1:8765`.
 
 I built this because I wanted a model that knows *my* GDScript style. That's why the whole pipeline is private-first: local projects get their own license entry (`LicenseRef-User-Owned-Private`), are never redistributed, and only you can enable them for training.
+
+## What's New in v0.10.5
+
+### ✅ No record is ever kept unverified
+
+The rule is simple: a script either gets verified by Godot or it doesn't get in. A `context_warning` means a script could not be positively checked inside its project (the resource did not load, no checker marker was produced, or the project import/checker itself failed or timed out). Since v0.10.5 every such record is additionally parsed standalone with Godot `--check-only`:
+
+- a real syntax error still becomes a hard exclusion (`syntax_error`), and
+- a clean parse keeps the record as a *verified* context warning, with the per-file result appended to the warning text.
+
+Only a truly missing source file skips the parse — and that is recorded explicitly instead of being silent. Nothing slips into the dataset unverified anymore.
+
+### 🔁 Validation cache bumped to v4
+
+Validation decisions are cached in `data/corpus/cache/godot_project_validation_v4.json`. The v3 cache predates the per-file step, so the next `validate` run re-checks every project with the complete pipeline. The v0.10.5 upgrade package is **cumulative from v0.10.3**: one apply brings every v0.10.4 + v0.10.5 change, one re-`validate` re-checks with the v4 cache.
+
+## What's New in v0.10.4
+
+### 🩹 Hard syntax errors can no longer slip through
+
+Found this while auditing a previous validation run. Two leaks in the classifier were closed:
+
+- The hard-error allowlist was too narrow: unambiguous syntax errors whose message text isn't `expected ...` (e.g. `Invalid statement.`) were kept as context warnings and included in the dataset. The marker list now covers `invalid statement`, `invalid use of`, `invalid assignment`, `expected identifier`, `expected variable name`, `constant expected` and `invalid declaration`.
+- Hard vs. context was decided on the ±3-line block around an error, so a benign context error (missing resource, RID leak) printed next to a real parse error demoted it to a warning. Only the error line itself now decides; the surrounding block is used for message text and path attribution only.
+
+### 🧪 The per-file checker survives strict projects
+
+Projects like gdUnit4 promote GDScript warnings to errors. The generated checker's untyped loop variable then failed to compile inside such a project (`Parse Error: "for" iterator variable ... has no static type`), leaving every file unverified. The checker now carries an `@warning_ignore_start(...)` region and explicit types (`Array[String]`, `for path_value: String in paths:`) — verified against gdUnit4 with Godot 4.7.
+
+### 🏷️ Stale catalog titles healed
+
+Manifest records and source manifests that still carried German catalog titles (`Offizielle Godot-Demoprojekte`) are refreshed from the English registry during validation. Local user sources are never touched. Also cosmetic: `index.html` now declares `lang="en"`.
 
 ## What's New in v0.10.3
 
@@ -108,7 +140,7 @@ $env:GODOT_CODER_ERROR_ABORT_THRESHOLD = "60"
 .\.venv\Scripts\python.exe -m godot_coder.studio
 ```
 
-When you skip the project import, full validation is deferred: `validate_dataset.py` runs a complete Godot pass over the assembled dataset (same env-var timeout, managed process runner). For maximum thoroughness during import, leave the env vars off or use only `FAST_STATIC=1`.
+When you skip the project import, full validation is deferred: `validate_dataset.py` runs a complete Godot pass over the assembled dataset (same env-var timeout, managed process runner). For maximum thoroughness during import, leave the env vars off or use only `FAST_STATIC=1`. Either way nothing is kept unverified: since v0.10.5, any script that could not be positively checked inside its project (a `context_warning`) is additionally parsed standalone per file.
 
 ## Configuration Files
 
@@ -159,7 +191,7 @@ Then open `http://127.0.0.1:8765`.
 
 1. **Open Studio** and select **Knowledge Building**
 2. **Import sources** — curated catalog sources, or drop your own Godot projects/ZIPs into `data/local_sources/inbox/`
-3. **Scan & validate** — each `.gd` file is parsed through Godot's GDScript parser; broken files are flagged
+3. **Scan & validate** — each `.gd` file is verified by Godot: a full project import, or a standalone `--check-only` parse for scripts that could not be checked in project context. Unambiguous syntax errors and incompatible Godot-3 projects are hard-excluded; everything else is admitted
 4. **Corpus audit** — dedup, token counting, split into train/val/test
 5. **Tokenize** — build token streams for training
 6. **Train** — configure and launch a run
@@ -224,8 +256,8 @@ The Studio binds to `127.0.0.1:8765` by default. For phone/tablet access inside 
 - `ROADMAP.md` — what's done and what's next
 - `ARCHITECTURE.md` — pipeline and validation paths
 - `docs/CONFIG_REFERENCE.md` — YAML config key reference
-- `docs/INSTALL_v0.10.3.md` — install/upgrade guide
-- `docs/CHANGELOG_v0.10.3.md` — patch notes
+- `docs/INSTALL_v0.10.5.md` — install/upgrade guide (latest)
+- `docs/CHANGELOG_v0.10.5.md` — patch notes (latest; earlier `CHANGELOG_v0.10.x.md` files stay for history)
 - `docs/PROGRESS_EVENT_SCHEMA_v1.md` — the progress event format
 - `docs/AUDIT_v0.6.md` — the v0.6 training-core audit (historical record)
 - `docs/INSTRUCTION_ROADMAP_v0.7.md` — the planned instruction/agent roadmap (historical draft)

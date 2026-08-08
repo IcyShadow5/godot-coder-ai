@@ -105,7 +105,7 @@ def test_old_file_failures_are_revalidated_once_per_project(tmp_path: Path, monk
     assert commands[0][-1] == "--import"
     assert "--script" in commands[1]
     manifest = json.loads((root / "data/corpus/corpus_manifest.json").read_text(encoding="utf-8"))
-    assert manifest["validation_engine"] == "project-aware-v2"
+    assert manifest["validation_engine"] == "project-aware-v4"
     assert {item["validation_classification"] for item in manifest["records"]} == {"project_passed"}
 
 
@@ -325,3 +325,155 @@ def test_project_less_record_with_clear_syntax_error_is_rejected(tmp_path: Path,
     assert report["failed"] == 1
     assert report["classifications"]["syntax_error"] == 1
     assert report["prepared"] == 0
+
+def test_invalid_statement_parse_error_is_hard_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Regression: "Invalid statement."-style parse errors are unambiguous
+    # syntax errors but were not in the hard marker list, so they slipped
+    # through as context warnings and were included in the dataset.
+    root, _ = _workspace(tmp_path, {
+        "good.gd": "extends Node\nfunc good() -> void:\n\tpass\n",
+        "bad.gd": "extends Node\nvar broken =\n",
+    })
+    output = (
+        "SCRIPT ERROR: Parse Error: Invalid statement.\n"
+        "   at: GDScript::reload (res://bad.gd:2)\n"
+    )
+    _patch_godot(monkeypatch, output, return_code=1)
+    report = validate_and_finalize(root, minimum_accepted=0)
+    assert report["failed"] == 1
+    assert report["classifications"]["syntax_error"] == 1
+    assert report["passed"] == 1
+    assert report["prepared"] == 1
+
+
+def test_new_hard_markers_all_reject(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    for index, message in enumerate((
+        "Invalid statement.",
+        "Invalid use of '='.",
+        "Invalid assignment.",
+        "Expected identifier.",
+        "Constant expected.",
+    )):
+        root, _ = _workspace(tmp_path / f"case-{index}", {"bad.gd": "extends Node\nvar broken =\n"})
+        output = f"SCRIPT ERROR: Parse Error: {message}\n   at: GDScript::reload (res://bad.gd:2)\n"
+        _patch_godot(monkeypatch, output, return_code=1)
+        report = validate_and_finalize(root, minimum_accepted=0)
+        assert report["classifications"]["syntax_error"] == 1, message
+        assert report["failed"] == 1, message
+
+
+def test_adjacent_context_error_does_not_demote_syntax_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Regression: classification used the +/-3 line block around an error. A
+    # benign context error printed directly next to a real parse error demoted
+    # it to a warning, so the broken file was included. Only the error line may
+    # decide hard vs context; the block is only for path attribution.
+    root, _ = _workspace(tmp_path, {
+        "good.gd": "extends Node\nfunc good() -> void:\n\tpass\n",
+        "bad.gd": "extends Node\nvar broken =\n",
+    })
+    output = (
+        "SCRIPT ERROR: Parse Error: Expected expression after '='.\n"
+        "   at: GDScript::reload (res://bad.gd:2)\n"
+        "ERROR: Failed to load resource: res://missing_icon.png.\n"
+        "   at: resource_loader.cpp:1234\n"
+    )
+    _patch_godot(monkeypatch, output, return_code=1)
+    report = validate_and_finalize(root, minimum_accepted=0)
+    assert report["failed"] == 1
+    assert report["classifications"]["syntax_error"] == 1
+    assert report["passed"] == 1
+
+
+def test_validation_cache_is_isolated_per_version(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The v0.10.4/v0.10.5 classification changes must not replay older
+    # decisions: a fresh cache file per version forces a clean re-check.
+    from godot_coder.corpus import _validation_cache_path
+    root, _ = _workspace(tmp_path, {"a.gd": "extends Node\n"})
+    path = _validation_cache_path(root)
+    assert path.name == "godot_project_validation_v4.json"
+    _patch_godot(monkeypatch, "Godot Engine v4.7")
+    validate_and_finalize(root, minimum_accepted=0)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["format_version"] == 4
+    assert payload["validator"] == "project-aware-v4"
+
+
+def test_checker_script_ignores_warning_as_error_projects(tmp_path: Path) -> None:
+    # gdUnit4 (and other strict projects) promote GDScript warnings to errors.
+    # The generated per-file checker failed to compile under those settings
+    # ("for iterator variable has no static type"), so no file in the project
+    # got an individual marker and all of them were kept unverified. The
+    # checker must carry warning-ignore regions and explicit types.
+    from godot_coder.corpus import _write_project_checker
+    root = tmp_path
+    helper = _write_project_checker(root, "abc123", ["a.gd", "b.gd"])
+    text = helper.read_text(encoding="utf-8")
+    assert "@warning_ignore_start" in text
+    assert "@warning_ignore_start" in text
+    assert "path_value: String in paths" in text
+    assert "Array[String]" in text
+    assert "path_value: String in paths" in text
+    assert "Array[String]" in text
+
+def test_context_warning_record_is_perfile_verified(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A record that ends up as a context warning (the checker produced no
+    # marker for it) must still get a standalone --check-only parse. A clean
+    # parse keeps the context warning but records that the file was verified.
+    root, _ = _workspace(tmp_path, {"a.gd": "extends Node\nfunc a() -> void:\n\tpass\n"})
+    calls: list[list[str]] = []
+    monkeypatch.setattr("godot_coder.corpus._find_godot", lambda: "godot.exe")
+    monkeypatch.setattr("godot_coder.corpus._godot_version", lambda executable: "4.7.test")
+
+    def fake_managed(command: list[str], **kwargs):
+        calls.append(command)
+        if "--check-only" in command:
+            output, rc = "Godot Engine v4.7\n", 0
+        else:
+            output, rc = "Godot Engine v4.7\nERROR: Failed to load resource: res://missing.png.\n", 1
+        return ManagedProcessResult(
+            command=command, return_code=rc, output=output,
+            timed_out=False, duration_seconds=0.1, pid=None, termination_attempted=False,
+        )
+
+    monkeypatch.setattr("godot_coder.corpus.run_managed_process", fake_managed)
+    report = validate_and_finalize(root, minimum_accepted=0)
+    assert report["failed"] == 0
+    assert report["context_warnings"] == 1
+    assert report["prepared"] == 1
+    perfile_calls = [c for c in calls if "--check-only" in c]
+    assert len(perfile_calls) == 1
+
+
+def test_context_warning_with_real_syntax_error_is_now_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The case v0.10.5 exists for: inside the project the file merely "fails
+    # to load" (no hard error attributed, so it would be kept as an unverified
+    # context warning), but the standalone parse reveals a real syntax error.
+    # It must now be a hard exclusion instead of slipping into the dataset.
+    root, _ = _workspace(tmp_path, {
+        "good.gd": "extends Node\nfunc good() -> void:\n\tpass\n",
+        "bad.gd": "extends Node\nvar broken =\n",
+    })
+    monkeypatch.setattr("godot_coder.corpus._find_godot", lambda: "godot.exe")
+    monkeypatch.setattr("godot_coder.corpus._godot_version", lambda executable: "4.7.test")
+
+    def fake_managed(command: list[str], **kwargs):
+        if "--check-only" in command:
+            output = (
+                "SCRIPT ERROR: Parse Error: Expected expression after '='.\n"
+                "   at: GDScript::reload (res://bad.gd:2)\n"
+            )
+            rc = 1
+        else:
+            output = "Godot Engine v4.7\nERROR: Failed to load script: res://bad.gd (Parse Error suppressed)\n"
+            rc = 1
+        return ManagedProcessResult(
+            command=command, return_code=rc, output=output,
+            timed_out=False, duration_seconds=0.1, pid=None, termination_attempted=False,
+        )
+
+    monkeypatch.setattr("godot_coder.corpus.run_managed_process", fake_managed)
+    report = validate_and_finalize(root, minimum_accepted=0)
+    assert report["failed"] == 1
+    assert report["classifications"]["syntax_error"] == 1
+    assert report["context_warnings"] == 1  # good.gd stays a verified warning
+    assert report["prepared"] == 1  # only good.gd lands in prepared/
