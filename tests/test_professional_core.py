@@ -113,32 +113,94 @@ def test_audit_snapshot_cleanup_on_success(tmp_path: Path) -> None:
     assert not snapshot.exists(), "stale audit_checkpoint.json should be cleaned after success"
 
 
-def test_preflight_reports_yellow_without_hardware_result(tmp_path: Path) -> None:
+def _make_preflight_workspace(tmp_path: Path, *, validator: str = "project-aware-v2", data_dir: str = "data/processed/corpus_v06", train_tokens: int = 1_000_000) -> Path:
     audit = {"summary": {"group_leaks": 0, "content_leaks": 0, "train_projects": 12, "val_projects": 3, "test_projects": 3, "parser_pass_rate": 0.95, "near_duplicates": 0, "records": 20, "accepted": 20, "warning": 0}}
     audit_path = tmp_path / "reports" / "audit"; audit_path.mkdir(parents=True)
     corpus = tmp_path / "data" / "corpus"; corpus.mkdir(parents=True)
     artifacts = tmp_path / "artifacts"; artifacts.mkdir()
-    (corpus / "validation_report.json").write_text(json.dumps({"validator": "project-aware-v2", "records": 20, "passed": 20, "failed": 0, "context_warnings": 0, "prepared": 20}), encoding="utf-8")
+    (corpus / "validation_report.json").write_text(json.dumps({"validator": validator, "records": 20, "passed": 20, "failed": 0, "context_warnings": 0, "prepared": 20}), encoding="utf-8")
     (corpus / "tokenizer_report.json").write_text(json.dumps({"fingerprint": "tok"}), encoding="utf-8")
     (artifacts / "tokenizer_bpe_godot.json").write_text("{}", encoding="utf-8")
     (audit_path / "corpus_audit_latest.json").write_text(json.dumps(audit), encoding="utf-8")
-    data = tmp_path / "data" / "processed" / "corpus_v06"; data.mkdir(parents=True)
+    data = tmp_path / "data" / "processed" / Path(data_dir).name; data.mkdir(parents=True)
     configs = tmp_path / "configs"; configs.mkdir()
     config = configs / "night.yaml"
     config.write_text(yaml.safe_dump({
         "profile": {"id": "legacy"},
         "model": {"max_seq_len": 128, "n_layers": 1, "d_model": 32, "n_heads": 4, "d_ff": 64},
-        "train": {"max_steps": None, "target_dataset_passes": 2.0, "batch_size": 1, "gradient_accumulation_steps": 1, "data_dir": "data/processed/corpus_v06", "tokenizer_path": "artifacts/tokenizer_bpe_godot.json"},
+        "train": {"max_steps": None, "target_dataset_passes": 2.0, "batch_size": 1, "gradient_accumulation_steps": 1, "data_dir": data_dir, "tokenizer_path": "artifacts/tokenizer_bpe_godot.json"},
     }), encoding="utf-8")
     manifest = data / "manifest.json"
-    manifest.write_text(json.dumps({"dataset_fingerprint": "d", "tokenizer_fingerprint": "tok", "train_tokens": 1_000_000, "val_tokens": 10_000, "test_tokens": 10_000}), encoding="utf-8")
+    manifest.write_text(json.dumps({"dataset_fingerprint": "d", "tokenizer_fingerprint": "tok", "train_tokens": train_tokens, "val_tokens": 10_000, "test_tokens": 10_000}), encoding="utf-8")
     # The prepared stream must be the newest artifact in the pipeline.
     import os, time
     newest = time.time() + 2
     os.utime(manifest, (newest, newest))
-    report = build_preflight(tmp_path, config_path=config)
+    return tmp_path
+
+
+def test_preflight_reports_yellow_without_hardware_result(tmp_path: Path) -> None:
+    root = _make_preflight_workspace(tmp_path)
+    report = build_preflight(root, config_path=root / "configs" / "night.yaml")
     assert report["status"] == "yellow"
     assert not report["blockers"]
+
+
+def test_preflight_accepts_current_project_aware_validator(tmp_path: Path) -> None:
+    """The v0.10.4+ pipeline writes project-aware-v4 reports; the preflight must
+    accept every project-aware revision instead of pinning the old v2 string."""
+    root = _make_preflight_workspace(tmp_path, validator="project-aware-v4")
+    report = build_preflight(root, config_path=root / "configs" / "night.yaml")
+    assert not any("project-based validation" in blocker for blocker in report["blockers"])
+
+
+def test_preflight_does_not_gate_synthetic_dataset_on_corpus_stages(tmp_path: Path) -> None:
+    """A curriculum/synthetic stream is independent of the corpus pipeline and
+    must not be flagged stale when validation or audit artifacts are newer."""
+    root = _make_preflight_workspace(tmp_path, validator="project-aware-v4", data_dir="data/processed/curriculum_v03")
+    import os
+    # Push the corpus stages well past the stream: Windows clock granularity is
+    # coarse, so an explicit offset from the manifest is deterministic.
+    manifest = root / "data" / "processed" / "curriculum_v03" / "manifest.json"
+    newest = manifest.stat().st_mtime + 100.0
+    for rel in ("data/corpus/validation_report.json", "data/corpus/corpus_manifest.json", "data/corpus/audit_report.json"):
+        stage = root / rel
+        stage.parent.mkdir(parents=True, exist_ok=True)
+        if not stage.exists():
+            stage.write_text("{}", encoding="utf-8")
+        os.utime(stage, (newest, newest))
+    report = build_preflight(root, config_path=root / "configs" / "night.yaml")
+    assert not any("older than the validation" in blocker for blocker in report["blockers"])
+
+
+def test_preflight_still_gates_corpus_stream_on_newer_pipeline_stages(tmp_path: Path) -> None:
+    """Corpus-derived streams keep the freshness gate: a validation report newer
+    than the prepared stream must still block training."""
+    root = _make_preflight_workspace(tmp_path, validator="project-aware-v4")
+    import os
+    manifest = root / "data" / "processed" / "corpus_v06" / "manifest.json"
+    newest = manifest.stat().st_mtime + 100.0
+    stage = root / "data" / "corpus" / "validation_report.json"
+    os.utime(stage, (newest, newest))
+    report = build_preflight(root, config_path=root / "configs" / "night.yaml")
+    assert any("older than the validation" in blocker for blocker in report["blockers"])
+
+
+
+def test_preflight_full_allows_small_synthetic_dataset(tmp_path: Path) -> None:
+    """Synthetic streams (curriculum) are deliberately small: the profile token
+    gate must not block them, even in full mode."""
+    root = _make_preflight_workspace(tmp_path, validator="project-aware-v4", data_dir="data/processed/curriculum_v03", train_tokens=88_000)
+    report = build_preflight(root, config_path=root / "configs" / "night.yaml")
+    assert not any("needs at least" in blocker for blocker in report["blockers"])
+
+
+def test_preflight_full_keeps_token_gate_for_corpus_stream(tmp_path: Path) -> None:
+    """Corpus-derived streams keep the profile token gate: a small corpus in
+    full mode must still block."""
+    root = _make_preflight_workspace(tmp_path, validator="project-aware-v4", train_tokens=88_000)
+    report = build_preflight(root, config_path=root / "configs" / "night.yaml")
+    assert any("needs at least" in blocker for blocker in report["blockers"])
 
 
 def test_autotune_variant_changes_context_checkpointing_and_batch(tmp_path: Path) -> None:

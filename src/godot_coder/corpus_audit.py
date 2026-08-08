@@ -420,6 +420,12 @@ def _select_data_manifest(project_root: Path, config_path: Path | None) -> tuple
     return path, payload, raw_config
 
 
+def _is_corpus_stream(data_manifest_path: Path | None) -> bool:
+    """True for datasets derived from the corpus pipeline (data/processed/corpus*).
+    Synthetic streams such as the curriculum keep their own raw source."""
+    return data_manifest_path is not None and data_manifest_path.parent.name.startswith("corpus")
+
+
 def _pipeline_freshness(project_root: Path, data_manifest_path: Path | None) -> dict[str, Any]:
     corpus = corpus_root(project_root)
     stage_paths = {
@@ -429,6 +435,14 @@ def _pipeline_freshness(project_root: Path, data_manifest_path: Path | None) -> 
         "tokenizer": corpus / "tokenizer_report.json",
         "data_changes": project_root / "data" / "data_lab_state.json",
     }
+    # Corpus pipeline stages are genuine inputs only for corpus-derived streams
+    # (data/processed/corpus*). Synthetic datasets such as the curriculum keep
+    # their own raw source and must not be judged stale by corpus stages they
+    # never depend on; tokenizer drift on those datasets is already covered by
+    # the tokenizer-fingerprint gate.
+    if not _is_corpus_stream(data_manifest_path):
+        raw_source = project_root / "data" / "raw" / data_manifest_path.parent.name
+        stage_paths = {"raw_source": raw_source} if raw_source.exists() else {}
     mtimes = {name: path.stat().st_mtime if path.exists() else None for name, path in stage_paths.items()}
     processed_mtime = data_manifest_path.stat().st_mtime if data_manifest_path and data_manifest_path.exists() else None
     newest_input = max((value for value in mtimes.values() if value is not None), default=0.0)
@@ -464,7 +478,7 @@ def build_preflight(project_root: Path, *, config_path: Path | None = None, mode
 
     if validation is None:
         blockers.append("Project-based corpus validation missing")
-    elif validation.get("validator") != "project-aware-v2":
+    elif not str(validation.get("validator") or "").startswith("project-aware-v"):
         blockers.append("The corpus has not been checked with project-based validation yet")
     elif int(validation.get("prepared") or 0) <= 0:
         blockers.append("Validation did not prepare any usable files")
@@ -495,7 +509,15 @@ def build_preflight(project_root: Path, *, config_path: Path | None = None, mode
         if freshness["stale"]:
             blockers.append("The active token stream is older than the validation, audit or source data")
         train_tokens = int(data.get("train_tokens") or 0)
-        minimum_tokens = SMOKE_MIN_TOKENS if mode == "smoke" else MIN_PROFILE_TOKENS.get(profile_id, 500_000)
+        # Token minimums guard corpus-derived profiles (starter/balanced/
+        # experimental). Synthetic streams such as the curriculum are sized
+        # deliberately small, so the guard does not apply to them.
+        if mode == "smoke":
+            minimum_tokens = SMOKE_MIN_TOKENS
+        elif _is_corpus_stream(data_manifest_path):
+            minimum_tokens = MIN_PROFILE_TOKENS.get(profile_id, 500_000)
+        else:
+            minimum_tokens = 0
         if train_tokens < minimum_tokens:
             label = "Smoke test" if mode == "smoke" else f"Profile {profile_id}"
             blockers.append(f"{label} needs at least {minimum_tokens:,} fresh training tokens; available are {train_tokens:,}".replace(",", "."))
@@ -532,7 +554,7 @@ def build_preflight(project_root: Path, *, config_path: Path | None = None, mode
                 "planned_tokens": planned_tokens,
                 "dataset_passes": round(passes, 4),
                 "estimated_seconds": round(estimated_seconds, 1) if estimated_seconds else None,
-                "minimum_recommended_tokens": SMOKE_MIN_TOKENS if mode == "smoke" else MIN_PROFILE_TOKENS.get(profile_id, 500_000),
+                "minimum_recommended_tokens": minimum_tokens or SMOKE_MIN_TOKENS,
             }
             output = project_root / train.output_dir
             latest = output / "latest.pt"

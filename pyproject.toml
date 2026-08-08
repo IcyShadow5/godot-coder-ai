@@ -4,9 +4,20 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "godot-coder-ai"
-version = "0.10.5"
+version = "0.10.6"
 description = "A local training studio for building a compact Godot/GDScript language model from scratch."
+readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.10"
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
   "numpy>=1.24",
   "PyYAML>=6.0",

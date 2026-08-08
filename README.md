@@ -1,4 +1,9 @@
-# Godot Coder AI v0.10.5
+# Godot Coder AI
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+[![Godot](https://img.shields.io/badge/Godot-4.x-purple.svg)](https://godotengine.org)
+[![CI](https://github.com/YOUR-USERNAME/godot-coder-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR-USERNAME/godot-coder-ai/actions/workflows/ci.yml)
 
 A local training studio for building a compact Godot/GDScript language model from scratch — train your own GPT-style model that actually understands GDScript. No cloud, no API keys, everything runs on your machine.
 
@@ -11,6 +16,20 @@ Three things bundled into one project:
 3. **Studio (web UI)** — import projects, monitor training, inspect the corpus. Runs on `127.0.0.1:8765`.
 
 I built this because I wanted a model that knows *my* GDScript style. That's why the whole pipeline is private-first: local projects get their own license entry (`LicenseRef-User-Owned-Private`), are never redistributed, and only you can enable them for training.
+
+## What's New in v0.10.6
+
+A small correctness release that unblocks synthetic-curriculum runs and future-proofs the preflight.
+
+### 🚦 Preflight stops pretending old things are new
+
+Three fixes in the training preflight, all discovered while running the very first real training runs:
+
+- **Validator version no longer hardcoded.** The check pinned the validator to `project-aware-v2`; the pipeline has written `v4` since v0.10.4, so every preflight after a fresh validation was blocked. It now accepts any `project-aware-v*` revision.
+- **Freshness only judges what the dataset actually depends on.** Corpus pipeline stages (validation, audit, tokenizer reports) are inputs only for corpus-derived streams. Synthetic datasets like the curriculum have their own raw source and were being flagged stale by corpus files they never touch. The freshness check is now dataset-aware.
+- **Token minimums apply to corpus profiles only.** Full-mode preflight demanded ≥500k tokens for the `legacy` profile - nonsense for a deliberately small curriculum set (88k tokens). The gate now applies to corpus-derived profiles (starter/balanced/experimental); synthetic streams pass it.
+
+The `_is_corpus_stream()` helper centralises “is this data from the corpus pipeline?” and is shared by both checks. Tests went from 178 to 183.
 
 ## What's New in v0.10.5
 
@@ -256,8 +275,8 @@ The Studio binds to `127.0.0.1:8765` by default. For phone/tablet access inside 
 - `ROADMAP.md` — what's done and what's next
 - `ARCHITECTURE.md` — pipeline and validation paths
 - `docs/CONFIG_REFERENCE.md` — YAML config key reference
-- `docs/INSTALL_v0.10.5.md` — install/upgrade guide (latest)
-- `docs/CHANGELOG_v0.10.5.md` — patch notes (latest; earlier `CHANGELOG_v0.10.x.md` files stay for history)
+- `docs/INSTALL_v0.10.6.md` — install/upgrade guide (latest)
+- `docs/CHANGELOG_v0.10.6.md` — patch notes (latest; earlier `CHANGELOG_v0.10.x.md` files stay for history)
 - `docs/PROGRESS_EVENT_SCHEMA_v1.md` — the progress event format
 - `docs/AUDIT_v0.6.md` — the v0.6 training-core audit (historical record)
 - `docs/INSTRUCTION_ROADMAP_v0.7.md` — the planned instruction/agent roadmap (historical draft)
