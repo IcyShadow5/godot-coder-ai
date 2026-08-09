@@ -17,12 +17,30 @@ Three things bundled into one project:
 
 I built this because I wanted a model that knows *my* GDScript style. That's why the whole pipeline is private-first: local projects get their own license entry (`LicenseRef-User-Owned-Private`), are never redistributed, and only you can enable them for training.
 
+
+## First Results (so far)
+
+Honest numbers from the first real training run, so I can measure progress instead of guessing:
+
+- **Model:** 91M params, from scratch (12 layers, d=768, 12 heads, 8192-token BPE, 1024 context) — toy scale on purpose, built to prove the pipeline.
+- **Data:** corpus_v06 — ~32M tokens of verified GDScript from ~830 imported Godot projects.
+- **Run:** 2,460 of ~10,300 planned steps on a 8 GB RTX 5060 (~22 min, bf16, CUDA), then early-stopped at patience 4. Best validation loss **1.78** (val perplexity **5.96**); training loss fell from 7.33 to ~1.5 over the run.
+- **The honest part:** a 91M model after roughly one pass over the data does *not* write working GDScript yet. The benchmark that checks whether generated completions parse as valid GDScript scores **6.25%** (1 of 16 prompts) — a baseline, not a result. What it *did* learn is telling: it reproduces the exact task-header format of the training data, which means the pipeline, tokenizer and training loop are real.
+- **What this run bought:** an end-to-end proof (import → validate → tokenize → train → generate → benchmark) plus a measurable baseline to beat. The levers from here are more data (the registry fetch now covers ~1,260 sources, ~830 of them ready), more training time, and finally the instruction-tuning stage that turns "continues code" into "answers prompts".
+
 ## Recent Changes
 
 I keep the full history in `CHANGELOG.md` (per-version detail in
 `docs/CHANGELOG_v0.10.x.md`), so here is just the short version - the last
 few releases in one breath:
 
+- **v0.10.11** - chat samples actually get verified. Failed generations
+  saved from the Studio chat were staged into the corpus but never parsed
+  by Godot (the validator looked in the wrong folder), so a broken sample
+  could slip into training data; they now resolve correctly and syntax
+  errors are hard exclusions. The Studio UI was also split into modules
+  (api.js, remote.js, app.js) and the README gained a first-results
+  section. 3 new tests (198 total).
 - **v0.10.10** - training-start fix. Profiles driven by
   `target_dataset_passes` (autotuned, balanced) set `max_steps: null`;
   the train endpoint crashed on `int(None)` with an HTTP 500, so "Start

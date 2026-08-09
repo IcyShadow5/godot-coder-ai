@@ -1,9 +1,11 @@
-const CACHE_NAME = "godot-coder-shell-v0.10.10-1";
+const CACHE_NAME = "godot-coder-shell-v0.10.11-1";
 const SHELL = [
   "/",
   "/manifest.webmanifest",
   "/static/styles.css",
   "/static/progress.js",
+  "/static/api.js",
+  "/static/remote.js",
   "/static/app.js",
   "/static/app-icon.svg",
   "/static/app-icon-192.png",

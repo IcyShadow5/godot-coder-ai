@@ -3,6 +3,24 @@
 Patch notes, so I still know later what I was thinking. Detailed notes for
 each version live in `docs/CHANGELOG_v0.10.x.md`; this file is the quick tour.
 
+## v0.10.11 (2026-08-09)
+
+Chat samples finally get verified, and the Studio UI is no longer one
+2,000-line file:
+
+- **User-lessons validation fix.** Failed generations saved from the chat
+  were staged into the corpus but never parsed by Godot - the validator
+  looked for them under downloads/<source_id>/ where they never live, so
+  a broken sample could slip into training data. They now resolve against
+  the project root and get the real per-file check; a syntax error is a
+  hard exclusion.
+- **UI module split.** app.js (1,961 lines) became api.js + remote.js +
+  a slimmer app.js; index.html and the service worker load them in
+  order. No behavior change.
+- **README first results section** - honest numbers from the first real
+  training run so progress is measurable.
+- 3 new tests (2 user-lessons validation, 1 ingestion). 198 total.
+
 ## v0.10.10 (2026-08-09)
 
 Training-start fix - no more silent crash on passes-driven configs:

@@ -477,3 +477,115 @@ def test_context_warning_with_real_syntax_error_is_now_rejected(tmp_path: Path, 
     assert report["classifications"]["syntax_error"] == 1
     assert report["context_warnings"] == 1  # good.gd stays a verified warning
     assert report["prepared"] == 1  # only good.gd lands in prepared/
+def test_user_lessons_record_is_resolved_from_project_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Regression: chat samples are staged from data/raw/user_lessons, but the
+    # standalone validator used to resolve every record against
+    # downloads/<source_id>/<original_path>. user-lessons records therefore
+    # never matched a file, were silently kept as "source missing" context
+    # warnings and were never checked by Godot - broken samples would have
+    # slipped into the training data. They must resolve against the project
+    # root and get a real per-file parse.
+    root = tmp_path
+    corpus = root / "data" / "corpus"
+    (corpus / "staged" / "user-lessons").mkdir(parents=True)
+    # The raw chat sample lives under data/raw/user_lessons (project-root
+    # relative), NOT under data/corpus/downloads/user-lessons.
+    raw_dir = root / "data" / "raw" / "user_lessons"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "generated_20260809_1200_sample.gd").write_text(
+        "extends Node2D\nvar broken =\n", encoding="utf-8"
+    )
+    records = [{
+        "record_id": "r0", "source_id": "user-lessons",
+        "source_title": "User lessons (chat samples)",
+        "group_id": "user-lessons::r0", "kind": "godot_projects",
+        "original_path": "data/raw/user_lessons/generated_20260809_1200_sample.gd",
+        "staged_path": "user-lessons/r0.gd",
+        "split": "train", "content_sha256": "sha-0", "bytes": 40,
+        "license": "LicenseRef-User-Owned-Private",
+        "attribution": "User-generated samples saved from the Studio chat",
+        "source_commit": None, "project_root": None,
+        "validation_status": "pending", "validation_error": None,
+    }]
+    manifest = {
+        "format": "godot-coder-licensed-corpus", "format_version": 3,
+        "records": records, "sources": [], "skipped": [],
+    }
+    (corpus / "corpus_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    monkeypatch.setattr("godot_coder.corpus._find_godot", lambda: "godot.exe")
+    monkeypatch.setattr("godot_coder.corpus._godot_version", lambda executable: "4.7.test")
+
+    def fake_managed(command: list[str], **kwargs):
+        # The command must point at the real raw file under the project root,
+        # with the project root itself as the Godot --path context.
+        assert str(root / "data" / "raw" / "user_lessons" / "generated_20260809_1200_sample.gd") in command
+        assert "--path" in command
+        assert str(root) in command
+        output = (
+            "SCRIPT ERROR: Parse Error: Expected expression after '='.\n"
+            "   at: GDScript::reload (res://generated_20260809_1200_sample.gd:2)\n"
+        )
+        return ManagedProcessResult(
+            command=command, return_code=1, output=output,
+            timed_out=False, duration_seconds=0.1, pid=None, termination_attempted=False,
+        )
+
+    monkeypatch.setattr("godot_coder.corpus.run_managed_process", fake_managed)
+    report = validate_and_finalize(root, minimum_accepted=0)
+    # The broken sample must be a hard exclusion - the whole point of the
+    # per-file check. Before the fix it slipped through as "source missing".
+    assert report["failed"] == 1
+    assert report["classifications"]["syntax_error"] == 1
+    assert report["prepared"] == 0
+    manifest_now = json.loads((corpus / "corpus_manifest.json").read_text(encoding="utf-8"))
+    assert manifest_now["records"][0]["validation_status"] == "failed"
+
+
+def test_user_lessons_record_with_valid_script_is_kept(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Same resolution path, clean script: the sample passes the per-file check
+    # and stays in the corpus as a verified context warning.
+    root = tmp_path
+    corpus = root / "data" / "corpus"
+    staged_dir = corpus / "staged" / "user-lessons"
+    staged_dir.mkdir(parents=True)
+    raw_dir = root / "data" / "raw" / "user_lessons"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "generated_20260809_1200_ok.gd").write_text(
+        "extends Node2D\nfunc ok() -> void:\n\tpass\n", encoding="utf-8"
+    )
+    (staged_dir / "r1.gd").write_text(
+        "extends Node2D\nfunc ok() -> void:\n\tpass\n", encoding="utf-8"
+    )
+    records = [{
+        "record_id": "r1", "source_id": "user-lessons",
+        "source_title": "User lessons (chat samples)",
+        "group_id": "user-lessons::r1", "kind": "godot_projects",
+        "original_path": "data/raw/user_lessons/generated_20260809_1200_ok.gd",
+        "staged_path": "user-lessons/r1.gd",
+        "split": "train", "content_sha256": "sha-1", "bytes": 40,
+        "license": "LicenseRef-User-Owned-Private",
+        "attribution": "User-generated samples saved from the Studio chat",
+        "source_commit": None, "project_root": None,
+        "validation_status": "pending", "validation_error": None,
+    }]
+    manifest = {
+        "format": "godot-coder-licensed-corpus", "format_version": 3,
+        "records": records, "sources": [], "skipped": [],
+    }
+    (corpus / "corpus_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    monkeypatch.setattr("godot_coder.corpus._find_godot", lambda: "godot.exe")
+    monkeypatch.setattr("godot_coder.corpus._godot_version", lambda executable: "4.7.test")
+
+    def fake_managed(command: list[str], **kwargs):
+        assert str(root / "data" / "raw" / "user_lessons" / "generated_20260809_1200_ok.gd") in command
+        return ManagedProcessResult(
+            command=command, return_code=0, output="Godot Engine v4.7",
+            timed_out=False, duration_seconds=0.1, pid=None, termination_attempted=False,
+        )
+
+    monkeypatch.setattr("godot_coder.corpus.run_managed_process", fake_managed)
+    report = validate_and_finalize(root, minimum_accepted=0)
+    assert report["failed"] == 0
+    assert report["prepared"] == 1

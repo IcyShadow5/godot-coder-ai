@@ -13,6 +13,14 @@ from godot_coder.ui.server import create_app
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "src" / "godot_coder" / "ui" / "static"
 
+# The Studio UI is split into module files loaded in order (progress, api,
+# remote, app) - remote helpers live in remote.js, shared helpers in api.js.
+UI_MODULES = ("progress.js", "api.js", "remote.js", "app.js")
+
+
+def _all_javascript() -> str:
+    return "\n".join((STATIC / name).read_text(encoding="utf-8") for name in UI_MODULES)
+
 
 class IdParser(HTMLParser):
     def __init__(self) -> None:
@@ -52,7 +60,7 @@ def test_service_worker_never_caches_api_or_private_job_data() -> None:
 
 
 def test_remote_javascript_and_responsive_mobile_css_are_present() -> None:
-    javascript = (STATIC / "app.js").read_text(encoding="utf-8")
+    javascript = _all_javascript()
     css = (STATIC / "styles.css").read_text(encoding="utf-8")
     for function in [
         "refreshRemote", "runRemoteSelfCheck", "unlockRemote", "lockRemote", "startRemoteSourceDownload",

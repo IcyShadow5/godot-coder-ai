@@ -1158,6 +1158,54 @@ def _stage_source(
     return local_records, local_skipped, source_manifest, None
 
 
+
+def _stage_user_lessons(project_root: Path, staging_work: Path) -> list[CorpusRecord]:
+    """Ingest chat samples saved by the Studio into the corpus staging area.
+
+    The chat panel writes failed generations to ``data/raw/user_lessons`` so
+    that "errors here are measurable training data" is actually true. Each
+    ``.gd`` file becomes a standalone record (no project.godot), so validation
+    runs the per-file checker on it: samples that parse join the pretraining
+    corpus, samples with a hard syntax error are excluded with the reason
+    recorded in the validation report.
+    """
+    lessons_root = project_root / "data" / "raw" / "user_lessons"
+    if not lessons_root.exists():
+        return []
+    records: list[CorpusRecord] = []
+    for path in sorted(lessons_root.rglob("*.gd")):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if not text.strip():
+            continue
+        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        record_id = hashlib.sha256(f"user-lessons\0{path.name}\0{digest}".encode()).hexdigest()[:20]
+        staged_relative = Path("user-lessons") / f"{record_id}.gd"
+        staged_path = staging_work / staged_relative
+        staged_path.parent.mkdir(parents=True, exist_ok=True)
+        header = (
+            "# corpus_source: user-lessons\n"
+            f"# original_path: {path.relative_to(project_root).as_posix()}\n"
+            "# license: LicenseRef-User-Owned-Private\n"
+            "# private_source: true\n"
+        )
+        staged_path.write_text(header + text, encoding="utf-8", newline="\n")
+        records.append(CorpusRecord(
+            record_id=record_id,
+            source_id="user-lessons",
+            source_title="User lessons (chat samples)",
+            group_id=f"user-lessons::{record_id}",
+            kind="godot_projects",
+            original_path=path.relative_to(project_root).as_posix(),
+            staged_path=staged_relative.as_posix(),
+            split="train",
+            content_sha256=digest,
+            bytes=len(text.encode("utf-8")),
+            license="LicenseRef-User-Owned-Private",
+            attribution="User-generated samples saved from the Studio chat",
+        ))
+    return records
+
+
 def build_staging(project_root: Path) -> dict[str, Any]:
     registry = load_registry(project_root)
     downloads = corpus_root(project_root) / "downloads"
@@ -1216,6 +1264,10 @@ def build_staging(project_root: Path) -> dict[str, Any]:
             for record in records:
                 if record.group_id in forced:
                     record.split = forced[record.group_id]
+
+    user_lessons_records = _stage_user_lessons(project_root, staging_work)
+    if user_lessons_records:
+        records.extend(user_lessons_records)
 
     if not records:
         shutil.rmtree(staging_work, ignore_errors=True)
@@ -1538,6 +1590,23 @@ def _checker_results(output: str) -> tuple[set[str], set[str]]:
 
 
 
+def _record_script_location(project_root: Path, item: dict[str, Any]) -> tuple[Path, Path]:
+    """Resolve a record's original script on disk plus its context root.
+
+    Registry sources keep their checkouts under ``downloads/<source_id>``.
+    User lessons (chat samples) are written by the Studio to
+    ``data/raw/user_lessons`` and never live in the downloads tree, so they
+    resolve against the project root instead. The first return value is the
+    root used for the Godot ``--path`` and for path attribution; the second
+    is the script itself.
+    """
+    if item.get("source_id") == "user-lessons":
+        script = project_root / item["original_path"]
+        return project_root, script
+    source_root = corpus_root(project_root) / "downloads" / item["source_id"]
+    return source_root, source_root / item["original_path"]
+
+
 def _run_perfile_syntax_check(
     project_root: Path,
     item: dict[str, Any],
@@ -1556,8 +1625,7 @@ def _run_perfile_syntax_check(
     as an unverified warning. Returns None when the source file cannot be
     located (the record is kept with an explicit note in that case).
     """
-    source_root = corpus_root(project_root) / "downloads" / item["source_id"]
-    script = source_root / item["original_path"]
+    source_root, script = _record_script_location(project_root, item)
     cache_key = hashlib.sha256(
         f"perfile:{item['source_id']}:{item['original_path']}:{item.get('content_sha256')}:{godot_version}".encode("utf-8")
     ).hexdigest()
@@ -1812,21 +1880,21 @@ def _validate_standalone_records(
     per_file_timeout = _validation_timeout_seconds()
     hard_count = 0
     for item in records:
-        source_root = corpus_root(project_root) / "downloads" / item["source_id"]
-        script = source_root / item["original_path"]
+        source_root, script = _record_script_location(project_root, item)
         cache_key = hashlib.sha256(
             f"standalone:{item['source_id']}:{item['original_path']}:{item['content_sha256']}:{godot_version}".encode("utf-8")
         ).hexdigest()
         cached = cache_entries.get(cache_key)
-        if isinstance(cached, dict):
+        if isinstance(cached, dict) and cached.get("validator") == "project-aware-v4-standalone-v2":
             status = cached.get("status", "passed")
             classification = cached.get("classification", "context_warning")
             error = cached.get("error")
         elif not script.exists():
-            # Intentional: the downloads copy is gone, but the staged copy (which
-            # is what actually lands in prepared/) still exists. Per policy a
-            # missing source file is no syntax error - keep the record with a
-            # warning instead of silently dropping it.
+            # Intentional: the downloads copy is gone (or, for user-lessons, the
+            # raw chat file was removed), but the staged copy (which is what
+            # actually lands in prepared/) still exists. Per policy a missing
+            # source file is no syntax error - keep the record with a warning
+            # instead of silently dropping it.
             status, classification = "passed", "context_warning"
             error = "Source file missing while checking; keep as a context warning."
         else:
@@ -1865,7 +1933,7 @@ def _validate_standalone_records(
         hard_count += int(status == "failed")
         if not isinstance(cached, dict):
             cache_entries[cache_key] = {
-                "validator": "project-aware-v4-standalone", "checked_at": time.time(),
+                "validator": "project-aware-v4-standalone-v2", "checked_at": time.time(),
                 "godot": godot_version, "status": status, "classification": classification, "error": error,
             }
     return hard_count

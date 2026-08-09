@@ -95,3 +95,31 @@ def test_extract_rst_supports_gdscript_code_tabs_without_csharp_sibling(tmp_path
     assert "extends Node" in snippets[0][1]
     assert "print(\"hello\")" in snippets[0][1]
     assert "using Godot" not in snippets[0][1]
+
+
+
+def test_stage_user_lessons_ingests_chat_samples(tmp_path: Path) -> None:
+    from godot_coder.corpus import _stage_user_lessons
+
+    lessons = tmp_path / "data" / "raw" / "user_lessons"
+    lessons.mkdir(parents=True)
+    (lessons / "generated_1.gd").write_text(
+        "extends Node\n\nfunc _ready() -> void:\n    pass\n", encoding="utf-8"
+    )
+    (lessons / "generated_2.gd").write_text("func broken(", encoding="utf-8")
+    (lessons / "notes.txt").write_text("not a script", encoding="utf-8")
+
+    staging = tmp_path / "data" / "corpus" / "staged.building"
+    staging.mkdir(parents=True)
+    records = _stage_user_lessons(tmp_path, staging)
+
+    assert len(records) == 2
+    assert {r.source_id for r in records} == {"user-lessons"}
+    assert all(r.split == "train" for r in records)
+    assert all(r.kind == "godot_projects" for r in records)
+    for record in records:
+        staged = staging / record.staged_path
+        assert staged.exists()
+        content = staged.read_text(encoding="utf-8")
+        assert content.startswith("# corpus_source: user-lessons")
+        assert "# private_source: true" in content

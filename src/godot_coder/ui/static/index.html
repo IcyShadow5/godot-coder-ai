@@ -115,9 +115,9 @@
             <div class="composer-wrap">
               <textarea id="chat-input" rows="5" spellcheck="false" placeholder="Enter a GDScript prompt or task …"></textarea>
               <div class="composer-footer">
-                <div class="composer-hint"><span>Ctrl</span> + <span>Enter</span> generieren</div>
+                <div class="composer-hint"><span>Ctrl</span> + <span>Enter</span> to generate</div>
                 <button class="primary-button" id="generate-button">
-                  <span>Generieren</span><span class="button-arrow">→</span>
+                  <span>Generate</span><span class="button-arrow">→</span>
                 </button>
               </div>
             </div>
@@ -125,7 +125,7 @@
 
           <aside class="control-stack">
             <div class="glass-panel control-card">
-              <div class="section-label">AKTIVES MODELL</div>
+              <div class="section-label">ACTIVE MODEL</div>
               <select id="chat-checkpoint" class="field-select"></select>
               <div class="model-mini" id="active-model-summary">No checkpoint found</div>
             </div>
@@ -134,10 +134,11 @@
               <div class="section-label">GENERATION</div>
               <label class="field-label">New tokens <output id="tokens-output">300</output></label>
               <input id="max-tokens" type="range" min="32" max="1024" step="16" value="300">
-              <label class="field-label">Temperatur <output id="temperature-output">0.40</output></label>
+              <label class="field-label">Temperature <output id="temperature-output">0.40</output></label>
               <input id="temperature" type="range" min="0.05" max="1.5" step="0.05" value="0.4">
               <label class="field-label">Top-K <output id="top-k-output">10</output></label>
               <input id="top-k" type="range" min="0" max="100" step="1" value="10">
+              <label class="field-label toggle-label" title="Wraps the prompt in the same task-header format the model was trained on - small models continue much more sensibly in-distribution."><input type="checkbox" id="task-format" checked> Training task format</label>
             </div>
 
             <div class="glass-panel control-card validation-card">
@@ -644,6 +645,8 @@
 
   <div class="toast-region" id="toast-region" aria-live="polite"></div>
   <script src="/static/progress.js" defer></script>
+  <script src="/static/api.js" defer></script>
+  <script src="/static/remote.js" defer></script>
   <script src="/static/app.js" defer></script>
 </body>
 </html>
