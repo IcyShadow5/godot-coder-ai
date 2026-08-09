@@ -61,8 +61,7 @@ plenty of stuff that should have tests — so I wrote them.
 - **metrics.py** — structured observability module (`MetricEvent` enum,
   `MetricRecord` dataclass, `MetricsCollector` with thread-safe JSONL
   append). Tracks parse/runtime success, tool timeouts, retries, token
-  usage. Not wired into train.py yet (TODO for v0.11), but the
-  infrastructure is ready.
+  usage. Wired into train.py (TOKEN_USAGE per interval, RUNTIME_SUCCESS/ERROR per validation step) and services.py (PARSE_SUCCESS/ERROR, GENERATION_COMPLETE, TOKEN_USAGE).
 - **ValidationReport + PerFileResult** — typed dataclasses instead of bare
   dicts in `validate_dataset.py`. `to_dict()` for the JSON file, typed
   access everywhere else.
@@ -86,6 +85,21 @@ plenty of stuff that should have tests — so I wrote them.
   descendant-cleanup test no longer polls with `time.sleep()` (CI flake
   risk). It mocks `process_is_alive` instead.
 
+- **Golden Task Suite** — 30 hand-written GDScript challenges across 8 topics
+  (functions, signals, collections, gameplay, nodes, state, basics,
+  architecture) with reference solutions. Run with  to get a
+  parser pass rate + token-prefix accuracy score. Baseline against
+  : 0% parser pass rate, 11% token accuracy.
+- **ProjectValidationResult.failure_kind** — the corpus import pipeline now
+  carries a typed  on every validation result, same taxonomy
+  as . Wired at 3 meaningful sites (missing Godot,
+  startup failure, successful import).
+- **benchmark.py scaffold support** — golden tasks use  instead of
+  . The benchmark loop now reads both keys so all tier formats work.
+- **Golden task invariant tests** — 7 tests (test_golden_tasks.py) covering
+  task count, scaffold validity, topic/difficulty enums, no duplicates,
+  and benchmark import.
+
 ### Changed
 
 - **All new files rewritten in my voice.** SECURITY.md, metrics.py,
@@ -105,7 +119,7 @@ plenty of stuff that should have tests — so I wrote them.
 ### Version
 
 - `__init__.py`, `pyproject.toml` and the service worker cache bumped to
-  `0.10.12`. 244 tests total (52 new since v0.10.11: job-object
+  `0.10.12`. 251 tests total (59 new since v0.10.11: job-object
   struct/rights mocks, managed-process validate_godot, prompt-strip,
   resume-aware warmup, memmap close, FailureKind/classify_failure,
   metrics, 22 security-gap tests, 6 validate_godot tests, deterministic
