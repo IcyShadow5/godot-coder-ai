@@ -1,13 +1,17 @@
 from __future__ import annotations
+import tempfile
 
 import json
 import zipfile
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from godot_coder.corpus import build_staging, load_registry, save_registry, verify_declared_license
 from godot_coder.local_sources import (
+    ImportPlan,
+    ImportProgress,
     _ERROR_LINE_RE,
     _PROGRESS_LINE_RE,
     _safe_extract,
@@ -238,6 +242,17 @@ def test_skip_project_import_wins_over_fast_static(tmp_path: Path, monkeypatch: 
 
     assert result.mode == "gdscript_check", "skip-import must use the per-file parser"
     assert result.status in {"passed", "passed_with_warnings"}
+
+    # Regression: the temporary validation working copy must be removed even
+    # on the skip-import fast path (it used to return before the cleanup ran).
+    # Compare counts before/after so pre-existing leftovers from older buggy
+    # runs don't make this test fail for the wrong reason.
+    validation_dir = Path(tempfile.gettempdir()) / "godot-coder-validation"
+    before = len(list(validation_dir.glob(f"{source.name}-*")))
+    leftovers_after = list(validation_dir.glob(f"{source.name}-*"))
+    assert len(leftovers_after) == before, (
+        f"skip-import left {len(leftovers_after) - before} new workspace copy(ies) behind"
+    )
     assert not ran, "statically clean scripts must not be Godot-checked per file"
 
 
@@ -270,3 +285,39 @@ def test_error_rate_abort_triggers_parser_fallback(tmp_path: Path, monkeypatch: 
     assert result.mode == "gdscript_check", "abort must fall back to the per-file parser"
     assert result.status in {"passed", "passed_with_warnings"}
     assert result.infrastructure_failure and "consecutive error lines" in result.infrastructure_failure
+
+class _RecordingEmitter:
+    def __init__(self) -> None:
+        self.events: list[dict] = []
+
+    def emit(self, event: str, **context: Any) -> dict[str, Any]:
+        self.events.append({"event": event, **context})
+        return context
+
+
+def test_progress_events_emitted_for_project_index_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """project_index=0 must still emit progress events (0 used to be falsy)."""
+    source = tmp_path / "zero-index-project"
+    _write_project(source)
+    monkeypatch.setattr("godot_coder.local_sources._find_godot", lambda: "fake-godot")
+    monkeypatch.setattr(
+        "godot_coder.local_sources.run_managed_process",
+        lambda command, **kwargs: ManagedProcessResult(
+            command=list(command), return_code=0, output="ok", timed_out=False,
+            duration_seconds=0.1, pid=4242, termination_attempted=False,
+        ),
+    )
+    emitter = _RecordingEmitter()
+    progress = ImportProgress(
+        emitter=emitter,
+        plans=[
+            ImportPlan(
+                project=source,
+                source_item=source,
+                project_name="zero-index-project",
+                script_count=1,
+            )
+        ],
+    )
+    _validate_project(source, static_warning_paths=set(), progress=progress, project_index=0)
+    assert any(event.get("project_index") == 0 for event in emitter.events)

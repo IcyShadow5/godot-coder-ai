@@ -194,6 +194,62 @@ def _replace_directory(temporary: Path, destination: Path) -> None:
         shutil.rmtree(backup)
 
 
+def _load_audit_checkpoint(snapshot_path: Path) -> dict[str, Any] | None:
+    """Return a previously written audit checkpoint, or None.
+
+    A checkpoint is only usable when the corpus manifest fingerprint matches,
+    otherwise a resume would mix old and new records. On mismatch the stale
+    checkpoint is discarded so the next run starts clean.
+    """
+    if not snapshot_path.is_file():
+        return None
+    try:
+        payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if payload.get("format") != "godot-coder-audit-checkpoint":
+        return None
+    return payload if isinstance(payload.get("enriched"), list) else None
+
+
+def _rebuild_audit_state(enriched: list[dict[str, Any]]) -> tuple[dict[str, str], dict[int, list[tuple[int, int, str]]], dict[str, set[str]], dict[str, set[str]]]:
+    """Replay the in-memory audit state from already-enriched records.
+
+    The loop state (exact hash map, simhash buckets, split tracking) is fully
+    determined by the records processed so far, so a resumed run reproduces
+    identical duplicate/leakage decisions without reprocessing anything.
+    """
+    exact_seen: dict[str, str] = {}
+    simhash_buckets: dict[int, list[tuple[int, int, str]]] = defaultdict(list)
+    group_splits: dict[str, set[str]] = defaultdict(set)
+    normalized_hash_splits: dict[str, set[str]] = defaultdict(set)
+    for record in enriched:
+        normalized_sha = record["normalized_sha256"]
+        if record.get("duplicate_of") is None:
+            exact_seen[normalized_sha] = str(record["record_id"])
+        simhash = int(record["simhash64"], 16)
+        length = int(record.get("token_estimate", 0))
+        bucket_key = (simhash >> 48) ^ int(math.log2(max(1, length)))
+        simhash_buckets[bucket_key].append((simhash, length, str(record["record_id"])))
+        group_splits[str(record["group_id"])].add(str(record["split"]))
+        normalized_hash_splits[normalized_sha].add(str(record["split"]))
+    return exact_seen, simhash_buckets, group_splits, normalized_hash_splits
+
+
+def _manifest_fingerprint(manifest: dict[str, Any]) -> str:
+    """Stable fingerprint of the manifest record list.
+
+    A checkpoint belongs to one specific manifest; if the corpus changed
+    between runs (new records, re-import), the checkpoint must not resume.
+    """
+    records = manifest.get("records", [])
+    material = [
+        (str(r.get("record_id")), str(r.get("staged_path")), str(r.get("split")))
+        for r in records
+    ]
+    return hashlib.sha256(json.dumps(material, sort_keys=True).encode("utf-8")).hexdigest()
+
+
 def audit_corpus(project_root: Path, *, near_duplicate_distance: int = 3) -> dict[str, Any]:
     root = corpus_root(project_root)
     manifest_path = root / "corpus_manifest.json"
@@ -209,17 +265,27 @@ def audit_corpus(project_root: Path, *, near_duplicate_distance: int = 3) -> dic
     audited_work.mkdir(parents=True)
 
     enriched: list[dict[str, Any]] = []
-    exact_seen: dict[str, str] = {}
-    simhash_buckets: dict[int, list[tuple[int, int, str]]] = defaultdict(list)
     near_pairs: list[dict[str, Any]] = []
-    group_splits: dict[str, set[str]] = defaultdict(set)
-    normalized_hash_splits: dict[str, set[str]] = defaultdict(set)
 
     total_records = len(manifest.get("records", []))
     snapshot_interval = max(500, total_records // 10)  # Every 500 records or 10% of total
     snapshot_path = root / "audit_checkpoint.json"
 
-    for record_index, record in enumerate(manifest.get("records", []), start=1):
+    # Crash recovery: if a previous run was interrupted, the checkpoint holds
+    # the records processed so far. Resume from it instead of redoing the whole
+    # corpus (including every Godot validation and simhash pass).
+    checkpoint = _load_audit_checkpoint(snapshot_path)
+    resumed = False
+    if checkpoint is not None and checkpoint.get("manifest_fingerprint") == _manifest_fingerprint(manifest):
+        enriched = list(checkpoint.get("enriched", []))
+        near_pairs = list(checkpoint.get("near_pairs", []))
+        resumed = bool(enriched)
+    if resumed:
+        print(f"Audit resumed from checkpoint: {len(enriched)}/{total_records} records")
+    exact_seen, simhash_buckets, group_splits, normalized_hash_splits = _rebuild_audit_state(enriched)
+
+    for offset, record in enumerate(manifest.get("records", [])[len(enriched):], start=len(enriched) + 1):
+        record_index = offset
         source = source_by_id.get(str(record.get("source_id")), {})
         path = staged / str(record["staged_path"])
         if not path.exists():
@@ -278,12 +344,15 @@ def audit_corpus(project_root: Path, *, near_duplicate_distance: int = 3) -> dic
         enriched.append(enriched_record)
 
         # Periodic snapshot so a mid-audit crash doesn't lose all progress.
+        # The state dicts are deterministic given `enriched`, so a resume only
+        # needs the records + pairs + manifest fingerprint to replay them.
         if record_index % snapshot_interval == 0:
             _atomic_json(snapshot_path, {
                 "format": "godot-coder-audit-checkpoint",
                 "progress": {"records": record_index, "total": total_records},
                 "enriched": enriched,
                 "near_pairs": near_pairs,
+                "manifest_fingerprint": _manifest_fingerprint(manifest),
             })
             print(f"Audit checkpoint: {record_index}/{total_records} records")
 

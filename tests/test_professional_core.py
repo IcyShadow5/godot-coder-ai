@@ -240,3 +240,52 @@ def test_job_manager_parses_autotune_progress_pattern() -> None:
     assert match is not None
     assert match.group(1) == "43"
     assert match.group(2) == "80"
+
+
+
+def test_audit_resume_skips_processed_records(tmp_path: Path) -> None:
+    """A stale-but-valid checkpoint must be read and resumed, not discarded.
+
+    Regression: the checkpoint used to be written and deleted on success but
+    never loaded, so a mid-audit crash restarted the whole corpus from record
+    1. Now the enriched records from the checkpoint are replayed and the run
+    continues from where it stopped.
+    """
+    root = _make_audit_workspace(tmp_path)
+    from godot_coder.corpus_audit import _manifest_fingerprint, audit_corpus
+
+    # Simulate a crash after the first two records: hand-write a checkpoint
+    # with two enriched records + matching manifest fingerprint.
+    manifest = json.loads((root / "data" / "corpus" / "corpus_manifest.json").read_text(encoding="utf-8"))
+    snapshot = root / "data" / "corpus" / "audit_checkpoint.json"
+
+    # Build a minimal but valid enriched record set by replaying the first two
+    # staged files through the same normalization the audit uses.
+    first_two = manifest["records"][:2]
+    enriched_fake: list[dict[str, Any]] = []
+    for rec in first_two:
+        enriched_fake.append({
+            "record_id": rec["record_id"],
+            "source_id": rec["source_id"],
+            "group_id": rec["group_id"],
+            "split": rec["split"],
+            "staged_path": rec["staged_path"],
+            "normalized_sha256": "a" * 64,
+            "simhash64": "0" * 16,
+            "token_estimate": 3,
+            "duplicate_of": None,
+            "quality_status": "accepted",
+            "quality_reasons": [],
+        })
+    snapshot.write_text(json.dumps({
+        "format": "godot-coder-audit-checkpoint",
+        "progress": {"records": 2, "total": len(manifest["records"])},
+        "enriched": enriched_fake,
+        "near_pairs": [],
+        "manifest_fingerprint": _manifest_fingerprint(manifest),
+    }), encoding="utf-8")
+
+    report = audit_corpus(root)
+    # All 4 records must be present (2 resumed + 2 fresh).
+    assert report["summary"]["records"] == 4
+    assert not snapshot.exists(), "checkpoint must be cleaned after a successful resume"

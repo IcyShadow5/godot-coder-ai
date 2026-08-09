@@ -94,9 +94,15 @@ def build_instruction_dataset(project_root: Path, *, max_tasks_per_file: int = 2
         for path in sorted(folder.rglob("*.gd")) if folder.exists() else []:
             text = path.read_text(encoding="utf-8", errors="replace")
             relative = path.relative_to(source_root).as_posix()
+            # The cap is per FILE, across every function in it. It used to
+            # break after the first function that yielded a task, silently
+            # dropping the rest of the file — fixed so multi-function scripts
+            # contribute their full share up to the cap.
+            added = 0
             for function in _functions(text):
+                if added >= max_tasks_per_file:
+                    break
                 candidates = (_completion_task(function, relative, split), _repair_task(function, relative, split))
-                added = 0
                 for task in candidates:
                     if task is None:
                         continue
@@ -106,8 +112,6 @@ def build_instruction_dataset(project_root: Path, *, max_tasks_per_file: int = 2
                     added += 1
                     if added >= max_tasks_per_file:
                         break
-                if added:
-                    break
         destination = output_root / f"{split}.jsonl"
         temporary = destination.with_suffix(".tmp")
         with temporary.open("w", encoding="utf-8", newline="\n") as handle:

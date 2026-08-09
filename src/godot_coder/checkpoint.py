@@ -2,6 +2,7 @@ from __future__ import annotations
 """Checkpoint save/load with atomic writes, hard-link aliases, and RNG state capture."""
 
 import os
+import pickle
 import random
 import shutil
 from pathlib import Path
@@ -10,6 +11,9 @@ from typing import Any
 import numpy as np
 import torch
 
+# Intentionally stays at 1: the RNG state layout changed (raw numpy tuple ->
+# primitive dict) but _coerce_numpy_state reads both, so bumping the version
+# would only hard-break every existing checkpoint for no reason.
 CHECKPOINT_FORMAT_VERSION = 1
 
 
@@ -26,10 +30,69 @@ def capture_rng_state() -> dict[str, Any]:
 
 def restore_rng_state(state: dict[str, Any]) -> None:
     random.setstate(state["python"])
-    np.random.set_state(state["numpy"])
+    np.random.set_state(_coerce_numpy_state(state["numpy"]))
     torch.set_rng_state(state["torch"])
     if torch.cuda.is_available() and "cuda" in state:
         torch.cuda.set_rng_state_all(state["cuda"])
+
+
+def _rng_state_to_primitives(state: dict[str, Any]) -> dict[str, Any]:
+    """Flatten RNG state into JSON-safe values so checkpoints load safely.
+
+    The numpy MT19937 key is an ndarray, the one object torch's safe unpickler
+    rejects. A plain list of ints loads under weights_only=True with no
+    allowlist at all; the other RNG pieces are already primitives.
+    """
+    bit_generator, key_array, pos, has_gauss, cached_gaussian = state["numpy"]
+    primitive = dict(state)
+    primitive["numpy"] = {
+        "bit_generator": bit_generator,
+        "key": key_array.tolist(),
+        "pos": pos,
+        "has_gauss": has_gauss,
+        "cached_gaussian": cached_gaussian,
+    }
+    return primitive
+
+
+def _coerce_numpy_state(numpy_state: Any) -> Any:
+    """Accept the live tuple, the legacy tuple, or the primitive dict on disk."""
+    if not isinstance(numpy_state, dict):
+        return numpy_state  # live capture or legacy checkpoint
+    key = numpy_state["key"]
+    if isinstance(key, list):
+        key = np.asarray(key, dtype=np.uint32)
+    return (
+        numpy_state["bit_generator"],
+        key,
+        numpy_state["pos"],
+        numpy_state["has_gauss"],
+        numpy_state["cached_gaussian"],
+    )
+
+
+def _legacy_numpy_globals() -> list[Any]:
+    """Numpy's array machinery needed to rebuild legacy RNG keys.
+
+    Only numpy's own reconstruct/ndarray/dtype classes are admitted; every other
+    global stays blocked by weights_only=True.
+    """
+    try:
+        from numpy._core import multiarray as _multiarray  # numpy 2+
+    except ImportError:  # pragma: no cover - numpy 1.x module layout
+        from numpy.core import multiarray as _multiarray  # type: ignore[no-redef]
+    globals_list: list[Any] = [np.ndarray, np.dtype, _multiarray._reconstruct]
+    try:
+        import numpy.dtypes as _dtypes  # numpy 2+ dtype classes
+
+        globals_list.extend(
+            getattr(_dtypes, name)
+            for name in dir(_dtypes)
+            if name.endswith("DType") and isinstance(getattr(_dtypes, name), type)
+        )
+    except ImportError:  # pragma: no cover - numpy 1.x
+        pass
+    return globals_list
 
 
 def _replace_alias(target: Path, alias: Path) -> str:
@@ -99,7 +162,7 @@ def save_checkpoint(
         "tokenizer_fingerprint": tokenizer_fingerprint,
         "best_val_loss": best_val_loss,
         "best_step": best_step,
-        "rng_state": capture_rng_state(),
+        "rng_state": _rng_state_to_primitives(capture_rng_state()),
         "data_rng_state": data_rng_state,
     }
     torch.save(payload, temporary)
@@ -116,9 +179,13 @@ def load_checkpoint(path: str | Path, map_location: str | torch.device = "cpu") 
     if not checkpoint_path.exists():
         raise FileNotFoundError(checkpoint_path)
     try:
-        payload = torch.load(checkpoint_path, map_location=map_location, weights_only=False)
-    except TypeError:  # Compatibility with older PyTorch versions.
-        payload = torch.load(checkpoint_path, map_location=map_location)
+        payload = torch.load(checkpoint_path, map_location=map_location, weights_only=True)
+    except pickle.UnpicklingError:
+        # Legacy checkpoints stored the numpy RNG key as an ndarray - the one
+        # object the safe unpickler rejects. Retry with exactly numpy's array
+        # machinery allowlisted; anything else is still blocked.
+        with torch.serialization.safe_globals(_legacy_numpy_globals()):
+            payload = torch.load(checkpoint_path, map_location=map_location, weights_only=True)
     if payload.get("format") != "godot-coder-checkpoint":
         raise ValueError("unsupported checkpoint format")
     if payload.get("format_version") != CHECKPOINT_FORMAT_VERSION:

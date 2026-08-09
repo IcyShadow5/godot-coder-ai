@@ -3,6 +3,18 @@
 Patch notes, so I still know later what I was thinking. Detailed notes for
 each version live in `docs/CHANGELOG_v0.10.x.md`; this file is the quick tour.
 
+## v0.10.15 (2026-08-10)
+
+Second batch from the external review, all robustness. Fast Import Mode
+leaked its temp working copy (144 leftovers found and cleaned); the GitHub
+archive path got the same zip-bomb guard as local uploads; instruction data
+now uses every function in a file, not just the first; the audit checkpoint
+is actually read on resume; checkpoints load with `weights_only=True`; and
+progress events can no longer be dropped by a 0 index. Plus the unused-import
+cleanup (studio.py, ui/paths.py, golden-tasks test) and .gitignore gaps.
+263 tests.
+
+
 ## v0.10.14 (2026-08-09)
 
 An external review of the release zip came back with a short list. Two

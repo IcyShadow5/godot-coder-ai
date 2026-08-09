@@ -65,7 +65,7 @@ def _zip_with_entries(entries: list[tuple[str, str]], directory: Path) -> Path:
 def test_github_archive_rejects_parent_traversal_entry(tmp_path: Path) -> None:
     archive = _zip_with_entries([("repo-root/ok.gd", "extends Node\n"), ("repo-root/../escape.gd", "evil")], tmp_path)
     destination = tmp_path / "checkout"
-    with pytest.raises(ValueError, match="unsafe archive path"):
+    with pytest.raises(ValueError, match="unsafe archive path|Unsafe ZIP path"):
         corpus._safe_extract_github_archive(archive, destination, {})
 
 
@@ -74,7 +74,7 @@ def test_github_archive_rejects_absolute_entry(tmp_path: Path) -> None:
     # rejects the archive before the per-entry check runs. Both reject it.
     archive = _zip_with_entries([("repo-root/ok.gd", "extends Node\n"), ("/etc/escape.gd", "evil")], tmp_path)
     destination = tmp_path / "checkout"
-    with pytest.raises(ValueError, match="unsafe archive path|unexpected root layout"):
+    with pytest.raises(ValueError, match="unsafe archive path|Unsafe ZIP path|unexpected root layout"):
         corpus._safe_extract_github_archive(archive, destination, {})
 
 
@@ -83,6 +83,26 @@ def test_github_archive_rejects_multiple_roots(tmp_path: Path) -> None:
     destination = tmp_path / "checkout"
     with pytest.raises(ValueError, match="unexpected root layout"):
         corpus._safe_extract_github_archive(archive, destination, {})
+
+
+def test_github_archive_rejects_zip_bomb_ratio(tmp_path: Path) -> None:
+    """The GitHub archive fallback must enforce the same zip-bomb limits as
+    the local inbox path (high compression ratio on a large file)."""
+    archive = tmp_path / "bomb.zip"
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as handle:
+        handle.writestr("repo-main/big.txt", b"A" * (16 * 1024 * 1024))
+    with pytest.raises(ValueError, match="Suspicious compression ratio"):
+        corpus._safe_extract_github_archive(archive, tmp_path / "out", {})
+
+
+def test_github_archive_rejects_too_many_entries(tmp_path: Path) -> None:
+    """Entry-count limit applies to the GitHub archive fallback too."""
+    archive = tmp_path / "many.zip"
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as handle:
+        for index in range(corpus.MAX_ARCHIVE_FILES + 1):
+            handle.writestr(f"repo-main/f{index}.txt", "x")
+    with pytest.raises(ValueError, match="too many entries"):
+        corpus._safe_extract_github_archive(archive, tmp_path / "out", {})
 
 
 def test_github_archive_extracts_clean_single_root(tmp_path: Path) -> None:

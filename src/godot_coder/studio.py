@@ -9,7 +9,7 @@ import uvicorn
 
 from . import __version__
 from .remote_access import DEFAULT_REMOTE_PORT, load_remote_config
-from .ui.paths import find_project_root
+from .project import find_project_root
 from .ui.server import create_app
 
 

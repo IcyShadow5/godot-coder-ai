@@ -54,5 +54,10 @@ def test_no_duplicate_ids() -> None:
 
 def test_benchmark_imports_golden_tasks() -> None:
     """The benchmark module must import GOLDEN_TASKS so --mode=golden works."""
-    from godot_coder.benchmark import run_benchmark  # noqa: F401
-    # If this import succeeds, the module compiles with golden_tasks wired in.
+    from godot_coder.benchmark import GOLDEN_TASKS, run_benchmark
+
+    # run_benchmark wiring must stay intact: it takes a checkpoint path and
+    # knows about the golden task list. If the import chain breaks, --mode=golden
+    # would fail at runtime instead of here.
+    assert callable(run_benchmark)
+    assert GOLDEN_TASKS, "golden task list must be non-empty"

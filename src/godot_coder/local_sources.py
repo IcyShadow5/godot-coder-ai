@@ -18,8 +18,14 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Iterator
 
 from .corpus import (
+    MAX_ARCHIVE_FILES,
+    MAX_ARCHIVE_UNCOMPRESSED,
+    MAX_SINGLE_FILE,
+    MAX_COMPRESSION_RATIO,
+    _archive_preflight,
     _find_godot,
     _json_write,
+    _safe_member,
     _source_metadata_path,
     corpus_root,
     load_registry,
@@ -30,10 +36,6 @@ from .progress_events import EtaEstimator, PHASE_LABELS, ProgressEmitter, mask_s
 
 LOCAL_LICENSE = "LicenseRef-User-Owned-Private"
 LOCAL_FORMAT_VERSION = 1
-MAX_ARCHIVE_FILES = 100_000
-MAX_ARCHIVE_UNCOMPRESSED = 8 * 1024**3
-MAX_SINGLE_FILE = 512 * 1024**2
-MAX_COMPRESSION_RATIO = 250.0
 TRAIN_FILE_LIMIT = int(os.environ.get("GODOT_CODER_TRAIN_FILE_LIMIT_BYTES", str(4 * 1024**2)))  # default 4 MiB
 
 GENERATED_PARTS = {
@@ -239,33 +241,6 @@ def _decode(data: bytes) -> tuple[str, str]:
         except UnicodeDecodeError:
             continue
     return data.decode("utf-8", errors="replace"), "utf-8-replace"
-
-
-def _safe_member(name: str) -> bool:
-    normalized = name.replace("\\", "/")
-    path = PurePosixPath(normalized)
-    return not path.is_absolute() and ".." not in path.parts and not re.match(r"^[A-Za-z]:", normalized)
-
-
-def _archive_preflight(path: Path) -> dict[str, Any]:
-    with zipfile.ZipFile(path) as archive:
-        infos = archive.infolist()
-        if len(infos) > MAX_ARCHIVE_FILES:
-            raise ValueError(f"ZIP contains too many entries ({len(infos):,}).")
-        total = 0
-        for info in infos:
-            if not _safe_member(info.filename):
-                raise ValueError(f"Unsafe ZIP path: {info.filename}")
-            if info.flag_bits & 1:
-                raise ValueError(f"Encrypted ZIP entries are not supported: {info.filename}")
-            if info.file_size > MAX_SINGLE_FILE:
-                raise ValueError(f"Single file is too large: {info.filename}")
-            total += info.file_size
-            if info.file_size > 8 * 1024**2 and info.file_size / max(1, info.compress_size) > MAX_COMPRESSION_RATIO:
-                raise ValueError(f"Suspicious compression ratio in ZIP: {info.filename}")
-        if total > MAX_ARCHIVE_UNCOMPRESSED:
-            raise ValueError(f"ZIP would occupy {total / 1024**3:.1f} GiB uncompressed.")
-        return {"entries": len(infos), "uncompressed_bytes": total}
 
 
 def _safe_extract(path: Path, destination: Path) -> None:
@@ -483,7 +458,7 @@ def audit_project(
     secret_hits: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
 
-    if progress and project_index:
+    if progress is not None and project_index is not None:
         progress.emit(
             "local_project_phase",
             index=project_index,
@@ -510,7 +485,7 @@ def audit_project(
             executable_files += 1
 
     gd_files = len(script_files)
-    if progress and project_index:
+    if progress is not None and project_index is not None:
         progress.emit(
             "local_project_phase",
             index=project_index,
@@ -569,7 +544,7 @@ def audit_project(
                     "line": text_value.count("\n", 0, match.start()) + 1,
                 })
 
-    if progress and project_index:
+    if progress is not None and project_index is not None:
         progress.emit(
             "local_project_phase",
             index=project_index,
@@ -579,7 +554,7 @@ def audit_project(
             message="Secret scan passed." if not secret_hits else f"{len(secret_hits)} possible secrets detected; contents are not shown.",
             level="info" if not secret_hits else "warning",
         )
-    if progress and project_index:
+    if progress is not None and project_index is not None:
         progress.emit(
             "local_project_phase",
             index=project_index,
@@ -618,7 +593,7 @@ def audit_project(
             warning_files += 1
         else:
             passed_files += 1
-        if progress and project_index:
+        if progress is not None and project_index is not None:
             progress.script_checked()
             progress.emit(
                 "local_project_progress",
@@ -637,7 +612,7 @@ def audit_project(
                 message=f"{relative.as_posix()} checked" + (f" · {len(file_warnings)} warning(s)" if file_warnings else " · passed"),
             )
 
-    if progress and project_index:
+    if progress is not None and project_index is not None:
         progress.emit(
             "local_project_phase",
             index=project_index,
@@ -647,7 +622,7 @@ def audit_project(
             message="All script sizes are trainable." if not oversized else f"{len(oversized)} oversized scripts are excluded.",
             level="info" if not oversized else "warning",
         )
-    if progress and project_index:
+    if progress is not None and project_index is not None:
         progress.emit(
             "local_project_phase",
             index=project_index,
@@ -733,7 +708,7 @@ def _copy_project(
     project_index: int | None = None,
     reuse_existing: bool = False,
 ) -> None:
-    if progress and project_index:
+    if progress is not None and project_index is not None:
         progress.emit(
             "local_project_phase",
             index=project_index,
@@ -743,7 +718,7 @@ def _copy_project(
         )
     if reuse_existing and destination.is_dir() and (destination / "project.godot").is_file():
         locked_generated = _cleanup_generated_copy(destination)
-        if progress and project_index:
+        if progress is not None and project_index is not None:
             progress.emit(
                 "local_project_phase",
                 index=project_index,
@@ -789,7 +764,7 @@ def _copy_project(
     finally:
         if work.exists():
             _safe_remove_tree(work, attempts=2)
-    if progress and project_index:
+    if progress is not None and project_index is not None:
         progress.emit(
             "local_project_phase",
             index=project_index,
@@ -1003,7 +978,7 @@ def _run_gdscript_parser_fallback(
         check_scripts = list(all_scripts)
         skip_passed = []
 
-    if progress and project_index:
+    if progress is not None and project_index is not None:
         skipped_message = ""
         if skip_passed:
             skipped_message = f" {len(skip_passed)} statically inconspicuous scripts are adopted directly."
@@ -1111,7 +1086,7 @@ def _run_gdscript_parser_fallback(
         else:
             failed_files.append(relative.as_posix())
 
-        if progress and project_index:
+        if progress is not None and project_index is not None:
             detail = "passed" if file_passed else "excluded"
             if result.timed_out:
                 detail = "Time limit reached and excluded"
@@ -1172,7 +1147,7 @@ def _validate_project(
 ) -> ProjectValidationResult:
     godot = _find_godot()
     if not godot:
-        if progress and project_index:
+        if progress is not None and project_index is not None:
             progress.emit(
                 "local_project_phase",
                 index=project_index,
@@ -1199,6 +1174,23 @@ def _validate_project(
     timeout = _validation_timeout_seconds()
     idle_timeout = _validation_idle_timeout_seconds()
     record_path = active_record_path or (validation_root.parent / "active_validation.json")
+
+    def _cleanup_workspace() -> None:
+        """Remove the isolated validation working copy (both validation paths)."""
+        record_path.unlink(missing_ok=True)
+        cleanup_error = _safe_remove_tree(workspace)
+        if cleanup_error and (
+            progress is not None and project_index is not None
+        ):
+            progress.emit(
+                "local_validation_cleanup",
+                index=project_index,
+                phase="godot_validation",
+                message="The isolated validation working copy remained behind due to a file lock; it will be cleaned again on the next run.",
+                level="warning",
+                validation_cleanup_error=cleanup_error,
+            )
+
     command = [
         godot,
         "--headless",
@@ -1220,63 +1212,66 @@ def _validate_project(
     # during auditing; it has nothing to do with which Godot validation path
     # we take.
     if skip_import:
-        reason = "GODOT_CODER_SKIP_PROJECT_IMPORT=1 — project import skipped, using direct per-file parser."
-        if progress and project_index:
-            progress.emit(
-                "local_project_phase",
-                index=project_index,
-                phase="godot_validation",
-                phase_status="running",
-                validation_mode="gdscript_check",
-                validation_skip_import=True,
-                eta_status="calculating",
-                message="Godot project import skipped; direct per-file parser check starts.",
+        try:
+            reason = "GODOT_CODER_SKIP_PROJECT_IMPORT=1 — project import skipped, using direct per-file parser."
+            if progress is not None and project_index is not None:
+                progress.emit(
+                    "local_project_phase",
+                    index=project_index,
+                    phase="godot_validation",
+                    phase_status="running",
+                    validation_mode="gdscript_check",
+                    validation_skip_import=True,
+                    eta_status="calculating",
+                    message="Godot project import skipped; direct per-file parser check starts.",
+                )
+            fallback = _run_gdscript_parser_fallback(
+                godot,
+                workspace,
+                progress=progress,
+                project_index=project_index,
+                active_record_path=record_path,
+                reason=reason,
+                static_warning_paths=static_warning_paths,
             )
-        fallback = _run_gdscript_parser_fallback(
-            godot,
-            workspace,
-            progress=progress,
-            project_index=project_index,
-            active_record_path=record_path,
-            reason=reason,
-            static_warning_paths=static_warning_paths,
-        )
-        fallback.output = f"--- skip import reason ---\n{reason}\n" + fallback.output
-        if progress and project_index:
-            accepted = fallback.status in {"passed", "passed_with_warnings"}
-            failed_count = len(fallback.failed_files)
-            progress.emit(
-                "local_project_phase",
-                index=project_index,
-                phase="godot_validation",
-                phase_status="passed" if fallback.status == "passed" else ("passed_with_warnings" if accepted else "failed"),
-                project_status="running" if accepted else "failed",
-                validation_status=fallback.status,
-                validation_mode=fallback.mode,
-                validation_fallback=fallback.mode == "gdscript_check",
-                validation_infrastructure_failure=fallback.infrastructure_failure,
-                parser_checked_files=fallback.checked_files,
-                parser_failed_files=fallback.failed_files,
-                file_index=fallback.checked_files if fallback.mode == "gdscript_check" else None,
-                file_total=fallback.checked_files if fallback.mode == "gdscript_check" else None,
-                passed=max(0, fallback.checked_files - failed_count) if fallback.checked_files else None,
-                failed=failed_count,
-                eta_status="calculating",
-                parser_output=fallback.output[-6000:],
-                message=(
-                    "Godot project import skipped; parser fallback check finished."
-                    if fallback.status == "passed"
-                    else (
-                        f"Parser fallback check finished: {fallback.checked_files - failed_count}/{fallback.checked_files} scripts passed; {failed_count} excluded."
-                        if accepted else str(fallback.error)
-                    )
-                ),
-                level="info" if fallback.status == "passed" else ("warning" if accepted else "error"),
-            )
-        return fallback
+            fallback.output = f"--- skip import reason ---\n{reason}\n" + fallback.output
+            if progress is not None and project_index is not None:
+                accepted = fallback.status in {"passed", "passed_with_warnings"}
+                failed_count = len(fallback.failed_files)
+                progress.emit(
+                    "local_project_phase",
+                    index=project_index,
+                    phase="godot_validation",
+                    phase_status="passed" if fallback.status == "passed" else ("passed_with_warnings" if accepted else "failed"),
+                    project_status="running" if accepted else "failed",
+                    validation_status=fallback.status,
+                    validation_mode=fallback.mode,
+                    validation_fallback=fallback.mode == "gdscript_check",
+                    validation_infrastructure_failure=fallback.infrastructure_failure,
+                    parser_checked_files=fallback.checked_files,
+                    parser_failed_files=fallback.failed_files,
+                    file_index=fallback.checked_files if fallback.mode == "gdscript_check" else None,
+                    file_total=fallback.checked_files if fallback.mode == "gdscript_check" else None,
+                    passed=max(0, fallback.checked_files - failed_count) if fallback.checked_files else None,
+                    failed=failed_count,
+                    eta_status="calculating",
+                    parser_output=fallback.output[-6000:],
+                    message=(
+                        "Godot project import skipped; parser fallback check finished."
+                        if fallback.status == "passed"
+                        else (
+                            f"Parser fallback check finished: {fallback.checked_files - failed_count}/{fallback.checked_files} scripts passed; {failed_count} excluded."
+                            if accepted else str(fallback.error)
+                        )
+                    ),
+                    level="info" if fallback.status == "passed" else ("warning" if accepted else "error"),
+                )
+            return fallback
+        finally:
+            _cleanup_workspace()
 
     try:
-        if progress and project_index:
+        if progress is not None and project_index is not None:
             progress.emit(
                 "local_project_phase",
                 index=project_index,
@@ -1398,7 +1393,7 @@ def _validate_project(
                     reason = result.abort_reason or "The Godot project import was stopped in a controlled manner."
                 else:
                     reason = f"Godot ended the project import with exit code {result.return_code}."
-                if progress and project_index:
+                if progress is not None and project_index is not None:
                     progress.emit(
                         "local_project_phase",
                         index=project_index,
@@ -1423,7 +1418,7 @@ def _validate_project(
                 fallback.output = output + "\n" + fallback.output
                 validation = fallback
 
-        if progress and project_index:
+        if progress is not None and project_index is not None:
             accepted = validation.status in {"passed", "passed_with_warnings"}
             failed_count = len(validation.failed_files)
             progress.emit(
@@ -1456,17 +1451,7 @@ def _validate_project(
             )
         return validation
     finally:
-        record_path.unlink(missing_ok=True)
-        cleanup_error = _safe_remove_tree(workspace)
-        if cleanup_error and progress and project_index:
-            progress.emit(
-                "local_validation_cleanup",
-                index=project_index,
-                phase="godot_validation",
-                message="The isolated validation working copy remained behind due to a file lock; it will be cleaned again on the next run.",
-                level="warning",
-                validation_cleanup_error=cleanup_error,
-            )
+        _cleanup_workspace()
 
 def _registry_source(audit: ProjectAudit, source_id: str) -> dict[str, Any]:
     excluded = list(dict.fromkeys(["addons", *audit.oversized_gd_files, *audit.parser_failed_files]))
@@ -1507,7 +1492,7 @@ def _import_one(
         progress=progress,
         project_index=project_index,
     )
-    if progress and project_index:
+    if progress is not None and project_index is not None:
         progress.emit(
             "local_project_phase",
             index=project_index,
@@ -1518,7 +1503,7 @@ def _import_one(
     source_id = f"local-{_slug(audit.project_name)}-{audit.source_sha256[:8]}"
     destination = corpus_root(project_root) / "downloads" / source_id
     existing = destination.exists()
-    if progress and project_index:
+    if progress is not None and project_index is not None:
         progress.emit(
             "local_project_phase",
             index=project_index,
@@ -1567,7 +1552,7 @@ def _import_one(
         and validation_status in {"passed", "passed_with_warnings"}
         and audit.trainable_gd_files > 0
     )
-    if progress and project_index:
+    if progress is not None and project_index is not None:
         has_warnings = bool(audit.static_warnings or audit.parser_failed_files or audit.validation_status == "passed_with_warnings")
         project_status = "passed_with_warnings" if audit.enabled_for_training and has_warnings else "passed"
         if not audit.enabled_for_training:

@@ -711,12 +711,55 @@ def _github_archive_url(url: str, commit: str) -> str | None:
         repository = repository[:-4]
     return f"https://codeload.github.com/{owner}/{repository}/zip/{commit}"
 
+# Zip-bomb protection shared by every archive the pipeline extracts.
+# These limits match local_sources._archive_preflight: entry count, per-file
+# size, total uncompressed size and compression ratio. Keeping them here (the
+# lower layer) means the local-inbox path and the GitHub archive fallback can
+# never drift apart again.
+MAX_ARCHIVE_FILES = 100_000
+MAX_ARCHIVE_UNCOMPRESSED = 8 * 1024**3
+MAX_SINGLE_FILE = 512 * 1024**2
+MAX_COMPRESSION_RATIO = 250.0
+
+
+def _safe_member(name: str) -> bool:
+    normalized = name.replace("\\", "/")
+    path = PurePosixPath(normalized)
+    return not path.is_absolute() and ".." not in path.parts and not re.match(r"^[A-Za-z]:", normalized)
+
+
+def _archive_preflight(path: Path) -> dict[str, Any]:
+    """Reject archives that look like zip bombs or carry unsafe paths.
+
+    Raises ValueError with a human-readable reason; returns a small summary
+    dict on success.
+    """
+    with zipfile.ZipFile(path) as archive:
+        infos = archive.infolist()
+        if len(infos) > MAX_ARCHIVE_FILES:
+            raise ValueError(f"ZIP contains too many entries ({len(infos):,}).")
+        total = 0
+        for info in infos:
+            if not _safe_member(info.filename):
+                raise ValueError(f"Unsafe ZIP path: {info.filename}")
+            if info.flag_bits & 1:
+                raise ValueError(f"Encrypted ZIP entries are not supported: {info.filename}")
+            if info.file_size > MAX_SINGLE_FILE:
+                raise ValueError(f"Single file is too large: {info.filename}")
+            total += info.file_size
+            if info.file_size > 8 * 1024**2 and info.file_size / max(1, info.compress_size) > MAX_COMPRESSION_RATIO:
+                raise ValueError(f"Suspicious compression ratio in ZIP: {info.filename}")
+        if total > MAX_ARCHIVE_UNCOMPRESSED:
+            raise ValueError(f"ZIP would occupy {total / 1024**3:.1f} GiB uncompressed.")
+        return {"entries": len(infos), "uncompressed_bytes": total}
+
 
 def _safe_extract_github_archive(archive_path: Path, destination: Path, source: dict[str, Any] | None = None) -> None:
     temporary = destination.with_name(destination.name + ".archive-building")
     if temporary.exists():
         shutil.rmtree(temporary)
     temporary.mkdir(parents=True)
+    _archive_preflight(archive_path)  # zip-bomb + path safety gate
     with zipfile.ZipFile(archive_path) as archive:
         infos = archive.infolist()
         roots = {PurePosixPath(info.filename.replace("\\", "/")).parts[0] for info in infos if info.filename}

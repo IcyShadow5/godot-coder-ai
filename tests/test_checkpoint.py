@@ -1,8 +1,12 @@
+import collections
+import pickle
 from pathlib import Path
 
+import numpy as np
+import pytest
 import torch
 
-from godot_coder.checkpoint import load_checkpoint, save_checkpoint
+from godot_coder.checkpoint import capture_rng_state, load_checkpoint, restore_rng_state, save_checkpoint
 from godot_coder.config import ModelConfig, TrainConfig
 from godot_coder.model import TinyGPT
 
@@ -114,3 +118,100 @@ def test_save_checkpoint_keep_last_zero_preserves_existing(tmp_path: Path) -> No
     )
     assert emergency.exists()
     assert first.exists(), "keep_last=0 should not delete existing checkpoints"
+
+def test_new_checkpoint_loads_with_weights_only(tmp_path: Path) -> None:
+    """New checkpoints store RNG state primitively, so the safe unpickler loads them without an allowlist."""
+    model_config = ModelConfig(vocab_size=269, max_seq_len=16, n_layers=1, d_model=32, n_heads=4, d_ff=64)
+    model = TinyGPT(model_config)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+    scaler = torch.amp.GradScaler("cpu", enabled=False)
+    path = save_checkpoint(
+        tmp_path,
+        step=1,
+        model=model,
+        optimizer=optimizer,
+        scaler=scaler,
+        model_config=model_config.to_dict(),
+        train_config={"max_steps": 1},
+        tokenizer_fingerprint="abc",
+        best_val_loss=1.0,
+    )
+    payload = torch.load(path, map_location="cpu", weights_only=True)
+    assert payload["format"] == "godot-coder-checkpoint"
+    assert isinstance(payload["rng_state"]["numpy"], dict)
+    assert isinstance(payload["rng_state"]["numpy"]["key"], list)
+
+
+def test_rng_restore_is_deterministic_after_round_trip(tmp_path: Path) -> None:
+    """A checkpoint captures the seeded state; restore reproduces the exact next draws."""
+    model_config = ModelConfig(vocab_size=269, max_seq_len=16, n_layers=1, d_model=32, n_heads=4, d_ff=64)
+    model = TinyGPT(model_config)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+    scaler = torch.amp.GradScaler("cpu", enabled=False)
+    np.random.seed(2024)
+    path = save_checkpoint(
+        tmp_path,
+        step=1,
+        model=model,
+        optimizer=optimizer,
+        scaler=scaler,
+        model_config=model_config.to_dict(),
+        train_config={"max_steps": 1},
+        tokenizer_fingerprint="abc",
+        best_val_loss=1.0,
+    )
+    np.random.seed(999)  # disturb the generator after the capture
+    disturbed = np.random.randint(0, 2**31, 5)
+    restore_rng_state(load_checkpoint(path)["rng_state"])
+    restored = np.random.randint(0, 2**31, 5)
+    np.random.seed(2024)
+    expected = np.random.randint(0, 2**31, 5)
+    assert (restored == expected).all()
+    assert not (disturbed == expected).all()
+
+
+def test_legacy_checkpoint_with_raw_numpy_rng_state_loads(tmp_path: Path) -> None:
+    """Checkpoints saved before the primitive RNG state still load via the scoped numpy allowlist."""
+    payload = {
+        "format": "godot-coder-checkpoint",
+        "format_version": 1,
+        "step": 1,
+        "model_state": {},
+        "optimizer_state": {},
+        "scaler_state": {},
+        "model_config": {},
+        "train_config": {},
+        "tokenizer_fingerprint": "legacy",
+        "best_val_loss": 1.0,
+        "best_step": 1,
+        "rng_state": capture_rng_state(),  # raw numpy tuple with ndarray
+        "data_rng_state": None,
+    }
+    path = tmp_path / "legacy.pt"
+    torch.save(payload, path)
+    loaded = load_checkpoint(path)
+    restore_rng_state(loaded["rng_state"])  # must not raise
+    assert loaded["tokenizer_fingerprint"] == "legacy"
+
+
+def test_checkpoint_rejects_untrusted_globals(tmp_path: Path) -> None:
+    """weights_only=True stays on: non-allowlisted objects never get unpickled."""
+    payload = {
+        "format": "godot-coder-checkpoint",
+        "format_version": 1,
+        "step": 1,
+        "model_state": {"sneaky": collections.deque([1, 2, 3])},
+        "optimizer_state": {},
+        "scaler_state": {},
+        "model_config": {},
+        "train_config": {},
+        "tokenizer_fingerprint": "abc",
+        "best_val_loss": 1.0,
+        "best_step": 1,
+        "rng_state": None,
+        "data_rng_state": None,
+    }
+    path = tmp_path / "malicious.pt"
+    torch.save(payload, path)
+    with pytest.raises(pickle.UnpicklingError):
+        load_checkpoint(path)

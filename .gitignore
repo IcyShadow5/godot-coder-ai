@@ -31,12 +31,28 @@ data/raw/
 data/tokenizer/
 data/corpus/index/
 data/corpus/shards/
+# Encoded training datasets (shards + manifests) — several GB, regenerated
+# by prepare_data from the raw corpus. Never commit these.
+data/processed/
 reports/
 checkpoints/
 artifacts/
 .studio_backups/
 .upgrade_backups/
 logs/
+# TensorBoard / metric event logs
+runs/
+
+# Model weights wherever they land (checkpoints/ covers the default dir,
+# this catches ad-hoc output_dir overrides too)
+*.pt
+*.safetensors
+*.ckpt
+*.onnx
+*.gguf
+
+# Plain-text logs outside logs/
+*.log
 
 # Environment files
 .env

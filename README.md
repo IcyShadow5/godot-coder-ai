@@ -35,6 +35,12 @@ I keep the full history in `CHANGELOG.md` (per-version detail in
 `docs/CHANGELOG_v0.10.x.md`), so here is just the short version - the last
 few releases in one breath:
 
+- **v0.10.15** - second review batch, all robustness: fast imports no
+  longer leak temp copies (144 cleaned), GitHub archives get the zip-bomb
+  guard, instruction data uses every function per file, audits resume from
+  their checkpoint, checkpoints load with torch's safe unpickler, and
+  progress events survive a 0 index. 263 tests.
+
 - **v0.10.14** - robustness from an external review. `prepare_dataset`
   swaps shards crash-safely now (staged dataset + backup/rollback),
   `/proc` stat parsing handles spaces in process names, and the flaky
