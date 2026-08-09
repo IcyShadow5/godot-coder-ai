@@ -33,7 +33,9 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
-      - name: Install dependencies
+      - name: Install PyTorch (CPU)
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Install package
         run: pip install -e ".[dev]"
       - name: Security-critical test batch
         run: >-
