@@ -25,7 +25,7 @@ from .corpus import (
     load_registry,
     save_registry,
 )
-from .process_control import process_command_line, process_is_alive, run_managed_process, terminate_process_tree
+from .process_control import FailureKind, classify_failure, process_command_line, process_is_alive, run_managed_process, terminate_process_tree
 from .progress_events import EtaEstimator, PHASE_LABELS, ProgressEmitter, mask_secrets
 
 LOCAL_LICENSE = "LicenseRef-User-Owned-Private"
@@ -808,6 +808,7 @@ class ProjectValidationResult:
     checked_files: int = 0
     mode: str = "project_import"
     infrastructure_failure: str | None = None
+    failure_kind: FailureKind = FailureKind.NONE
 
     def __iter__(self) -> Iterator[str | None]:
         yield self.status
@@ -1184,7 +1185,7 @@ def _validate_project(
                 message="Godot was not found; the project-wide parser check could not run.",
                 level="warning",
             )
-        return ProjectValidationResult("not_run", "Godot executable not found", "", mode="not_run")
+        return ProjectValidationResult("not_run", "Godot executable not found", "", mode="not_run", failure_kind=FailureKind.ENVIRONMENT_ERROR)
 
     validation_root = workspace_root or (Path(tempfile.gettempdir()) / "godot-coder-validation")
     validation_root.mkdir(parents=True, exist_ok=True)
@@ -1368,7 +1369,7 @@ def _validate_project(
 
         if result.startup_error:
             error = f"Godot could not be started: {result.startup_error}"
-            validation = ProjectValidationResult("failed", error, output, mode="project_import")
+            validation = ProjectValidationResult("failed", error, output, mode="project_import", failure_kind=FailureKind.STARTUP_ERROR)
         else:
             first = _first_error(output)
             passed = (
@@ -1382,6 +1383,7 @@ def _validate_project(
                     "passed", None, output,
                     checked_files=len(_validation_script_paths(workspace)),
                     mode="project_import",
+                    failure_kind=classify_failure(result),
                 )
             else:
                 if infrastructure_failure:

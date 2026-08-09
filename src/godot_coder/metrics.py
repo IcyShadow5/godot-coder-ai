@@ -1,5 +1,59 @@
-    Wired into train.py (per-interval token counts, validation success/error)
-    and services.py (validate_code parse results, generate token counts).
+"""Events I want to track during training, validation, and generation.
+
+Every parse error, timeout, retry, and token count gets recorded as a
+typed event. The JSONL output matches the training metrics format, so
+anything that reads training logs picks these up automatically.
+"""
+
+from __future__ import annotations
+
+import json
+import time
+from dataclasses import dataclass, field
+from enum import Enum, auto
+from pathlib import Path
+from typing import Any
+
+
+class MetricEvent(Enum):
+    """What happened — parse success, timeout, retry, token count, etc."""
+
+    # ---- Pipeline outcomes ----
+    PARSE_SUCCESS = auto()
+    PARSE_ERROR = auto()
+    RUNTIME_SUCCESS = auto()
+    RUNTIME_ERROR = auto()
+
+    # ---- Tool / environment ----
+    TOOL_TIMEOUT = auto()
+    TOOL_ERROR = auto()
+    ENVIRONMENT_ERROR = auto()
+    INFRASTRUCTURE_ERROR = auto()
+
+    # ---- Generation ----
+    TOKEN_USAGE = auto()
+    GENERATION_COMPLETE = auto()
+    GENERATION_ERROR = auto()
+
+    # ---- Process lifecycle ----
+    RETRY = auto()
+    ABORT = auto()
+
+
+@dataclass
+class MetricRecord:
+    """One event, flattened for JSONL. All fields optional except event name."""
+
+    event: str
+    timestamp: float = field(default_factory=time.time)
+    step: int | None = None
+    duration_seconds: float | None = None
+    tokens: int | None = None
+    attempt: int | None = None
+    max_attempts: int | None = None
+    error: str | None = None
+    error_kind: str | None = None
+    details: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {
@@ -28,8 +82,8 @@
 class MetricsCollector:
     """Append-only JSONL. Every write flushes so a crash doesn't lose records.
 
-    Thread-safe by accident (appends are atomic on most filesystems), but
-    I'll add a lock when I wire this into the training loop.
+    Wired into train.py (per-interval token counts, validation success/error)
+    and services.py (validate_code parse results, generate token counts).
     """
 
     def __init__(self, path: Path | None = None) -> None:
