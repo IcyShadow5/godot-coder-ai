@@ -1,5 +1,5 @@
 from __future__ import annotations
-"""Save and restore model checkpoints with atomic writes and RNG state capture."""
+"""Checkpoint save/load with atomic writes, hard-link aliases, and RNG state capture."""
 
 import os
 import random

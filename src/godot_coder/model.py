@@ -16,7 +16,7 @@ KVCache: TypeAlias = list[tuple[torch.Tensor, torch.Tensor]]
 
 
 class RMSNorm(nn.Module):
-    """Root-mean-square layer normalisation -- cheaper than LayerNorm, no mean centering."""
+    """RMSNorm: normalise over the last dimension only, skip the mean for speed."""
 
     def __init__(self, dimension: int, epsilon: float = 1e-6) -> None:
         super().__init__()
@@ -85,7 +85,7 @@ class CausalSelfAttention(nn.Module):
 
 
 class SwiGLU(nn.Module):
-    """SwiGLU feed-forward: SiLU-gated linear projection, better than ReLU/GeLU MLPs."""
+    """SwiGLU: half the inner projection acts as a learnable gate, the other half as values."""
 
     def __init__(self, config: ModelConfig) -> None:
         super().__init__()
@@ -99,7 +99,7 @@ class SwiGLU(nn.Module):
 
 
 class TransformerBlock(nn.Module):
-    """One decoder block: pre-norm attention + residual, then pre-norm SwiGLU + residual."""
+    """Pre-norm transformer block: attention then MLP, each with a residual skip."""
 
     def __init__(self, config: ModelConfig) -> None:
         super().__init__()

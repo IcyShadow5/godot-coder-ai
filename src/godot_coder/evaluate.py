@@ -1,5 +1,5 @@
 from __future__ import annotations
-"""Run the benchmark/Golden Task Suite against a checkpoint and print the report."""
+"""Run benchmark tiers against a checkpoint — measures parser pass rate and token accuracy."""
 
 import argparse
 import json
