@@ -215,14 +215,14 @@ func reset_bonus() -> void:
 
 
 TOPICS = (
-    Topic("01_basics", "Grundlagen", _basics),
-    Topic("02_functions", "Funktionen", _functions),
+    Topic("01_basics", "Basics", _basics),
+    Topic("02_functions", "Functions", _functions),
     Topic("03_collections", "Collections", _collections),
-    Topic("04_signals", "Signale", _signals),
+    Topic("04_signals", "Signals", _signals),
     Topic("05_nodes", "Nodes", _nodes),
     Topic("06_gameplay", "Gameplay", _gameplay),
     Topic("07_state", "State Machines", _state),
-    Topic("08_architecture", "Architektur", _architecture),
+    Topic("08_architecture", "Architecture", _architecture),
 )
 
 

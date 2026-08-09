@@ -111,7 +111,7 @@ function renderRemote(remote) {
   const banner = $("#remote-access-banner");
   banner.hidden = !isRemote || remote.can_write;
   if (isRemote && !remote.can_write) {
-    setText("#remote-banner-title", remote.identity_allowed ? "Remote read mode" : "Remote-Zugriff blockiert");
+    setText("#remote-banner-title", remote.identity_allowed ? "Remote read mode" : "Remote access blocked");
     setText("#remote-banner-detail", remote.identity_allowed ? "Write actions require the PIN." : "Identity not allowed.");
   }
   applyRemoteWritePolicy(remote);

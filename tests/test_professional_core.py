@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pytest
 import torch
 import yaml
 
@@ -32,6 +33,16 @@ def test_train_config_uses_smallest_professional_limit() -> None:
     cfg = TrainConfig(max_steps=100, max_tokens=500, target_dataset_passes=2.0, batch_size=1, gradient_accumulation_steps=1, warmup_steps=10)
     cfg.validate()
     assert cfg.resolve_max_steps(train_tokens=1000, tokens_per_optimizer_step=100) == 5
+
+
+def test_train_config_warmup_check_allows_resume_past_warmup() -> None:
+    """A config whose warmup exceeds max_steps is invalid for a fresh run but
+    must not block a resume that already sits past the warmup phase."""
+    cfg = TrainConfig(max_steps=100, warmup_steps=250, batch_size=1, gradient_accumulation_steps=1)
+    with pytest.raises(ValueError, match="warmup_steps must be smaller"):
+        cfg.validate()
+    cfg.validate(start_step=300)  # warmup already finished; resume is fine
+    cfg.validate(start_step=250)  # exactly at warmup end is also fine
 
 
 def test_dataset_v2_contains_document_index_and_deterministic_windows(tmp_path: Path) -> None:

@@ -5,7 +5,6 @@ import json
 import os
 import shutil
 import tempfile
-import subprocess
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -635,7 +634,7 @@ def create_app(project_root: Path) -> FastAPI:
     async def validate(request: ValidateRequest) -> dict[str, Any]:
         try:
             return await asyncio.to_thread(validate_code, root, request.code, request.project)
-        except (ValueError, FileNotFoundError, OSError, subprocess.TimeoutExpired) as exc:
+        except (ValueError, FileNotFoundError, OSError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/jobs/hardware/probe")

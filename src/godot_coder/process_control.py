@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import atexit
+import ctypes
 import os
 import queue
 import signal
 import subprocess
 import threading
 import time
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
@@ -39,45 +41,111 @@ def _windows_creation_flags() -> int:
 # Windows Job Object - guarantees that every child process (including Mono
 # grandchildren spawned by Godot) is forcefully terminated, even when the
 # parent Python process crashes or taskkill misses detached descendants.
+#
+# The structs below mirror JOBOBJECT_EXTENDED_LIMIT_INFORMATION exactly. A
+# hand-rolled byte blob with the wrong size or the flag written to offset 0
+# makes SetInformationJobObject fail with ERROR_BAD_LENGTH, so no Job Object
+# is ever created and crash-safe cleanup silently degrades to taskkill. On
+# x64 the struct is exactly 144 bytes and LimitFlags lives at offset 16.
 # ---------------------------------------------------------------------------
 _WIN_JOB_HANDLES: list[int] = []
+
+_JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
+
+
+class _JobBasicLimitInformation(ctypes.Structure):
+    """JOBOBJECT_BASIC_LIMIT_INFORMATION (x64: 64 bytes, LimitFlags at 16)."""
+
+    _fields_ = [
+        ("PerProcessUserTimeLimit", ctypes.c_longlong),
+        ("PerJobUserTimeLimit", ctypes.c_longlong),
+        ("LimitFlags", ctypes.c_uint32),
+        ("MinimumWorkingSetSize", ctypes.c_size_t),
+        ("MaximumWorkingSetSize", ctypes.c_size_t),
+        ("ActiveProcessLimit", ctypes.c_uint32),
+        ("Affinity", ctypes.c_size_t),
+        ("PriorityClass", ctypes.c_uint32),
+        ("SchedulingClass", ctypes.c_uint32),
+    ]
+
+
+class _JobIoCounters(ctypes.Structure):
+    """IO_COUNTERS (x64: 48 bytes)."""
+
+    _fields_ = [
+        ("ReadOperationCount", ctypes.c_uint64),
+        ("WriteOperationCount", ctypes.c_uint64),
+        ("OtherOperationCount", ctypes.c_uint64),
+        ("ReadTransferCount", ctypes.c_uint64),
+        ("WriteTransferCount", ctypes.c_uint64),
+        ("OtherTransferCount", ctypes.c_uint64),
+    ]
+
+
+class _JobExtendedLimitInformation(ctypes.Structure):
+    """JOBOBJECT_EXTENDED_LIMIT_INFORMATION (x64: 144 bytes)."""
+
+    _fields_ = [
+        ("BasicLimitInformation", _JobBasicLimitInformation),
+        ("IoInfo", _JobIoCounters),
+        ("ProcessMemoryLimit", ctypes.c_size_t),
+        ("JobMemoryLimit", ctypes.c_size_t),
+        ("PeakProcessMemoryUsed", ctypes.c_size_t),
+        ("PeakJobMemoryUsed", ctypes.c_size_t),
+    ]
+
+
+_JOB_FALLBACK_WARNED = False
+
+
+def _warn_job_fallback_once() -> None:
+    """Warn once that crash-safe process cleanup is unavailable.
+
+    A missing Job Object is not fatal (explicit timeouts and aborts still
+    terminate the tree), but it silently weakens the guarantee that a crashed
+    parent can never leave orphaned Godot/Mono children behind.
+    """
+    global _JOB_FALLBACK_WARNED
+    if _JOB_FALLBACK_WARNED:
+        return
+    _JOB_FALLBACK_WARNED = True
+    warnings.warn(
+        "Windows Job Object cleanup is unavailable; managed child processes "
+        "fall back to taskkill and can leave orphaned descendants after a crash.",
+        RuntimeWarning,
+        stacklevel=3,
+    )
 
 
 def _windows_job_create() -> int | None:
     if os.name != "nt":
         return None
     try:
-        import ctypes
         from ctypes import wintypes
 
         kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
         kernel32.CreateJobObjectW.argtypes = [wintypes.LPVOID, wintypes.LPCWSTR]
         kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel32.CloseHandle.restype = wintypes.BOOL
         handle = kernel32.CreateJobObjectW(None, None)
         if not handle:
+            _warn_job_fallback_once()
             return None
-        class _JI(ctypes.Structure):
-            _fields_ = [
-                ("BasicLimitInformation", ctypes.c_ubyte * 48),
-                ("IoInfo", ctypes.c_ubyte * 16),
-                ("ProcessMemoryLimit", ctypes.c_size_t),
-                ("JobMemoryLimit", ctypes.c_size_t),
-                ("PeakProcessMemoryUsed", ctypes.c_size_t),
-                ("PeakJobMemoryUsed", ctypes.c_size_t),
-            ]
-        info = _JI()
-        ctypes.memset(ctypes.byref(info), 0, ctypes.sizeof(info))
-        ctypes.memmove(ctypes.byref(info), (ctypes.c_uint32 * 1)(0x2000), 4)
+        info = _JobExtendedLimitInformation()
+        info.BasicLimitInformation.LimitFlags = _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
         kernel32.SetInformationJobObject.argtypes = [
             wintypes.HANDLE, wintypes.DWORD, wintypes.LPVOID, wintypes.DWORD,
         ]
         kernel32.SetInformationJobObject.restype = wintypes.BOOL
         if not kernel32.SetInformationJobObject(handle, 9, ctypes.byref(info), ctypes.sizeof(info)):
             kernel32.CloseHandle(handle)
+            _warn_job_fallback_once()
             return None
         _WIN_JOB_HANDLES.append(handle)
         return handle
     except (AttributeError, OSError):
+        _warn_job_fallback_once()
         return None
 
 
@@ -87,7 +155,9 @@ def _windows_job_assign(job_handle: int, pid: int) -> bool:
         from ctypes import wintypes
 
         kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        rights = 0x00100000 | 0x0040 | 0x0002
+        # AssignProcessToJobObject requires PROCESS_SET_QUOTA and
+        # PROCESS_TERMINATE; SYNCHRONIZE lets us wait on the process later.
+        rights = 0x0100 | 0x0001 | 0x00100000
         ph = kernel32.OpenProcess(rights, False, pid)
         if not ph:
             return False
@@ -211,7 +281,11 @@ def _terminate_windows_process_tree(pid: int, *, force: bool, wait_seconds: floa
             if not process_is_alive(pid):
                 return True
             time.sleep(0.05)
-        return not process_is_alive(pid)
+        if not process_is_alive(pid):
+            return True
+        # The job path did not finish the tree (assignment can fail silently,
+        # e.g. when the process was started outside the job). Fall through to
+        # taskkill so a refused job never leaves an orphan behind.
     # Fallback: traditional taskkill
     # Keep a native handle open before taskkill. This prevents false success from
     # localized/racy tasklist output and lets us wait for the exact process object.

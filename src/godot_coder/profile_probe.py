@@ -333,7 +333,7 @@ def _recommendation(profiles: list[dict[str, Any]]) -> dict[str, Any]:
         "profile_title": selected.get("profile_title"),
         "reason": (
             "Recommended profile with controlled VRAM headroom"
-            + (f" ({headroom:.2f} GiB gemessener Headroom)." if isinstance(headroom, (int, float)) else ".")
+            + (f" ({headroom:.2f} GiB measured headroom)." if isinstance(headroom, (int, float)) else ".")
             + extra
         ),
     }

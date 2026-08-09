@@ -1077,7 +1077,13 @@ async function generate() {
       }
       $("#chat-feed").scrollTop = $("#chat-feed").scrollHeight;
     }
-    const result = pre.textContent;
+    let result = pre.textContent;
+    if (!result.trim()) {
+      // The model hit its end-of-sequence token immediately. Show a hint
+      // instead of an empty code block so the chat does not look broken.
+      result = "# The model returned an empty completion.\n# This usually means the checkpoint is undertrained for this kind of prompt.\n# Try a smaller task, rephrase it, or continue training first.";
+      pre.textContent = result;
+    }
     state.lastPrompt = prompt;
     state.lastGenerated = result;
     setupMessageTools(msg, result);
@@ -1113,7 +1119,8 @@ function setValidationState(result) {
     return;
   }
   target.classList.add(result.passed ? "passed" : "failed");
-  target.innerHTML = `<span class="validation-icon">${result.passed ? "✓" : "×"}</span><div><strong>${result.passed ? "Parser passed" : "Parser error"}</strong><small>${escapeHtml((result.output || "No output").split("\n").slice(-2).join(" · "))}</small></div>`;
+  const statusLabel = result.passed ? "Parser passed" : result.timed_out ? "Check timed out" : "Parser error";
+  target.innerHTML = `<span class="validation-icon">${result.passed ? "✓" : "×"}</span><div><strong>${statusLabel}</strong><small>${escapeHtml((result.output || "No output").split("\n").slice(-2).join(" · "))}</small></div>`;
 }
 
 async function validateCode(code, options = {}) {
@@ -1121,7 +1128,7 @@ async function validateCode(code, options = {}) {
   try {
     const result = await api("/api/chat/validate", { method: "POST", body: JSON.stringify({ code }) });
     setValidationState(result);
-    toast(result.passed ? "Godot parser passed." : "Godot found a parser error.", result.passed ? "info" : "error", 5500);
+    toast(result.passed ? "Godot parser passed." : result.timed_out ? "Godot check timed out - the process tree was cleaned up." : "Godot found a parser error.", result.passed ? "info" : "error", 5500);
     if (!result.passed && result.output) addMessage("assistant", result.output, { code: true });
     if (!result.passed && options.capture && code === state.lastGenerated && code.trim()) {
       await saveFailedSample(code, result.output || "");
@@ -1331,7 +1338,7 @@ function renderModels() {
       <div class="model-head"><div class="model-name">${escapeHtml(item.run)} / ${escapeHtml(item.name)}</div><span class="model-badge">${escapeHtml(item.kind)}</span></div>
       <div class="model-path">${escapeHtml(item.path)}</div>
       <div class="model-stats"><span>${item.size_mb} MB</span><span>${item.step ? `Step ${formatNumber(item.step)}` : formatDate(item.modified_at)}</span></div>
-      <button class="${item.path === state.activeCheckpoint ? "secondary-button" : "ghost-button"} compact" data-use-model="${escapeHtml(item.path)}">${item.path === state.activeCheckpoint ? "Aktiv" : "Im Chat verwenden"}</button>
+      <button class="${item.path === state.activeCheckpoint ? "secondary-button" : "ghost-button"} compact" data-use-model="${escapeHtml(item.path)}">${item.path === state.activeCheckpoint ? "Active" : "Use in chat"}</button>
     </article>
   `).join("");
   $$('[data-use-model]').forEach((button) => button.addEventListener("click", () => setActiveCheckpoint(button.dataset.useModel)));

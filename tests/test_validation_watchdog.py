@@ -508,6 +508,94 @@ def test_job_create_returns_none_on_non_windows(monkeypatch):
     assert _windows_job_create() is None
 
 
+def test_job_object_struct_layout_is_correct() -> None:
+    """The struct must be 144 bytes on x64 with LimitFlags at offset 16.
+
+    The old hand-rolled blob was 96 bytes and wrote the flag to offset 0,
+    which makes SetInformationJobObject fail with ERROR_BAD_LENGTH and
+    silently disables crash-safe cleanup on Windows.
+    """
+    import ctypes
+    import godot_coder.process_control as pc
+
+    if ctypes.sizeof(ctypes.c_void_p) != 8:
+        pytest.skip("layout assertions only apply to 64-bit builds")
+    assert ctypes.sizeof(pc._JobBasicLimitInformation) == 64
+    assert pc._JobBasicLimitInformation.LimitFlags.offset == 16
+    assert ctypes.sizeof(pc._JobIoCounters) == 48
+    assert ctypes.sizeof(pc._JobExtendedLimitInformation) == 144
+
+
+def test_job_create_sets_kill_on_close_flag_at_offset_16(monkeypatch) -> None:
+    """JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE must land in LimitFlags (offset 16)."""
+    import ctypes
+    from types import SimpleNamespace
+
+    captured: dict[str, object] = {}
+
+    def _create_job_object(*_args) -> int:
+        return 12345
+
+    def _close_handle(_handle) -> int:
+        return 1
+
+    def _set_information(_handle, info_class, info_ptr, size) -> int:
+        captured["info_class"] = info_class
+        captured["size"] = size
+        raw = ctypes.string_at(info_ptr, size)
+        captured["flags"] = int.from_bytes(raw[16:20], "little")
+        return 1
+
+    # Plain functions, not class methods: the real code sets .argtypes/.restype
+    # on the kernel32 functions, which bound methods reject with AttributeError.
+    kernel32 = SimpleNamespace(
+        CreateJobObjectW=_create_job_object,
+        CloseHandle=_close_handle,
+        SetInformationJobObject=_set_information,
+    )
+    monkeypatch.setattr("ctypes.WinDLL", lambda name, **kwargs: kernel32, raising=False)
+    monkeypatch.setattr("os.name", "nt")
+    import godot_coder.process_control as pc
+    pc._WIN_JOB_HANDLES.clear()
+    assert pc._windows_job_create() == 12345
+    assert captured["info_class"] == 9  # JobObjectExtendedLimitInformation
+    assert captured["flags"] == 0x2000
+    assert captured["size"] == ctypes.sizeof(pc._JobExtendedLimitInformation)
+    pc._WIN_JOB_HANDLES.clear()
+
+
+def test_job_assign_uses_required_access_rights(monkeypatch) -> None:
+    """AssignProcessToJobObject needs PROCESS_SET_QUOTA + PROCESS_TERMINATE.
+
+    The old rights mask (SYNCHRONIZE | DUP_HANDLE | CREATE_THREAD) made the
+    assignment fail silently, so TerminateJobObject killed nothing and the
+    orphan survived the full timeout.
+    """
+    from types import SimpleNamespace
+
+    seen: dict[str, object] = {}
+
+    def _open_process(rights, _inherit, _pid) -> int:
+        seen["rights"] = rights
+        return 777
+
+    def _assign_process_to_job_object(_job, _process) -> int:
+        return 1
+
+    def _close_handle(_handle) -> int:
+        return 1
+
+    kernel32 = SimpleNamespace(
+        OpenProcess=_open_process,
+        AssignProcessToJobObject=_assign_process_to_job_object,
+        CloseHandle=_close_handle,
+    )
+    monkeypatch.setattr("ctypes.WinDLL", lambda name, **kwargs: kernel32, raising=False)
+    assert _windows_job_assign(42, 99999) is True
+    # PROCESS_SET_QUOTA (0x0100) | PROCESS_TERMINATE (0x0001) | SYNCHRONIZE
+    assert seen["rights"] == 0x0100 | 0x0001 | 0x00100000
+
+
 def test_job_assign_returns_false_when_process_not_found(monkeypatch):
     # Plain functions, not class methods: the real code sets .argtypes/.restype
     # on the kernel32 functions, which bound methods reject with AttributeError.

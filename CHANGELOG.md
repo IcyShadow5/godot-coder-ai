@@ -3,6 +3,27 @@
 Patch notes, so I still know later what I was thinking. Detailed notes for
 each version live in `docs/CHANGELOG_v0.10.x.md`; this file is the quick tour.
 
+## v0.10.12 (2026-08-09)
+
+Maintenance release from the deep code review - the Windows job-object
+cleanup never actually engaged (struct too small, so it failed silently
+and every managed run fell back to taskkill):
+
+- **Job objects finally work.** Correct 144-byte struct with `LimitFlags`
+  at offset 16, correct assign rights, and a taskkill fallback when the job
+  path can't finish a termination. This explains the frozen orphaned
+  processes (stale `prepare_data` holding the output dir).
+- **Chat validation cleans up its tree** - `validate_code` now uses the
+  managed process runner, so a hung Mono-Godot child can't survive the
+  timeout as an orphan.
+- **No more prompt echo.** The chat returns only the completion, not your
+  prompt pasted back as "AI output". Empty completions show a hint instead
+  of a blank code block.
+- **Warmup validation is resume-aware** - resuming past warmup is no longer
+  blocked by the fresh-run check. `data.py` closes its memmap alias
+  explicitly.
+- 19 new tests (206 total).
+
 ## v0.10.11 (2026-08-09)
 
 Chat samples finally get verified, and the Studio UI is no longer one

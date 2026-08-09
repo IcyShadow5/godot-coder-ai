@@ -20,7 +20,7 @@ What you expected to happen.
 
 **Environment**
 - OS: [e.g. Windows 11]
-- Version: [e.g. v0.10.6, or `git describe`]
+- Version: [e.g. v0.10.12, or `git describe`]
 - Godot version: [e.g. 4.7]
 - GPU / VRAM: [e.g. RTX 5060 / 8 GB]
 

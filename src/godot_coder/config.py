@@ -100,7 +100,7 @@ class TrainConfig:
             data.setdefault("compile_mode", str(compile_raw.get("mode", "default")))
         return cls(**data)
 
-    def validate(self) -> None:
+    def validate(self, *, start_step: int = 0) -> None:
         positive_ints = {
             "batch_size": self.batch_size,
             "gradient_accumulation_steps": self.gradient_accumulation_steps,
@@ -122,7 +122,9 @@ class TrainConfig:
             raise ValueError("target_dataset_passes must be positive")
         if self.warmup_steps < 0:
             raise ValueError("warmup_steps must be non-negative")
-        if self.max_steps is not None and self.warmup_steps >= self.max_steps:
+        # Warmup must leave room for a decay phase. A resume that already sits
+        # past warmup is exempt: the schedule only ramps while step < warmup.
+        if self.max_steps is not None and self.warmup_steps >= self.max_steps and start_step < self.warmup_steps:
             raise ValueError("warmup_steps must be smaller than max_steps")
         if self.keep_last_checkpoints < 0 or self.prefetch_batches < 0:
             raise ValueError("checkpoint retention and prefetch values cannot be negative")
@@ -180,7 +182,7 @@ class TrainConfig:
         return payload
 
 
-def load_config(path: str | Path) -> tuple[ModelConfig, TrainConfig]:
+def load_config(path: str | Path, *, start_step: int = 0) -> tuple[ModelConfig, TrainConfig]:
     config_path = Path(path)
     with config_path.open("r", encoding="utf-8") as handle:
         raw = yaml.safe_load(handle)
@@ -189,5 +191,5 @@ def load_config(path: str | Path) -> tuple[ModelConfig, TrainConfig]:
     model = ModelConfig(**raw["model"])
     train = TrainConfig.from_mapping(raw["train"])
     model.validate()
-    train.validate()
+    train.validate(start_step=start_step)
     return model, train

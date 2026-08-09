@@ -227,7 +227,20 @@ def main() -> None:
     args = parse_args()
     config_path = Path(args.config).expanduser().resolve()
     project_root = _project_root_for(config_path)
-    model_config, train_config = load_config(config_path)
+    # Resolve the resume step before validating the config so a resume that is
+    # already past warmup is not rejected by the fresh-run warmup check.
+    # This deliberately loads the checkpoint twice: a cheap CPU-only peek for
+    # the step number here, then the real device load after validation. The
+    # peek is far cheaper than the full load and keeps the validation order
+    # simple instead of threading the resume path through load_config.
+    resume_start_step = 0
+    if args.resume:
+        resume_path = resolve_project_path(project_root, args.resume)
+        _require_under(resume_path, project_root / "checkpoints", "resume checkpoint")
+        peek = load_checkpoint(resume_path, map_location="cpu")
+        resume_start_step = int(peek["step"])
+        del peek
+    model_config, train_config = load_config(config_path, start_step=resume_start_step)
     profile = _profile_metadata(config_path)
     tokenizer_path = resolve_project_path(project_root, train_config.tokenizer_path)
     data_dir = resolve_project_path(project_root, train_config.data_dir)

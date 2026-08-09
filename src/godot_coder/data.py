@@ -249,7 +249,13 @@ def prepare_dataset(
             try:
                 os.link(shard_path, alias)
             except OSError:
-                _atomic_array_write(alias, np.memmap(shard_path, dtype=dtype, mode="r"))
+                # Release the mapping explicitly: an unclosed memmap keeps a
+                # file handle until GC, which can block later Windows rebuilds.
+                mapped = np.memmap(shard_path, dtype=dtype, mode="r")
+                try:
+                    _atomic_array_write(alias, mapped)
+                finally:
+                    del mapped
 
     fingerprint_payload = {
         "tokenizer": tokenizer.fingerprint(),

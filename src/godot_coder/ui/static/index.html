@@ -104,8 +104,8 @@
                   <div class="message-meta">Godot Coder · local</div>
                   <p>Give me GDScript as a start or a clearly formulated task. I complete it with the selected checkpoint. Errors here are measurable training data, not hidden magic.</p>
                   <div class="prompt-chips">
-                    <button data-prompt="extends Node\n\n@export var energy: float = 100.0\n\nfunc spend_energy(amount: float) -> void:\n    ">Energie-Komponente</button>
-                    <button data-prompt="extends CharacterBody3D\n\n@export var speed: float = 5.0\n\nfunc _physics_process(delta: float) -> void:\n    ">3D-Bewegung</button>
+                    <button data-prompt="extends Node\n\n@export var energy: float = 100.0\n\nfunc spend_energy(amount: float) -> void:\n    ">Energy component</button>
+                    <button data-prompt="extends CharacterBody3D\n\n@export var speed: float = 5.0\n\nfunc _physics_process(delta: float) -> void:\n    ">3D movement</button>
                     <button data-prompt="extends Node\n\nsignal health_changed(current: float)\n\nfunc take_damage(amount: float) -> void:\n    ">Health system</button>
                   </div>
                 </div>
@@ -223,7 +223,7 @@
 
             <div class="form-grid">
               <label>
-                <span>Konfiguration</span>
+                <span>Configuration</span>
                 <select id="training-config" class="field-select"></select>
               </label>
               <label>
@@ -233,10 +233,10 @@
             </div>
 
             <div class="metric-row" id="training-metrics">
-              <div class="metric-card"><span>Parameterprofil</span><strong id="metric-profile">–</strong></div>
+              <div class="metric-card"><span>Parameter profile</span><strong id="metric-profile">–</strong></div>
               <div class="metric-card"><span>Context</span><strong id="metric-context">–</strong></div>
               <div class="metric-card"><span>Steps</span><strong id="metric-steps">–</strong></div>
-              <div class="metric-card"><span>Effektiver Batch</span><strong id="metric-batch">–</strong></div>
+              <div class="metric-card"><span>Effective batch</span><strong id="metric-batch">–</strong></div>
             </div>
 
             <div class="progress-block">
@@ -277,7 +277,7 @@
               <label class="log-toggle"><input type="checkbox" id="log-level-warning" checked><span>Warning</span></label>
               <label class="log-toggle"><input type="checkbox" id="log-level-error" checked><span>Errors</span></label>
               <select id="log-filter-project" class="field-select compact-select" aria-label="Filter by project"><option value="">All projects</option></select>
-              <select id="log-filter-phase" class="field-select compact-select" aria-label="Filter by phase"><option value="">Alle Phasen</option></select>
+              <select id="log-filter-phase" class="field-select compact-select" aria-label="Filter by phase"><option value="">All phases</option></select>
               <label class="log-toggle auto-follow"><input type="checkbox" id="log-auto-follow" checked><span>Auto-follow</span></label>
               <div class="log-actions">
                 <button class="ghost-button compact" id="clear-log-view">Clear view</button>
@@ -502,7 +502,7 @@
           </div>
 
           <aside class="glass-panel curriculum-panel">
-            <div class="section-label">AKTIVER TOKENSTREAM</div>
+            <div class="section-label">ACTIVE TOKEN STREAM</div>
             <div class="curriculum-score"><strong id="dataset-token-count">–</strong><span>Training tokens</span></div>
             <div class="data-token-breakdown" id="data-token-breakdown"></div>
             <div class="data-catalog-state" id="data-catalog-state">No prepared dataset detected yet.</div>
@@ -552,7 +552,7 @@
                 </div>
               </div>
               <dl class="remote-facts">
-                <div><dt>Zugriff</dt><dd id="remote-access-kind">Lokal</dd></div>
+                <div><dt>Access</dt><dd id="remote-access-kind">Local</dd></div>
                 <div><dt>Identity</dt><dd id="remote-identity">–</dd></div>
                 <div><dt>Tailscale</dt><dd id="remote-tailscale-state">–</dd></div>
                 <div><dt>Private address</dt><dd id="remote-serve-url" title="">–</dd></div>

@@ -23,6 +23,7 @@ from ..checkpoint import load_checkpoint
 from ..config import ModelConfig
 from ..godot_cli import build_check_command
 from ..model import TinyGPT
+from ..process_control import run_managed_process
 from ..runtime import mps_available, resolve_device, rocm_available
 from ..tokenizer import TokenizerLike, load_tokenizer
 from .paths import safe_child
@@ -657,7 +658,11 @@ class GenerationService:
                     top_k=top_k,
                     eos_id=loaded.tokenizer.eos_id,
                 )
-            return loaded.tokenizer.decode(generated[0].tolist(), skip_special_tokens=True)
+            # The chat panel already shows the user's prompt; return only the
+            # completion so the model output never repeats the prompt back.
+            all_ids = generated[0].tolist()
+            output_ids = all_ids[len(prompt_ids):]
+            return loaded.tokenizer.decode(output_ids, skip_special_tokens=True)
 
 
 def validate_code(project_root: Path, code: str, project_path: str = "data/raw/seed_project") -> dict[str, Any]:
@@ -673,15 +678,16 @@ def validate_code(project_root: Path, code: str, project_path: str = "data/raw/s
     script.write_text(code, encoding="utf-8", newline="\n")
     command = build_check_command(godot, project, script)
     try:
-        result = subprocess.run(
-            command, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30, check=False
-        )
-        output = "\n".join(part for part in (result.stdout.strip(), result.stderr.strip()) if part)
+        # run_managed_process (not subprocess.run) so a hung Mono-Godot child
+        # is terminated as a whole tree instead of surviving the 30s timeout
+        # as an orphan - the same protection the corpus path already uses.
+        result = run_managed_process(command, timeout_seconds=30)
         return {
-            "passed": result.returncode == 0,
-            "return_code": result.returncode,
-            "output": output,
+            "passed": result.return_code == 0,
+            "return_code": result.return_code,
+            "output": result.output,
             "script": relative_posix(script, project_root),
+            "timed_out": result.timed_out,
         }
     finally:
         script.unlink(missing_ok=True)
