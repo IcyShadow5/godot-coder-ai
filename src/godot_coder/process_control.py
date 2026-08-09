@@ -18,12 +18,9 @@ from enum import Enum, auto
 
 
 class FailureKind(Enum):
-    """Taxonomy for ManagedProcessResult failures.
-
-    Every non-zero exit or abnormal termination is classified so progress
-    events and reports can distinguish a transient infrastructure hiccup
-    from a permanent parse error that disqualifies a project.
-    """
+    """What kind of failure was this? I need to know whether a project
+    failed because of a transient OS hiccup or a real parse error.
+    The former is noise, the latter should disqualify the file."""
     NONE = auto()              # process completed cleanly (return_code 0)
     TIMEOUT = auto()            # wall-clock timeout, process killed
     IDLE_TIMEOUT = auto()       # no output for idle_timeout_seconds
@@ -87,13 +84,11 @@ _FAILURE_MARKERS: list[tuple[FailureKind, list[str]]] = [
 
 
 def classify_failure(result: ManagedProcessResult) -> FailureKind:
-    """Classify a managed-process result into a failure taxonomy.
+    """Figure out what went wrong from the output and flags.
 
-    Best-effort: scans the combined output for known Godot error patterns,
-    then falls back to structured flags (timed_out, startup_error, aborted).
-    Godot may print parse/runtime errors to stderr but still exit 0, so the
-    output is always scanned regardless of return code.
-    """
+    Godot prints parse/runtime errors to stderr but still exits 0 sometimes,
+    so I always scan the output first. After that I fall back to the obvious
+    flags: timed_out, startup_error, aborted."""
     # Always scan output first — Godot exits 0 even on parse errors.
     # Truncate to 10k chars so a huge compilation log doesn't slow us down.
     combined = (result.output or "")[:10000].lower()

@@ -1,9 +1,11 @@
-"""Structured observability for training, validation, and chat generation.
+"""Events I want to track during training, validation, and generation.
 
-Every significant event — parse success, runtime error, timeout, retry,
-token usage — is recorded as a typed event. The JSONL output is the same
-format as the training metrics file, so tools that consume training
-metrics automatically pick up these events.
+Every parse error, timeout, retry, and token count gets recorded as a
+typed event. The JSONL output matches the training metrics format, so
+anything that reads training logs picks these up automatically.
+
+TODO(v0.11): wire this into train.py's loop and services.py's
+validate_code/generate paths. The plumbing is done, nothing calls it yet.
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ from typing import Any
 
 
 class MetricEvent(Enum):
-    """Event types emitted during training, validation, and generation."""
+    """What happened — parse success, timeout, retry, token count, etc."""
 
     # ---- Pipeline outcomes ----
     PARSE_SUCCESS = auto()
@@ -43,7 +45,7 @@ class MetricEvent(Enum):
 
 @dataclass
 class MetricRecord:
-    """A single typed observability event."""
+    """One event, flattened for JSONL. All fields optional except event name."""
 
     event: str
     timestamp: float = field(default_factory=time.time)
@@ -81,16 +83,10 @@ class MetricRecord:
 
 
 class MetricsCollector:
-    """Append-only JSONL collector for structured observability events.
+    """Append-only JSONL. Every write flushes so a crash doesn't lose records.
 
-    Thread-safe: every append flushes immediately, so a crash preserves
-    all records written up to that point.
-
-    TODO(v0.11): wire this into train.py's training loop (per-step
-    loss/token events) and services.py's validate_code + generate
-    paths (parse/runtime/retry events). Currently the infrastructure
-    is complete but no data flows in yet — the module exists so
-    callers can start emitting without a refactor.
+    Thread-safe by accident (appends are atomic on most filesystems), but
+    I'll add a lock when I wire this into the training loop.
     """
 
     def __init__(self, path: Path | None = None) -> None:
