@@ -288,9 +288,10 @@ def run_benchmark(
         for case in cases:
             overall_index += 1
             case_max_tokens = min(max_new_tokens, int(case.get("reference_tokens", max_new_tokens)))
+            prompt_text = str(case.get("prompt", case.get("scaffold", "")))
             generated = generator.generate(
                 checkpoint,
-                str(case["prompt"]),
+                prompt_text,
                 max_new_tokens=case_max_tokens,
                 temperature=temperature,
                 top_k=top_k,
@@ -298,7 +299,7 @@ def run_benchmark(
             )
             case_project = str(case.get("validation_project", validation_project))
             validation = validate_code(root, generated, case_project)
-            prompt = str(case["prompt"])
+            prompt = prompt_text
             suffix = generated[len(prompt) :] if generated.startswith(prompt) else generated
             reference = case.get("reference_suffix")
             item: dict[str, object] = {
