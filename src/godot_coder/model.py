@@ -65,9 +65,11 @@ class CausalSelfAttention(nn.Module):
             past_k, past_v = past
             k = torch.cat((past_k, k), dim=2)
             v = torch.cat((past_v, v), dim=2)
-        # During incremental decoding q only contains new positions and every key is
-        # at or before them, so an additional square causal mask would be incorrect.
-        causal = past is None and sequence > 1
+        # When past is not None and only one new token arrives, SDPA sees
+        # sequence=1 and ignores the mask — no special casing needed. For chunked
+        # prefill (past + sequence > 1) the causal mask must stay on so new tokens
+        # cannot attend to each other.
+        causal = sequence > 1
         attended = F.scaled_dot_product_attention(
             q, k, v,
             dropout_p=self.dropout if self.training else 0.0,

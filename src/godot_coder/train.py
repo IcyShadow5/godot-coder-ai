@@ -50,8 +50,12 @@ def learning_rate(step: int, config: TrainConfig, max_steps: int) -> float:
 
 
 def make_optimizer(model: TinyGPT, config: TrainConfig, device: torch.device) -> torch.optim.AdamW:
-    decay = [p for p in model.parameters() if p.requires_grad and p.dim() >= 2]
-    no_decay = [p for p in model.parameters() if p.requires_grad and p.dim() < 2]
+    # When tie_embeddings is on, the lm_head and token_embedding share the same
+    # 2D weight. Embeddings should never receive weight decay — exclude the
+    # shared weight from the decay group.
+    tied_weight = model.token_embedding.weight if model.config.tie_embeddings else None
+    decay = [p for p in model.parameters() if p.requires_grad and p.dim() >= 2 and p is not tied_weight]
+    no_decay = [p for p in model.parameters() if p.requires_grad and (p.dim() < 2 or p is tied_weight)]
     groups = [{"params": decay, "weight_decay": config.weight_decay}, {"params": no_decay, "weight_decay": 0.0}]
     kwargs = {"lr": config.learning_rate, "betas": (config.beta1, config.beta2)}
     if device.type == "cuda":
@@ -115,14 +119,20 @@ def evaluate(
     elif config.evaluation_mode == "sliding":
         stride = config.evaluation_stride or model_config.max_seq_len
         remaining = config.eval_batches
+        window_buffer: list[list[int]] = []
         for shard_index, shard in enumerate(stream.shards):
             for start in range(0, max(1, len(shard) - model_config.max_seq_len - 1), stride):
-                window = np.asarray([[shard_index, start]], dtype=np.int64)
-                x, y = stream.batch_at(window, model_config.max_seq_len, device)
-                with autocast_context():
-                    output = model(x, y)
-                losses.append(float(output.loss.detach().cpu()))
-                remaining -= 1
+                window_buffer.append([shard_index, start])
+                if len(window_buffer) >= config.batch_size or len(window_buffer) >= remaining:
+                    consumed = min(config.batch_size, len(window_buffer))
+                    batch = np.asarray(window_buffer[:consumed], dtype=np.int64)
+                    x, y = stream.batch_at(batch, model_config.max_seq_len, device)
+                    with autocast_context():
+                        output = model(x, y)
+                    batch_loss = float(output.loss.detach().cpu())
+                    losses.extend([batch_loss] * consumed)
+                    window_buffer = window_buffer[consumed:]
+                    remaining -= consumed
                 if remaining <= 0:
                     break
             if remaining <= 0:
@@ -146,15 +156,20 @@ class BatchPrefetcher:
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="batch-prefetch") if enabled else None
         self.future: Future[tuple[torch.Tensor, torch.Tensor]] | None = None
         if self.executor:
-            self.future = self.executor.submit(stream.sample_batch, batch_size, seq_len, torch.device("cpu"), rng)
+            self.future = self.executor.submit(self._prefetch_sample)
+
+    def _prefetch_sample(self) -> tuple[torch.Tensor, torch.Tensor]:
+        x, y = self.stream.sample_batch(self.batch_size, self.seq_len, torch.device("cpu"), self.rng)
+        # Pin on the worker thread so the main thread only does the async transfer.
+        return x.pin_memory(), y.pin_memory()
 
     def next(self, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
         if self.executor is None or self.future is None:
             return self.stream.sample_batch(self.batch_size, self.seq_len, device, self.rng)
         x, y = self.future.result()
-        self.future = self.executor.submit(self.stream.sample_batch, self.batch_size, self.seq_len, torch.device("cpu"), self.rng)
+        self.future = self.executor.submit(self._prefetch_sample)
         if device.type == "cuda":
-            return x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
+            return x.to(device, non_blocking=True), y.to(device, non_blocking=True)
         return x.to(device), y.to(device)
 
     def close(self) -> None:
