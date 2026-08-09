@@ -85,6 +85,12 @@ class MetricsCollector:
 
     Thread-safe: every append flushes immediately, so a crash preserves
     all records written up to that point.
+
+    TODO(v0.11): wire this into train.py's training loop (per-step
+    loss/token events) and services.py's validate_code + generate
+    paths (parse/runtime/retry events). Currently the infrastructure
+    is complete but no data flows in yet — the module exists so
+    callers can start emitting without a refactor.
     """
 
     def __init__(self, path: Path | None = None) -> None:

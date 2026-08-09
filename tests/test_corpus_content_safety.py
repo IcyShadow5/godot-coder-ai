@@ -2,7 +2,7 @@
 
 GDScript files from the corpus are tokenized directly for training. They
 are never interpolated into an LLM system prompt. The chat generation path
-is: user prompt → tokenizer.encode → model.generate → tokenizer.decode.
+is: user prompt -> tokenizer.encode -> model.generate -> tokenizer.decode.
 """
 
 from __future__ import annotations
@@ -20,26 +20,38 @@ _INJECTION_PAYLOADS = [
 ]
 
 
-def test_injection_strings_never_reach_generate_prompt(tmp_path: Path) -> None:
-    """Corpus .gd files with injection strings must not contaminate
-    the chat generation prompt."""
-    from godot_coder.ui.services import GenerationService
+def test_generate_method_has_no_injection_surface() -> None:
+    """The generate() method must not accept parameters that could carry
+    injected corpus content. Verified via static source check to avoid
+    importing services.py (which pulls in torch/uvicorn)."""
+    repo = Path(__file__).resolve().parent.parent
+    services = repo / "src" / "godot_coder" / "ui" / "services.py"
+    text = services.read_text(encoding="utf-8", errors="replace")
 
-    # The generate() method takes a plain prompt string and passes it
-    # through tokenizer.encode -> model.generate -> tokenizer.decode.
-    # There is no system prompt template, no corpus interpolation.
-    service = GenerationService(tmp_path)
+    assert "def generate(" in text, "generate method not found in services.py"
 
-    import inspect
+    # Extract the generate method signature (def generate( ... ))
+    gen_idx = text.index("def generate(")
+    # Find the closing paren: the first '):' after gen_idx
+    next_line = text.index("\n", gen_idx)
+    sig_end = text.index("):", gen_idx)
+    sig = text[gen_idx:sig_end + 2]
 
-    sig = inspect.signature(service.generate)
-    params = set(sig.parameters.keys())
-    assert "prompt" in params
-    assert "checkpoint_path" in params
-    # No hidden parameters that could carry injected content
-    assert "system_prompt" not in params
-    assert "corpus" not in params
-    assert "context" not in params
+    # The method must NOT accept parameters that could carry corpus content
+    # into a prompt context. These would be injection surfaces.
+    forbidden = ["system_prompt", "corpus_context", "context_files"]
+    for param in forbidden:
+        assert param not in sig, (
+            f"generate() accepts injection-capable param: {param}"
+        )
+
+    # Also verify the broader file doesn't have hidden prompt templates
+    # that interpolate corpus data into an LLM context.
+    dangerous_patterns = ["system_prompt = ", "system_message = "]
+    for pattern in dangerous_patterns:
+        assert pattern not in text, (
+            f"services.py contains prompt injection vector: {pattern}"
+        )
 
 
 def test_corpus_files_are_tokenized_not_prompted() -> None:

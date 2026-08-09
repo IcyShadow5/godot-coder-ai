@@ -37,7 +37,10 @@ class FailureKind(Enum):
     UNKNOWN_ERROR = auto()      # return_code != 0 but no recognised pattern
 
 
-# Markers that appear in Godot stderr/stdout. Ordered most-specific first.
+# Markers that appear in Godot stderr/stdout.
+# Priority-ordered (most critical first): Mono > parse > runtime >
+# permission > environment > infrastructure. Earlier entries win when
+# multiple patterns match the same output.
 _FAILURE_MARKERS: list[tuple[FailureKind, list[str]]] = [
     (FailureKind.MONO_ERROR, [
         "System.Reflection",
@@ -86,18 +89,20 @@ _FAILURE_MARKERS: list[tuple[FailureKind, list[str]]] = [
 def classify_failure(result: ManagedProcessResult) -> FailureKind:
     """Classify a managed-process result into a failure taxonomy.
 
-    The classification is best-effort: it scans the combined output for
-    known Godot error patterns and falls back to the structured result
-    flags (timed_out, startup_error, aborted) when no pattern matches.
+    Best-effort: scans the combined output for known Godot error patterns,
+    then falls back to structured flags (timed_out, startup_error, aborted).
+    Godot may print parse/runtime errors to stderr but still exit 0, so the
+    output is always scanned regardless of return code.
     """
+    # Always scan output first — Godot exits 0 even on parse errors.
+    # Truncate to 10k chars so a huge compilation log doesn't slow us down.
+    combined = (result.output or "")[:10000].lower()
+    for kind, markers in _FAILURE_MARKERS:
+        for marker in markers:
+            if marker.lower() in combined:
+                return kind
+    # No error pattern matched — fall back to structured flags.
     if result.return_code == 0 and not result.timed_out and not result.aborted:
-        # Godot may print parse/runtime errors to stderr but still exit 0.
-        # Scan the output for known failure markers before declaring success.
-        combined = (result.output or "").lower()
-        for kind, markers in _FAILURE_MARKERS:
-            for marker in markers:
-                if marker.lower() in combined:
-                    return kind
         return FailureKind.NONE
     if result.startup_error:
         return FailureKind.STARTUP_ERROR
@@ -105,11 +110,6 @@ def classify_failure(result: ManagedProcessResult) -> FailureKind:
         return FailureKind.IDLE_TIMEOUT
     if result.timed_out and not result.aborted:
         return FailureKind.TIMEOUT
-    combined = (result.output or "").lower()
-    for kind, markers in _FAILURE_MARKERS:
-        for marker in markers:
-            if marker.lower() in combined:
-                return kind
     return FailureKind.UNKNOWN_ERROR
 
 
@@ -126,7 +126,7 @@ class ManagedProcessResult:
     aborted: bool = False
     abort_reason: str | None = None
     idle_timed_out: bool = False
-    failure_kind: str = ""
+    failure_kind: FailureKind = FailureKind.NONE
 
 
 def _windows_creation_flags() -> int:
@@ -722,5 +722,5 @@ def run_managed_process(
         aborted=aborted,
         abort_reason=abort_reason,
         idle_timed_out=idle_timed_out,
-        failure_kind="",
+        failure_kind=FailureKind.NONE,
     )
