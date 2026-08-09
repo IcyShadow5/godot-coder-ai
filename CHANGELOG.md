@@ -3,6 +3,34 @@
 Patch notes, so I still know later what I was thinking. Detailed notes for
 each version live in `docs/CHANGELOG_v0.10.x.md`; this file is the quick tour.
 
+## v0.10.13 (2026-08-09)
+
+The deep review finally reached the training core. The earlier passes were
+about processes, validation and security - this one read model.py and
+train.py line by line and found four real bugs:
+
+- **Causal masking broke on chunked prefill.** The mask was on when there
+  was no cached past and off when there was - so feeding a multi-token
+  chunk after a warm start attended to the future. Now `causal = sequence > 1`,
+  which SDPA handles correctly in every case.
+- **Sliding-window eval always ran with batch_size=1.** It ignored
+  `config.batch_size`, so evaluation was needlessly slow and the loss
+  variance looked bigger than it was. Windows now batch up properly.
+- **Tied embeddings got weight decay.** With `tie_embeddings` on, the shared
+  `token_embedding.weight` (which is also the LM head) sat in the decay
+  group. Now excluded.
+- **Prefetch pinned memory on the main thread.** `BatchPrefetcher.next()`
+  called `pin_memory()` synchronously, stalling the loop on every batch.
+  Moved into the prefetch worker.
+
+Plus the documentation pass: module docstrings for all ten modules that had
+none, function/class docstrings where they were missing (autotune, data,
+checkpoint, ...), section headers in api.js/remote.js, and inline comments
+on the model layers (RMSNorm, SwiGLU, RoPE, TransformerBlock) rewritten so
+they explain the why, not just the what.
+
+No new tests - these are fixes to existing behavior. 251 tests stay green.
+
 ## v0.10.12 (2026-08-09)
 
 Two full days from the deep code review. The Windows job-object cleanup
