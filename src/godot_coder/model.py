@@ -16,12 +16,15 @@ KVCache: TypeAlias = list[tuple[torch.Tensor, torch.Tensor]]
 
 
 class RMSNorm(nn.Module):
+    """Root-mean-square layer normalisation -- cheaper than LayerNorm, no mean centering."""
+
     def __init__(self, dimension: int, epsilon: float = 1e-6) -> None:
         super().__init__()
         self.weight = nn.Parameter(torch.ones(dimension))
         self.epsilon = epsilon
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Cast to float32 for numerical stability, then back to the input dtype.
         normalized = x.float() * torch.rsqrt(x.float().pow(2).mean(dim=-1, keepdim=True) + self.epsilon)
         return (normalized * self.weight.float()).to(dtype=x.dtype)
 
@@ -34,6 +37,7 @@ def build_rope_cache(head_dim: int, max_seq_len: int, base: float) -> tuple[torc
 
 
 def apply_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
+    # Rotary Position Embedding: rotate pairs of dimensions by position-dependent angles.
     even, odd = x[..., 0::2], x[..., 1::2]
     cos = cos.unsqueeze(0).unsqueeze(0).to(dtype=x.dtype)
     sin = sin.unsqueeze(0).unsqueeze(0).to(dtype=x.dtype)
@@ -81,8 +85,11 @@ class CausalSelfAttention(nn.Module):
 
 
 class SwiGLU(nn.Module):
+    """SwiGLU feed-forward: SiLU-gated linear projection, better than ReLU/GeLU MLPs."""
+
     def __init__(self, config: ModelConfig) -> None:
         super().__init__()
+        # Project to 2*d_ff so we can split into gate and value halves.
         self.in_proj = nn.Linear(config.d_model, 2 * config.d_ff, bias=False)
         self.out_proj = nn.Linear(config.d_ff, config.d_model, bias=False)
 
@@ -92,16 +99,21 @@ class SwiGLU(nn.Module):
 
 
 class TransformerBlock(nn.Module):
+    """One decoder block: pre-norm attention + residual, then pre-norm SwiGLU + residual."""
+
     def __init__(self, config: ModelConfig) -> None:
         super().__init__()
+        # Pre-norm: normalise before attention/MLP, not after (better training stability).
         self.attn_norm = RMSNorm(config.d_model)
         self.attn = CausalSelfAttention(config)
         self.mlp_norm = RMSNorm(config.d_model)
         self.mlp = SwiGLU(config)
 
     def forward(self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
+        # Self-attention with residual skip.
         attended, _ = self.attn(self.attn_norm(x), cos, sin)
         x = x + attended
+        # SwiGLU feed-forward with residual skip.
         return x + self.mlp(self.mlp_norm(x))
 
     def forward_cached(
