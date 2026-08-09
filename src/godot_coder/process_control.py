@@ -91,6 +91,13 @@ def classify_failure(result: ManagedProcessResult) -> FailureKind:
     flags (timed_out, startup_error, aborted) when no pattern matches.
     """
     if result.return_code == 0 and not result.timed_out and not result.aborted:
+        # Godot may print parse/runtime errors to stderr but still exit 0.
+        # Scan the output for known failure markers before declaring success.
+        combined = (result.output or "").lower()
+        for kind, markers in _FAILURE_MARKERS:
+            for marker in markers:
+                if marker.lower() in combined:
+                    return kind
         return FailureKind.NONE
     if result.startup_error:
         return FailureKind.STARTUP_ERROR
