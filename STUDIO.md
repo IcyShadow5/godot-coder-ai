@@ -1,4 +1,4 @@
-# Godot Coder Studio v0.10.9
+# Godot Coder Studio v0.10.12
 
 The Studio continues to run locally on `127.0.0.1` and requires no cloud API. Optionally, Tailscale Serve provides a private HTTPS entry point within your own tailnet.
 
@@ -17,7 +17,7 @@ Select a checkpoint, enter a prompt and generate a GDScript completion. The outp
 
 ## Data Lab
 
-The Data Lab is a small editor for the local corpus: read and edit GDScript files, delete existing entries and create new files. The list can be filtered by data type (all data, active training tokens, own raw files, task data or train/validation/test split) and additionally searched via the search box. Every change to an existing file creates a backup first - nothing is overwritten blindly.
+A small editor for the local corpus. Read and edit GDScript files, delete entries, create new ones. Filter by data type (all, active training tokens, your raw files, task data, train/val/test split) and search by name. Every edit backs up the original first.
 
 ## Knowledge Building: the guided steps
 
@@ -27,22 +27,22 @@ The Data Lab is a small editor for the local corpus: read and edit GDScript file
 4. **Token stream** - `train-bpe` builds the byte-BPE tokenizer and the versioned token stream.
 5. **Prepare dataset** - the final training dataset with shards and hashes; then training can start.
 
-For the private import of own projects, the options in the "Import options for large volumes" section apply.
+For your own projects, use the toggles under "Import options for large volumes".
 
-## Secure Remote Studio
+## Remote Studio (Tailscale Serve)
 
-Setup in four steps:
+Four steps to access the Studio from your phone or tablet inside your tailnet:
 
 1. Run `python -m godot_coder.remote_access configure` (sets up Tailscale Serve; the Studio stays bound to `127.0.0.1:8765`).
 2. Start the Studio with `python -m godot_coder.studio`.
 3. Open the displayed Tailscale HTTPS address on your phone/tablet.
 4. Remove it again with `python -m godot_coder.remote_access disable`.
 
-The remote area shows Tailscale status, identity, read mode, PIN session, private link downloads, ZIP uploads and the local import folder. All jobs run on the PC. API data is not cached offline by the PWA. A public Tailscale funnel share is not intended.
+The remote area shows Tailscale status, identity, read mode, PIN session, private link downloads, ZIP uploads and the local import folder. All jobs run on the PC. API data is not cached offline by the PWA. I don't intend to expose this over Tailscale Funnel — it's your training machine, not a public service.
 
-## Beginner protection
+## Guardrails
 
-Unknown licenses, invalid Git URLs/refs, paths outside the project, mismatched tokenizers and invalid training configurations are rejected before start. Large jobs run separately and can be stopped.
+Unknown licenses, bad Git URLs, paths outside the project, mismatched tokenizers and invalid training configs are all rejected before anything starts. Long-running jobs run separately and you can stop them any time.
 
 ## Import options for large volumes (v0.10.2)
 
