@@ -48,9 +48,17 @@ real bugs, all in paths I trusted because the tests never exercised them.
   chapters instead of a wall of functions.
 - **Inline comments on the model layers** - RMSNorm (why no mean centering),
   RoPE (what the rotation does), SwiGLU (half gate, half values),
-  TransformerBlock (pre-norm + residual skips). Rewritten once more so they
-  explain the why and not just the what, matching the voice of the rest of
-  the code.
+  TransformerBlock (pre-norm + residual skips). Explain the why, not just
+  the what.
+- **Voice reword on the comments.** My first pass wrote textbook-style
+  comments ("RMSNorm: cheaper than LayerNorm, no mean centering", "SwiGLU:
+  better than ReLU/GeLU MLPs") - they read like a reference card, not like
+  me. Rewrote them the way I actually talk: "RMSNorm: normalise over the
+  last dimension only, skip the mean for speed", "SwiGLU: half the inner
+  projection acts as a learnable gate, the other half as values",
+  "Pre-norm transformer block: attention then MLP, each with a residual
+  skip". Same for three module docstrings (checkpoint, tokenizer,
+  evaluate) that had drifted into feature-list mode.
 
 ### Changed
 

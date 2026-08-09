@@ -26,8 +26,10 @@ train.py line by line and found four real bugs:
 Plus the documentation pass: module docstrings for all ten modules that had
 none, function/class docstrings where they were missing (autotune, data,
 checkpoint, ...), section headers in api.js/remote.js, and inline comments
-on the model layers (RMSNorm, SwiGLU, RoPE, TransformerBlock) rewritten so
-they explain the why, not just the what.
+on the model layers (RMSNorm, SwiGLU, RoPE, TransformerBlock). The model
+comments got a second pass so they read like I wrote them - short and
+practical, explaining the why ("skip the mean for speed") instead of
+reciting textbook facts ("cheaper than LayerNorm").
 
 No new tests - these are fixes to existing behavior. 251 tests stay green.
 

@@ -23,7 +23,7 @@ are never exercised by the unit tests.
 
 ## Test suite
 
-- `python -m pytest -q` runs the full suite (~230 tests, all mocked).
+- `python -m pytest -q` runs the full suite (250+ tests, all mocked).
 - `node tests/js_progress_test.cjs` checks the front-end progress logic.
 
 If you add a feature, add a test that does not need Godot. If it genuinely
