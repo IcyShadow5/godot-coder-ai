@@ -14,6 +14,98 @@ from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
 
+from enum import Enum, auto
+
+
+class FailureKind(Enum):
+    """Taxonomy for ManagedProcessResult failures.
+
+    Every non-zero exit or abnormal termination is classified so progress
+    events and reports can distinguish a transient infrastructure hiccup
+    from a permanent parse error that disqualifies a project.
+    """
+    NONE = auto()              # process completed cleanly (return_code 0)
+    TIMEOUT = auto()            # wall-clock timeout, process killed
+    IDLE_TIMEOUT = auto()       # no output for idle_timeout_seconds
+    STARTUP_ERROR = auto()      # process could not be launched at all
+    PARSE_ERROR = auto()        # Godot GDScript parse/syntax error
+    RUNTIME_ERROR = auto()      # Godot runtime crash (scene init, signal)
+    MONO_ERROR = auto()         # Mono/.NET runtime crash (unrelated to script)
+    PERMISSION_ERROR = auto()   # filesystem or OS permission denied
+    ENVIRONMENT_ERROR = auto()  # missing Godot, broken project.godot, path issue
+    INFRASTRUCTURE_ERROR = auto()  # OS-level failure (OOM, job object, taskkill)
+    UNKNOWN_ERROR = auto()      # return_code != 0 but no recognised pattern
+
+
+# Markers that appear in Godot stderr/stdout. Ordered most-specific first.
+_FAILURE_MARKERS: list[tuple[FailureKind, list[str]]] = [
+    (FailureKind.MONO_ERROR, [
+        "System.Reflection",
+        "MonoInternals",
+        ".NET runtime",
+    ]),
+    (FailureKind.PARSE_ERROR, [
+        "SCRIPT ERROR:",
+        "Parse Error:",
+        "Parser Error:",
+        "syntax error",
+        "Expected ",
+        "Unexpected token",
+    ]),
+    (FailureKind.RUNTIME_ERROR, [
+        "ERROR: ",
+        "Invalid call",
+        "Invalid get index",
+        "Trying to assign value of type",
+        "Cannot call method",
+        "Signal '",
+        "does not exist in the current scope",
+    ]),
+    (FailureKind.PERMISSION_ERROR, [
+        "Permission denied",
+        "Access is denied",
+        "EACCES",
+        "cannot open",
+    ]),
+    (FailureKind.ENVIRONMENT_ERROR, [
+        "No such file or directory",
+        "project.godot not found",
+        "Godot executable not found",
+        "Could not find",
+        "Unable to find",
+    ]),
+    (FailureKind.INFRASTRUCTURE_ERROR, [
+        "out of memory",
+        "OOM",
+        "taskkill",
+        "TerminateJobObject",
+    ]),
+]
+
+
+def classify_failure(result: ManagedProcessResult) -> FailureKind:
+    """Classify a managed-process result into a failure taxonomy.
+
+    The classification is best-effort: it scans the combined output for
+    known Godot error patterns and falls back to the structured result
+    flags (timed_out, startup_error, aborted) when no pattern matches.
+    """
+    if result.return_code == 0 and not result.timed_out and not result.aborted:
+        return FailureKind.NONE
+    if result.startup_error:
+        return FailureKind.STARTUP_ERROR
+    if result.idle_timed_out:
+        return FailureKind.IDLE_TIMEOUT
+    if result.timed_out and not result.aborted:
+        return FailureKind.TIMEOUT
+    combined = (result.output or "").lower()
+    for kind, markers in _FAILURE_MARKERS:
+        for marker in markers:
+            if marker.lower() in combined:
+                return kind
+    return FailureKind.UNKNOWN_ERROR
+
+
 @dataclass(frozen=True)
 class ManagedProcessResult:
     command: list[str]
@@ -27,6 +119,7 @@ class ManagedProcessResult:
     aborted: bool = False
     abort_reason: str | None = None
     idle_timed_out: bool = False
+    failure_kind: str = ""
 
 
 def _windows_creation_flags() -> int:
@@ -622,4 +715,5 @@ def run_managed_process(
         aborted=aborted,
         abort_reason=abort_reason,
         idle_timed_out=idle_timed_out,
+        failure_kind="",
     )
