@@ -56,7 +56,7 @@ def test_validate_godot_exits_clean_when_project_missing(
     args = SimpleNamespace(
         script=str(missing / "test.gd"),
         project=str(missing),
-        godot="godot",
+        godot=sys.executable,
         timeout=30,
     )
     with pytest.raises(FileNotFoundError, match="project.godot not found"):
@@ -71,7 +71,7 @@ def test_validate_godot_exits_clean_when_script_missing(
     args = SimpleNamespace(
         script=str(project / "nonexistent.gd"),
         project=str(project),
-        godot="godot",
+        godot=sys.executable,
         timeout=30,
     )
     with pytest.raises(FileNotFoundError):
