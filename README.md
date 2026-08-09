@@ -26,6 +26,7 @@ Honest numbers from the first real training run, so I can measure progress inste
 - **Data:** corpus_v06 — ~32M tokens of verified GDScript from ~830 imported Godot projects.
 - **Run:** 2,460 of ~10,300 planned steps on a 8 GB RTX 5060 (~22 min, bf16, CUDA), then early-stopped at patience 4. Best validation loss **1.78** (val perplexity **5.96**); training loss fell from 7.33 to ~1.5 over the run.
 - **The honest part:** a 91M model after roughly one pass over the data does *not* write working GDScript yet. The benchmark that checks whether generated completions parse as valid GDScript scores **6.25%** (1 of 16 prompts) — a baseline, not a result. What it *did* learn is telling: it reproduces the exact task-header format of the training data, which means the pipeline, tokenizer and training loop are real.
+- **Golden Task Suite:** 30 hand-written GDScript challenges across 8 topics (functions, signals, collections, gameplay, nodes, state, basics, architecture) with reference solutions. Run `--mode=golden` to measure parser pass rate and token-prefix accuracy on a fixed set -- this is the metric I track between runs. A task that parses is worth 1 point, exact match against the reference is a bonus.
 - **What this run bought:** an end-to-end proof (import → validate → tokenize → train → generate → benchmark) plus a measurable baseline to beat. The levers from here are more data (the registry fetch now covers ~1,260 sources, ~830 of them ready), more training time, and finally the instruction-tuning stage that turns "continues code" into "answers prompts".
 
 ## Recent Changes
@@ -40,7 +41,7 @@ few releases in one breath:
   now works, which finally explains the frozen orphaned processes. Chat
   validation cleans up its tree, the chat no longer echoes your prompt back
   as "AI output", empty completions show a hint, and warmup validation is
-  resume-aware. 52 new tests (244 total) after the security-gap review pass.
+  resume-aware. 59 new tests (251 total) after the security-gap and golden-task review pass.
 - **v0.10.11** - chat samples actually get verified. Failed generations
   saved from the Studio chat were staged into the corpus but never parsed
   by Godot (the validator looked in the wrong folder), so a broken sample
