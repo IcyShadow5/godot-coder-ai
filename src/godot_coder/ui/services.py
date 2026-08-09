@@ -24,6 +24,7 @@ from ..config import ModelConfig
 from ..godot_cli import build_check_command
 from ..model import TinyGPT
 from ..process_control import run_managed_process
+from ..metrics import MetricEvent, MetricsCollector
 from ..runtime import mps_available, resolve_device, rocm_available
 from ..tokenizer import TokenizerLike, load_tokenizer
 from .paths import safe_child
@@ -662,6 +663,9 @@ class GenerationService:
             # completion so the model output never repeats the prompt back.
             all_ids = generated[0].tolist()
             output_ids = all_ids[len(prompt_ids):]
+            gen_metrics = MetricsCollector(self.project_root / "reports" / "studio_metrics.jsonl")
+            gen_metrics.record(MetricEvent.TOKEN_USAGE, tokens=len(output_ids))
+            gen_metrics.record(MetricEvent.GENERATION_COMPLETE if output_ids else MetricEvent.GENERATION_ERROR)
             return loaded.tokenizer.decode(output_ids, skip_special_tokens=True)
 
 
@@ -682,6 +686,8 @@ def validate_code(project_root: Path, code: str, project_path: str = "data/raw/s
         # is terminated as a whole tree instead of surviving the 30s timeout
         # as an orphan - the same protection the corpus path already uses.
         result = run_managed_process(command, timeout_seconds=30)
+        validate_metrics = MetricsCollector(project_root / "reports" / "studio_metrics.jsonl")
+        validate_metrics.record(MetricEvent.PARSE_SUCCESS if result.return_code == 0 and not result.timed_out else MetricEvent.PARSE_ERROR, duration_seconds=30.0 if not result.timed_out else None, error=result.output[:200] if result.return_code != 0 else None)
         return {
             "passed": result.return_code == 0,
             "return_code": result.return_code,

@@ -23,6 +23,7 @@ from .model import TinyGPT
 from .project import find_project_root, project_relative, resolve_project_path
 from .runtime import resolve_device
 from .tokenizer import load_tokenizer
+from .metrics import MetricEvent, MetricsCollector
 
 
 def parse_args() -> argparse.Namespace:
@@ -332,6 +333,7 @@ def main() -> None:
     print(f"Plan: start_step={start_step:,} end_step={max_steps:,} run_tokens={planned_run_tokens:,} dataset_passes~={passes:.2f}")
     print(f"Precision: AMP_compute={train_config.dtype} weights=float32 checkpointing={model_config.gradient_checkpointing} compile={compile_info['enabled']} prefetch={train_config.prefetch_batches > 0}")
     print("RUN_HEADER_JSON=" + json.dumps(header, ensure_ascii=True)); _append_jsonl(metrics_path, {"event": "run_start", **header})
+    run_metrics = MetricsCollector(output_dir / f"events_{run_id}.jsonl")
 
     model.train(); prefetcher = BatchPrefetcher(train_stream, train_config.batch_size, model_config.max_seq_len, train_rng, train_config.prefetch_batches > 0)
     run_started = time.perf_counter(); interval_started = time.perf_counter(); total_training_seconds = total_validation_seconds = total_checkpoint_seconds = 0.0
@@ -368,6 +370,7 @@ def main() -> None:
                     run_peak_allocated_gib = max(run_peak_allocated_gib, alloc); run_peak_reserved_gib = max(run_peak_reserved_gib, reserved)
                     metric.update({"peak_vram_allocated_gib": alloc, "peak_vram_reserved_gib": reserved}); memory = f" vram_alloc={alloc:.2f}GiB vram_reserved={reserved:.2f}GiB"; torch.cuda.reset_peak_memory_stats(device)
                 _append_jsonl(metrics_path, metric)
+                run_metrics.record(MetricEvent.TOKEN_USAGE, step=step + 1, tokens=interval_tokens)
                 print(f"step={step + 1} progress={(step + 1) / max_steps * 100:.1f}% loss={average_loss:.4f} lr={current_lr:.2e} grad={float(gradient_norm):.3f} tokens={total_tokens:,} tok/s={tps:,.0f} step_ms={metric['mean_optimizer_step_ms']:.1f}{memory}")
                 running_loss = 0.0; interval_steps = 0; interval_started = time.perf_counter()
             improved = False
@@ -379,6 +382,7 @@ def main() -> None:
                 improved = val_loss < best_val_loss
                 if improved: best_val_loss = val_loss; best_step = step + 1
                 no_improvement = 0 if significant else no_improvement + 1
+                run_metrics.record(MetricEvent.RUNTIME_SUCCESS if val_loss < 100 else MetricEvent.RUNTIME_ERROR, step=step + 1, duration_seconds=duration, details={"loss": val_loss, "perplexity": math.exp(min(val_loss, 20))})
                 _append_jsonl(metrics_path, {"event": "validation", "time": time.time(), "step": step + 1, "loss": val_loss, "perplexity": math.exp(min(val_loss, 20)), "duration_seconds": duration, "improved": improved, "best_val_loss": best_val_loss, "best_step": best_step, "no_improvement_count": no_improvement})
                 print(f"validation step={step + 1} loss={val_loss:.4f} perplexity={math.exp(min(val_loss,20)):.2f} seconds={duration:.2f} best_step={best_step or '-'} patience={no_improvement}/{train_config.early_stopping_patience}")
             periodic_save = (step + 1) % train_config.save_interval == 0 or step + 1 == max_steps
