@@ -85,3 +85,20 @@ def test_eta_preserves_last_estimate_on_zero_remaining() -> None:
     result2 = estimator.estimate(remaining_files=0, remaining_projects=0)
     assert result2["estimated_remaining_seconds"] is not None
     assert result2["estimated_remaining_seconds"] == cached
+
+
+
+def test_secret_masking_covers_github_tokens_jwt_and_connection_strings() -> None:
+    payload = mask_secrets({
+        "token": "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij",
+        "jwt": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U",
+        "jwt_padded": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0=.sig",
+        "url": "postgresql://dbuser:sup3rsecret@db.example.com:5432/app",
+    })
+    serialized = json.dumps(payload)
+    assert "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij" not in serialized
+    assert "eyJhbGciOiJIUzI1NiJ9" not in serialized
+    assert "eyJzdWIiOiJ4In0" not in serialized
+    assert "sup3rsecret" not in serialized
+    assert "db.example.com" in serialized  # the host is not a secret
+    assert serialized.count("[REDACTED]") >= 3

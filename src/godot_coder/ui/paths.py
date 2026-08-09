@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..project import PROJECT_MARKERS, find_project_root, looks_like_project
+from ..project import find_project_root, looks_like_project
 
 
 def safe_child(root: Path, relative: str | Path, *, must_exist: bool = False) -> Path:

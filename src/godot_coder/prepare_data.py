@@ -2,7 +2,6 @@ from __future__ import annotations
 """CLI entry point for tokenising a prepared corpus split into memmap shards."""
 
 import argparse
-import json
 from pathlib import Path
 
 from .data import prepare_dataset

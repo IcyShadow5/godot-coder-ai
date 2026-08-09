@@ -15,7 +15,7 @@ import uuid
 import zipfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import Any, Iterable, Iterator
+from typing import Any, Iterator
 
 from .corpus import (
     _find_godot,

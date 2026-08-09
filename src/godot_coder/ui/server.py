@@ -599,7 +599,6 @@ def create_app(project_root: Path) -> FastAPI:
             raise HTTPException(status_code=409, detail="Stop the active training/data job before generating.")
 
         async def token_stream():
-            import torch
             try:
                 # Load model once for this stream
                 text = await asyncio.to_thread(

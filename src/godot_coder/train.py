@@ -35,7 +35,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def set_seeds(seed: int) -> None:
-    random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
 
@@ -187,7 +189,8 @@ def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
 def _append_jsonl(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(payload, ensure_ascii=False) + "\n"); handle.flush()
+        handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        handle.flush()
 
 
 def _file_sha256(path: Path) -> str:
@@ -266,7 +269,8 @@ def main() -> None:
     _require_under(output_dir, project_root / "checkpoints", "output_dir")
 
     tokenizer = load_tokenizer(tokenizer_path)
-    model_config.vocab_size = tokenizer.vocab_size; model_config.validate()
+    model_config.vocab_size = tokenizer.vocab_size
+    model_config.validate()
     manifest_path = data_dir / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("tokenizer_fingerprint") != tokenizer.fingerprint():
@@ -286,19 +290,28 @@ def main() -> None:
     def autocast_context():
         return torch.autocast(device_type="cuda", dtype=amp_dtype) if amp_enabled else nullcontext()
 
-    start_step = 0; best_val_loss = float("inf"); best_step: int | None = None; resume_path: Path | None = None
+    start_step = 0
+    best_val_loss = float("inf")
+    best_step: int | None = None
+    resume_path: Path | None = None
     if args.resume:
-        resume_path = resolve_project_path(project_root, args.resume); _require_under(resume_path, project_root / "checkpoints", "resume checkpoint")
+        resume_path = resolve_project_path(project_root, args.resume)
+        _require_under(resume_path, project_root / "checkpoints", "resume checkpoint")
         payload = load_checkpoint(resume_path, map_location=device)
         if payload["tokenizer_fingerprint"] != tokenizer.fingerprint():
             raise ValueError("checkpoint tokenizer does not match current tokenizer")
         if payload["model_config"] != model_config.to_dict():
             raise ValueError("checkpoint model configuration does not match current configuration")
-        raw_model.load_state_dict(payload["model_state"]); optimizer.load_state_dict(payload["optimizer_state"]); scaler.load_state_dict(payload["scaler_state"])
+        raw_model.load_state_dict(payload["model_state"])
+        optimizer.load_state_dict(payload["optimizer_state"])
+        scaler.load_state_dict(payload["scaler_state"])
         restore_rng_state(payload["rng_state"])
         if payload.get("data_rng_state"):
-            train_rng.bit_generator.state = payload["data_rng_state"]["train"]; eval_rng.bit_generator.state = payload["data_rng_state"]["eval"]
-        start_step = int(payload["step"]); best_val_loss = float(payload.get("best_val_loss", float("inf"))); best_step = payload.get("best_step")
+            train_rng.bit_generator.state = payload["data_rng_state"]["train"]
+            eval_rng.bit_generator.state = payload["data_rng_state"]["eval"]
+        start_step = int(payload["step"])
+        best_val_loss = float(payload.get("best_val_loss", float("inf")))
+        best_step = payload.get("best_step")
 
     tokens_per_micro_batch = train_config.batch_size * model_config.max_seq_len
     tokens_per_optimizer_step = tokens_per_micro_batch * train_config.gradient_accumulation_steps
@@ -347,52 +360,81 @@ def main() -> None:
     print(f"Dataset: train_unique={len(train_stream):,} val_unique={len(val_stream):,} shards={len(train_stream.shards)} vocab={tokenizer.vocab_size:,}")
     print(f"Plan: start_step={start_step:,} end_step={max_steps:,} run_tokens={planned_run_tokens:,} dataset_passes~={passes:.2f}")
     print(f"Precision: AMP_compute={train_config.dtype} weights=float32 checkpointing={model_config.gradient_checkpointing} compile={compile_info['enabled']} prefetch={train_config.prefetch_batches > 0}")
-    print("RUN_HEADER_JSON=" + json.dumps(header, ensure_ascii=True)); _append_jsonl(metrics_path, {"event": "run_start", **header})
+    print("RUN_HEADER_JSON=" + json.dumps(header, ensure_ascii=True))
+    _append_jsonl(metrics_path, {"event": "run_start", **header})
     run_metrics = MetricsCollector(output_dir / f"events_{run_id}.jsonl")
 
-    model.train(); prefetcher = BatchPrefetcher(train_stream, train_config.batch_size, model_config.max_seq_len, train_rng, train_config.prefetch_batches > 0)
-    run_started = time.perf_counter(); interval_started = time.perf_counter(); total_training_seconds = total_validation_seconds = total_checkpoint_seconds = 0.0
-    running_loss = 0.0; interval_steps = 0; last_step_completed = start_step; final_val_loss = None; status = "completed"; error_message = None
-    run_peak_allocated_gib = run_peak_reserved_gib = 0.0; no_improvement = 0
+    model.train()
+    prefetcher = BatchPrefetcher(train_stream, train_config.batch_size, model_config.max_seq_len, train_rng, train_config.prefetch_batches > 0)
+    run_started = time.perf_counter()
+    interval_started = time.perf_counter()
+    total_training_seconds = total_validation_seconds = total_checkpoint_seconds = 0.0
+    running_loss = 0.0
+    interval_steps = 0
+    last_step_completed = start_step
+    final_val_loss = None
+    status = "completed"
+    error_message = None
+    run_peak_allocated_gib = run_peak_reserved_gib = 0.0
+    no_improvement = 0
     try:
         for step in range(start_step, max_steps):
-            step_started = time.perf_counter(); optimizer.zero_grad(set_to_none=True); accumulated_loss = 0.0
+            step_started = time.perf_counter()
+            optimizer.zero_grad(set_to_none=True)
+            accumulated_loss = 0.0
             for _ in range(train_config.gradient_accumulation_steps):
                 x, y = prefetcher.next(device)
                 with autocast_context():
                     output = model(x, y)
                     if output.loss is None: raise RuntimeError("training produced no loss")
                     loss = output.loss / train_config.gradient_accumulation_steps
-                scaler.scale(loss).backward(); accumulated_loss += float(loss.detach().cpu())
-            scaler.unscale_(optimizer); gradient_norm = torch.nn.utils.clip_grad_norm_(raw_model.parameters(), train_config.gradient_clip)
+                scaler.scale(loss).backward()
+                accumulated_loss += float(loss.detach().cpu())
+            scaler.unscale_(optimizer)
+            gradient_norm = torch.nn.utils.clip_grad_norm_(raw_model.parameters(), train_config.gradient_clip)
             current_lr = learning_rate(step, train_config, max_steps)
             for group in optimizer.param_groups: group["lr"] = current_lr
-            scaler.step(optimizer); scaler.update()
+            scaler.step(optimizer)
+            scaler.update()
             if device.type == "cuda": torch.cuda.synchronize(device)
-            elapsed = time.perf_counter() - step_started; total_training_seconds += elapsed
-            running_loss += accumulated_loss; interval_steps += 1; last_step_completed = step + 1
+            elapsed = time.perf_counter() - step_started
+            total_training_seconds += elapsed
+            running_loss += accumulated_loss
+            interval_steps += 1
+            last_step_completed = step + 1
             should_log = interval_steps >= train_config.log_interval or step + 1 == max_steps
             should_eval = (step + 1) % eval_interval_steps == 0 or step + 1 == max_steps
             if should_log:
                 interval_seconds = time.perf_counter() - interval_started
                 interval_tokens = interval_steps * tokens_per_optimizer_step
-                tps = interval_tokens / max(interval_seconds, 1e-9); average_loss = running_loss / interval_steps
-                total_tokens = (step + 1) * tokens_per_optimizer_step; run_tokens = (step + 1 - start_step) * tokens_per_optimizer_step
+                tps = interval_tokens / max(interval_seconds, 1e-9)
+                average_loss = running_loss / interval_steps
+                total_tokens = (step + 1) * tokens_per_optimizer_step
+                run_tokens = (step + 1 - start_step) * tokens_per_optimizer_step
                 metric = {"event": "train_interval", "time": time.time(), "step": step + 1, "interval_steps": interval_steps, "progress": round((step + 1) / max_steps, 6), "loss": average_loss, "learning_rate": current_lr, "gradient_norm": float(gradient_norm), "training_seconds": interval_seconds, "mean_optimizer_step_ms": interval_seconds / interval_steps * 1000, "interval_tokens": interval_tokens, "run_tokens_seen": run_tokens, "cumulative_tokens_seen": total_tokens, "tokens_per_second": tps, "equivalent_dataset_passes_seen": total_tokens / max(1, len(train_stream))}
                 memory = ""
                 if device.type == "cuda":
-                    alloc = torch.cuda.max_memory_allocated(device) / 1024**3; reserved = torch.cuda.max_memory_reserved(device) / 1024**3
-                    run_peak_allocated_gib = max(run_peak_allocated_gib, alloc); run_peak_reserved_gib = max(run_peak_reserved_gib, reserved)
-                    metric.update({"peak_vram_allocated_gib": alloc, "peak_vram_reserved_gib": reserved}); memory = f" vram_alloc={alloc:.2f}GiB vram_reserved={reserved:.2f}GiB"; torch.cuda.reset_peak_memory_stats(device)
+                    alloc = torch.cuda.max_memory_allocated(device) / 1024**3
+                    reserved = torch.cuda.max_memory_reserved(device) / 1024**3
+                    run_peak_allocated_gib = max(run_peak_allocated_gib, alloc)
+                    run_peak_reserved_gib = max(run_peak_reserved_gib, reserved)
+                    metric.update({"peak_vram_allocated_gib": alloc, "peak_vram_reserved_gib": reserved})
+                    memory = f" vram_alloc={alloc:.2f}GiB vram_reserved={reserved:.2f}GiB"
+                    torch.cuda.reset_peak_memory_stats(device)
                 _append_jsonl(metrics_path, metric)
                 run_metrics.record(MetricEvent.TOKEN_USAGE, step=step + 1, tokens=interval_tokens)
                 print(f"step={step + 1} progress={(step + 1) / max_steps * 100:.1f}% loss={average_loss:.4f} lr={current_lr:.2e} grad={float(gradient_norm):.3f} tokens={total_tokens:,} tok/s={tps:,.0f} step_ms={metric['mean_optimizer_step_ms']:.1f}{memory}")
-                running_loss = 0.0; interval_steps = 0; interval_started = time.perf_counter()
+                running_loss = 0.0
+                interval_steps = 0
+                interval_started = time.perf_counter()
             improved = False
             if should_eval:
-                started = time.perf_counter(); val_loss = evaluate(model, val_stream, train_config, model_config, device, eval_rng, autocast_context, fixed_windows)
+                started = time.perf_counter()
+                val_loss = evaluate(model, val_stream, train_config, model_config, device, eval_rng, autocast_context, fixed_windows)
                 if device.type == "cuda": torch.cuda.synchronize(device)
-                duration = time.perf_counter() - started; total_validation_seconds += duration; final_val_loss = val_loss
+                duration = time.perf_counter() - started
+                total_validation_seconds += duration
+                final_val_loss = val_loss
                 significant = val_loss < best_val_loss - train_config.early_stopping_min_delta
                 improved = val_loss < best_val_loss
                 if improved: best_val_loss = val_loss; best_step = step + 1
@@ -403,16 +445,22 @@ def main() -> None:
             periodic_save = (step + 1) % train_config.save_interval == 0 or step + 1 == max_steps
             should_save = improved or (periodic_save and not train_config.save_best_only)
             if should_save:
-                started = time.perf_counter(); saved = save_checkpoint(output_dir, step=step + 1, model=raw_model, optimizer=optimizer, scaler=scaler, model_config=model_config.to_dict(), train_config=train_config.to_dict(), tokenizer_fingerprint=tokenizer.fingerprint(), best_val_loss=best_val_loss, best_step=best_step, data_rng_state={"train": train_rng.bit_generator.state, "eval": eval_rng.bit_generator.state}, is_best=improved, keep_last=train_config.keep_last_checkpoints)
-                duration = time.perf_counter() - started; total_checkpoint_seconds += duration
+                started = time.perf_counter()
+                saved = save_checkpoint(output_dir, step=step + 1, model=raw_model, optimizer=optimizer, scaler=scaler, model_config=model_config.to_dict(), train_config=train_config.to_dict(), tokenizer_fingerprint=tokenizer.fingerprint(), best_val_loss=best_val_loss, best_step=best_step, data_rng_state={"train": train_rng.bit_generator.state, "eval": eval_rng.bit_generator.state}, is_best=improved, keep_last=train_config.keep_last_checkpoints)
+                duration = time.perf_counter() - started
+                total_checkpoint_seconds += duration
                 _append_jsonl(metrics_path, {"event": "checkpoint", "time": time.time(), "step": step + 1, "path": project_relative(saved, project_root), "is_best": improved, "duration_seconds": duration})
                 print(f"checkpoint: {project_relative(saved, project_root)}{' (best)' if improved else ''} seconds={duration:.2f}")
             if train_config.early_stopping_enabled and should_eval and no_improvement >= train_config.early_stopping_patience:
-                status = "early_stopped"; print(f"early_stopping: step={step + 1} best_step={best_step} best_val_loss={best_val_loss:.4f}"); break
+                status = "early_stopped"
+                print(f"early_stopping: step={step + 1} best_step={best_step} best_val_loss={best_val_loss:.4f}")
+                break
     except KeyboardInterrupt:
-        status = "stopped"; error_message = "Training interrupted by user"
+        status = "stopped"
+        error_message = "Training interrupted by user"
     except Exception as exc:
-        status = "failed"; error_message = f"{type(exc).__name__}: {exc}"
+        status = "failed"
+        error_message = f"{type(exc).__name__}: {exc}"
         # Emergency checkpoint — save model state before crashing so the user
         # can resume from the last completed step instead of the last save_interval.
         try:
@@ -442,12 +490,19 @@ def main() -> None:
         wall_seconds = time.perf_counter() - run_started
         if device.type == "cuda":
             try:
-                torch.cuda.synchronize(device); run_peak_allocated_gib = max(run_peak_allocated_gib, torch.cuda.max_memory_allocated(device) / 1024**3); run_peak_reserved_gib = max(run_peak_reserved_gib, torch.cuda.max_memory_reserved(device) / 1024**3)
+                torch.cuda.synchronize(device)
+                run_peak_allocated_gib = max(run_peak_allocated_gib, torch.cuda.max_memory_allocated(device) / 1024**3)
+                run_peak_reserved_gib = max(run_peak_reserved_gib, torch.cuda.max_memory_reserved(device) / 1024**3)
             except RuntimeError: pass
-        run_steps = max(0, last_step_completed - start_step); run_tokens = run_steps * tokens_per_optimizer_step; cumulative_tokens = last_step_completed * tokens_per_optimizer_step
+        run_steps = max(0, last_step_completed - start_step)
+        run_tokens = run_steps * tokens_per_optimizer_step
+        cumulative_tokens = last_step_completed * tokens_per_optimizer_step
         summary = {**header, "status": status, "error": error_message, "finished_at": time.time(), "wall_seconds": round(wall_seconds, 3), "training_seconds": round(total_training_seconds, 3), "validation_seconds": round(total_validation_seconds, 3), "checkpoint_seconds": round(total_checkpoint_seconds, 3), "last_step": last_step_completed, "run_steps_completed": run_steps, "best_step": best_step, "best_val_loss": None if math.isinf(best_val_loss) else best_val_loss, "final_val_loss": final_val_loss, "run_tokens_seen": run_tokens, "cumulative_tokens_seen": cumulative_tokens, "equivalent_dataset_passes_seen": round(cumulative_tokens / max(1, len(train_stream)), 6), "average_tokens_per_second": round(run_tokens / max(total_training_seconds, 1e-9), 3), "average_training_tokens_per_second": round(run_tokens / max(total_training_seconds, 1e-9), 3), "average_wall_tokens_per_second": round(run_tokens / max(wall_seconds, 1e-9), 3), "peak_vram_allocated_gib": round(run_peak_allocated_gib, 3) if device.type == "cuda" else None, "peak_vram_reserved_gib": round(run_peak_reserved_gib, 3) if device.type == "cuda" else None, "metrics_jsonl": project_relative(metrics_path, project_root)}
-        _append_jsonl(metrics_path, {"event": "run_end", **summary}); _atomic_json(summary_latest_path, summary); _atomic_json(report_path, summary)
-        print("TRAINING_SUMMARY_JSON=" + json.dumps(summary, ensure_ascii=True)); print(f"training_report: {project_relative(report_path, project_root)}")
+        _append_jsonl(metrics_path, {"event": "run_end", **summary})
+        _atomic_json(summary_latest_path, summary)
+        _atomic_json(report_path, summary)
+        print("TRAINING_SUMMARY_JSON=" + json.dumps(summary, ensure_ascii=True))
+        print(f"training_report: {project_relative(report_path, project_root)}")
 
 
 if __name__ == "__main__":

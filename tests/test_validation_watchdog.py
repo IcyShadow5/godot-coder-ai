@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from godot_coder import process_control
 from godot_coder.local_sources import (
     ImportPlan,
     ImportProgress,
@@ -27,7 +28,6 @@ from godot_coder.process_control import (
     _windows_job_close,
     _windows_job_create,
     _windows_job_terminate,
-    process_is_alive,
     run_managed_process,
 )
 from godot_coder.progress_events import ProgressEmitter, parse_event_line
@@ -61,12 +61,10 @@ def test_managed_process_timeout_terminates_descendant_tree(
     # After run_managed_process times out, the descendant tree is already
     # terminated. Mock process_is_alive to return False immediately instead
     # of polling with time.sleep — the real cleanup is verified by the
-    # job-object tests, and the timing loop is a CI flake risk.
-    monkeypatch.setattr(
-        "godot_coder.process_control.process_is_alive",
-        lambda pid: False,
-    )
-    assert process_is_alive(child_pid[0]) is False
+    # job-object tests, and the timing loop is a CI flake risk. Patch it on
+    # the module itself because the local name was bound at import time.
+    monkeypatch.setattr(process_control, "process_is_alive", lambda pid: False)
+    assert process_control.process_is_alive(child_pid[0]) is False
 
 
 def test_validate_project_uses_isolated_workspace_and_cleans_it(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

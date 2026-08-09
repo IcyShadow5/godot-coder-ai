@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from godot_coder.benchmark import (
     CURRICULUM_PROMPTS,
     TASK_TRANSFER_PROMPTS,

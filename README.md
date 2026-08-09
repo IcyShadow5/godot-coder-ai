@@ -35,6 +35,13 @@ I keep the full history in `CHANGELOG.md` (per-version detail in
 `docs/CHANGELOG_v0.10.x.md`), so here is just the short version - the last
 few releases in one breath:
 
+- **v0.10.14** - robustness from an external review. `prepare_dataset`
+  swaps shards crash-safely now (staged dataset + backup/rollback),
+  `/proc` stat parsing handles spaces in process names, and the flaky
+  watchdog test is fixed. Cleanup: unused imports, semicolon chains
+  split in train.py, LF line endings, broader secret masking (GitHub
+  tokens, JWTs, connection strings). 254 tests.
+
 - **v0.10.13** - the deep review reached the training core. Four real bugs
   fixed in model.py/train.py (chunked-prefill causal masking, sliding eval
   ignoring batch_size, tied embeddings wrongly decayed, prefetch pinning on
@@ -242,8 +249,8 @@ The Studio binds to `127.0.0.1:8765` by default. For phone/tablet access inside 
 - `ROADMAP.md` — what's done and what's next
 - `ARCHITECTURE.md` — pipeline and validation paths
 - `docs/CONFIG_REFERENCE.md` — YAML config key reference
-- `docs/INSTALL_v0.10.13.md` — install/upgrade guide (latest)
-- `docs/CHANGELOG_v0.10.13.md` — patch notes (latest; earlier `CHANGELOG_v0.10.x.md` files stay for history)
+- `docs/INSTALL_v0.10.14.md` — install/upgrade guide (latest)
+- `docs/CHANGELOG_v0.10.14.md` — patch notes (latest; earlier `CHANGELOG_v0.10.x.md` files stay for history)
 - `docs/PROGRESS_EVENT_SCHEMA_v1.md` — the progress event format
 - `docs/AUDIT_v0.6.md` — the v0.6 training-core audit (historical record)
 - `docs/INSTRUCTION_ROADMAP_v0.7.md` — the planned instruction/agent roadmap (historical draft)

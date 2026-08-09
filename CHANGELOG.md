@@ -3,6 +3,23 @@
 Patch notes, so I still know later what I was thinking. Detailed notes for
 each version live in `docs/CHANGELOG_v0.10.x.md`; this file is the quick tour.
 
+## v0.10.14 (2026-08-09)
+
+An external review of the release zip came back with a short list. Two
+findings were worth fixing properly: `prepare_dataset` could destroy a
+working dataset if the process died mid-swap, and the `/proc` stat
+parser misread process names with spaces, silently dropping them from
+the descendant tree on timeout. Both fixed with regression tests.
+
+The rest is cleanup: ten unused imports, the semicolon chains in
+train.py (36 split, zero behavior change), LF line endings on 20 files
+that still had CRLF, and `mask_secrets` now also redacts GitHub tokens,
+JWTs and `user:password@` connection strings. The flaky watchdog test
+was fixed too - it patched the module but called the name it had bound
+at import time.
+
+3 new tests, 254 total stay green.
+
 ## v0.10.13 (2026-08-09)
 
 The deep review finally reached the training core. The earlier passes were

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 import torch
 
 from godot_coder.data import TokenStream, prepare_dataset
@@ -140,3 +141,68 @@ def test_encoding_resilience_gracefully_skips_bad_files(tmp_path: Path) -> None:
     # Should have processed at least the valid files without crashing
     assert manifest["train_tokens"] > 0
     assert len(manifest["train_files"]) >= 2  # bom.gd + ok.gd (bad.gd skipped)
+
+
+
+def test_prepare_dataset_restores_previous_shards_on_failed_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failure while swapping shards must keep the previous dataset intact."""
+    raw = tmp_path / "raw"
+    processed = tmp_path / "processed"
+    raw.mkdir()
+    for index in range(4):
+        (raw / f"script_{index}.gd").write_text(
+            f"extends Node\nvar value: int = {index}\n" * 20, encoding="utf-8"
+        )
+    tokenizer = ByteTokenizer()
+    prepare_dataset(raw, processed, tokenizer, val_ratio=0.25)
+    old_manifest = (processed / "manifest.json").read_bytes()
+    old_shards = {p.name: p.read_bytes() for p in processed.glob("*.bin")}
+
+    # One more file so the second run stages a different dataset.
+    (raw / "extra.gd").write_text("extends Node\nvar extra: int = 1\n" * 20, encoding="utf-8")
+
+    real_path_replace = Path.replace
+
+    def flaky_replace(self, target, *args, **kwargs):
+        # Fail exactly when the staged dataset moves into place, mid-swap.
+        if self.name.endswith(".building"):
+            raise OSError("simulated failure while swapping shards")
+        return real_path_replace(self, target, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "replace", flaky_replace)
+    with pytest.raises(OSError):
+        prepare_dataset(raw, processed, tokenizer, val_ratio=0.25)
+
+    # The old dataset came back and still loads.
+    assert (processed / "manifest.json").read_bytes() == old_manifest
+    for name, content in old_shards.items():
+        assert (processed / name).read_bytes() == content
+    assert len(TokenStream.from_data_dir(processed, "train")) > 0
+
+
+def test_prepare_dataset_recovers_from_leftover_backup(tmp_path: Path) -> None:
+    """A leftover .previous directory from a crashed swap is restored first."""
+    raw = tmp_path / "raw"
+    processed = tmp_path / "processed"
+    raw.mkdir()
+    for index in range(4):
+        (raw / f"script_{index}.gd").write_text(
+            f"extends Node\nvar value: int = {index}\n" * 20, encoding="utf-8"
+        )
+    tokenizer = ByteTokenizer()
+    prepare_dataset(raw, processed, tokenizer, val_ratio=0.25)
+    assert (processed / "manifest.json").exists()
+
+    # Simulate a crash between the two swap renames: the dataset dir is gone
+    # and only the .previous backup remains.
+    backup = processed.with_name(processed.name + ".previous")
+    processed.rename(backup)
+
+    (raw / "extra.gd").write_text("extends Node\nvar extra: int = 1\n" * 20, encoding="utf-8")
+    prepare_dataset(raw, processed, tokenizer, val_ratio=0.25)
+
+    assert not backup.exists()
+    assert (processed / "manifest.json").exists()
+    assert len(TokenStream.from_data_dir(processed, "train")) > 0

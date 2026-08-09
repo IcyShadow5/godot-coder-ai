@@ -313,12 +313,15 @@ def _posix_descendants(root_pid: int) -> list[int]:
         if not entry.name.isdigit():
             continue
         try:
-            fields = (entry / "stat").read_text(encoding="utf-8", errors="replace").split()
-            pid = int(fields[0])
-            parent = int(fields[3])
+            stat_text = (entry / "stat").read_text(encoding="utf-8", errors="replace")
+            # Format is "pid (comm) state ppid ..." and comm may contain
+            # spaces, so cut it out between the parens before splitting.
+            name_end = stat_text.rfind(")")
+            fields = stat_text[name_end + 1:].split()
+            parent = int(fields[1])
         except (OSError, ValueError, IndexError):
             continue
-        children.setdefault(parent, []).append(pid)
+        children.setdefault(parent, []).append(int(entry.name))
     result: list[int] = []
     stack = list(children.get(root_pid, []))
     while stack:
@@ -345,7 +348,6 @@ def _windows_process_handle(pid: int, access: int):
 def _windows_wait_for_exit(pid: int, wait_seconds: float, opened=None) -> bool:
     """Wait for the exact Windows process object, not localized tasklist output."""
     try:
-        import ctypes
         from ctypes import wintypes
 
         synchronize = 0x00100000
@@ -469,8 +471,11 @@ def process_is_alive(pid: int) -> bool:
     stat_path = Path("/proc") / str(pid) / "stat"
     if stat_path.is_file():
         try:
-            fields = stat_path.read_text(encoding="utf-8", errors="replace").split()
-            if len(fields) > 2 and fields[2] == "Z":
+            stat_text = stat_path.read_text(encoding="utf-8", errors="replace")
+            # comm may contain spaces; strip it out before reading the state.
+            name_end = stat_text.rfind(")")
+            fields = stat_text[name_end + 1:].split()
+            if fields and fields[0] == "Z":
                 return False
             return True
         except OSError:

@@ -193,6 +193,11 @@ def prepare_dataset(
         raise ValueError("shard_tokens must be at least 1024")
     if sampling_policy not in {"packed_with_file_sep", "document"}:
         raise ValueError("sampling_policy must be packed_with_file_sep or document")
+    backup = destination.with_name(destination.name + ".previous")
+    if backup.exists() and not destination.exists():
+        # A previous run crashed between the two swap renames; bring the last
+        # good dataset back before building a new one.
+        backup.replace(destination)
     destination.mkdir(parents=True, exist_ok=True)
 
     explicit = _explicit_split_files(source, extensions)
@@ -207,8 +212,9 @@ def prepare_dataset(
         train_files, val_files, test_files = explicit["train"], explicit["val"], explicit["test"]
         split_mode = "folders"
 
-    # Write new shards into a staging directory so a mid-encoding crash never
-    # deletes previously valid shards. Only atomically replace on success.
+    # Build the entire new dataset (shards, aliases, manifest) inside the
+    # staging directory first, then swap it in with a backup + rollback so a
+    # failure never leaves a half-deleted dataset behind.
     staging = destination.with_name(destination.name + ".building")
     if staging.exists():
         shutil.rmtree(staging)
@@ -229,23 +235,11 @@ def prepare_dataset(
             "documents": documents,
         }
 
-    # Atomically replace old shards with new ones
-    for old in destination.glob("train-*.bin"):
-        old.unlink()
-    for old in destination.glob("val-*.bin"):
-        old.unlink()
-    for old in destination.glob("test-*.bin"):
-        old.unlink()
-    for new_file in staging.glob("*.bin"):
-        os.replace(new_file, destination / new_file.name)
-    staging.rmdir()
-
-    # Write compatibility aliases
+    # Compatibility aliases live inside staging and move with the swap.
     for split, meta in split_meta.items():
-        alias = destination / f"{split}.bin"
-        alias.unlink(missing_ok=True)
+        alias = staging / f"{split}.bin"
         if meta["shards"] and len(meta["shards"]) == 1:
-            shard_path = destination / str(meta["shards"][0]["path"])
+            shard_path = staging / str(meta["shards"][0]["path"])
             try:
                 os.link(shard_path, alias)
             except OSError:
@@ -289,7 +283,27 @@ def prepare_dataset(
         manifest[f"{split}_sha256"] = hashlib.sha256(
             "".join(str(item["sha256"]) for item in meta["shards"]).encode("ascii")
         ).hexdigest() if meta["shards"] else None
-    _atomic_json_write(destination / "manifest.json", manifest)
+    _atomic_json_write(staging / "manifest.json", manifest)
+
+    # Swap the staged dataset into place with a backup + rollback, mirroring
+    # corpus._replace_directory. The manifest is part of the swap, so the old
+    # dataset stays consistent and loadable until the very last rename.
+    backup = destination.with_name(destination.name + ".previous")
+    if backup.exists():
+        if destination.exists():
+            shutil.rmtree(backup)  # a previous swap already completed; drop the stale copy
+        else:
+            backup.replace(destination)  # a previous swap crashed mid-way; restore it
+    if destination.exists():
+        destination.replace(backup)
+    try:
+        staging.replace(destination)
+    except Exception:
+        if backup.exists() and not destination.exists():
+            backup.replace(destination)
+        raise
+    if backup.exists():
+        shutil.rmtree(backup)
     return manifest
 
 

@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import gc
 import json
-import math
 import subprocess
 import sys
 import time

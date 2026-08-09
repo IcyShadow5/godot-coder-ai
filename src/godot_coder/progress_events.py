@@ -57,6 +57,9 @@ _SECRET_PATTERNS: tuple[re.Pattern[str], ...] = (
         r"([\"']?)[^\s,;\"']{8,}\2"
     ),
     re.compile(r"(?i)(authorization\s*:\s*bearer\s+)[A-Za-z0-9._~+\-/=]{8,}"),
+    re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{22,})\b"),
+    re.compile(r"\beyJ[A-Za-z0-9_=-]{8,}\.[A-Za-z0-9_=-]{8,}(?:\.[A-Za-z0-9_=-]{8,})?"),
+    re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://[^:\s/@]+:)[^@\s/]+@"),
 )
 
 _NUMERIC_FIELDS = {

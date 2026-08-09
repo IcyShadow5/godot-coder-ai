@@ -3,7 +3,6 @@ from __future__ import annotations
 import io
 import json
 import socket
-import urllib.error
 import zipfile
 from pathlib import Path
 from typing import Any
