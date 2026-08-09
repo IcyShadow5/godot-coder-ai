@@ -1,4 +1,4 @@
-# Architecture v0.10.9
+# Architecture v0.10.15
 
 ```text
 Licensed Godot sources
@@ -17,7 +17,9 @@ Licensed Godot sources
 
 - `corpus.py`, `data.py`, `tokenizer.py`: reproducible data pipeline.
 - `model.py`, `train.py`, `checkpoint.py`: model and training.
-- `generate.py`, `evaluate.py`, `benchmark.py`: inference and measurement.
+- `generate.py`, `evaluate.py`, `benchmark.py`, `golden_tasks.py`: inference
+  and measurement (parser pass rate, token-prefix accuracy, fixed golden set).
+- `instruction_data.py`: instruction / completion / repair dataset builder.
 - `ui/`: local interface; it uses the same core and has no second model logic.
 - `jobs.py`: isolated, stoppable processes for training, Git and hardware probes.
 
@@ -65,6 +67,24 @@ also parsed standalone with `--check-only` - no record is kept
 unverified. Decisions are cached per validator version
 (`godot_project_validation_v4.json`), so a classifier change forces a clean
 re-check.
+
+## Security & robustness (v0.10.14/v0.10.15)
+
+- Archive handling runs a zip-bomb preflight (entry count, uncompressed
+  size, single-file size, compression ratio) on every path - local uploads
+  and GitHub archive downloads share the same `corpus._archive_preflight`.
+- Checkpoints load through `weights_only=True`; the RNG state is stored as
+  plain values, and legacy checkpoints load via a scoped numpy-only
+  allowlist.
+- The corpus audit writes a checkpoint and resumes from it (manifest
+  fingerprint verified), so a mid-audit crash no longer restarts from zero.
+- `prepare_dataset` swaps shards crash-safely: stage everything, then
+  replace with backup + rollback - a crash never leaves a half-deleted
+  dataset.
+- `mask_secrets` redacts GitHub tokens, JWTs and connection strings in
+  addition to the original key patterns.
+- Studio preflight (v0.10.6) gates training starts: validator revision,
+  dataset-aware freshness, corpus-only token minimum.
 
 ## v0.6 Professional Training Core
 
