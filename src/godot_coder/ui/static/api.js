@@ -1,7 +1,9 @@
+/* ── DOM shortcuts ──────────────────────────────────────────────── */
 const $ = (selector, root = document) => root.querySelector(selector);
 
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
+/* ── API client ────────────────────────────────────────────────── */
 async function api(path, options = {}) {
   const method = String(options.method || "GET").toUpperCase();
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
@@ -26,6 +28,7 @@ async function api(path, options = {}) {
   return payload;
 }
 
+/* ── Formatters ────────────────────────────────────────────────── */
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -60,6 +63,7 @@ function formatCompact(value) {
   return formatNumber(number);
 }
 
+/* ── UI helpers ─────────────────────────────────────────────────── */
 const workflowJobLabels = {
   "corpus-audit": "Data audit",
   "local-source-import": "Check private projects",

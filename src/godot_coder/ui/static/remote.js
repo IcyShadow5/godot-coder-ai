@@ -1,3 +1,5 @@
+/* ── Write-control button IDs ──────────────────────────────────── */
+// All elements that get disabled when remote is in read-only mode.
 const remoteWriteControlIds = [
   "generate-button", "validate-last", "save-last", "start-training", "probe-profiles", "prepare-data",
   "build-curriculum", "validate-curriculum", "prepare-curriculum", "save-corpus-sources",
@@ -8,6 +10,7 @@ const remoteWriteControlIds = [
   "remote-download-source", "remote-upload-source", "remote-import-sources",
 ];
 
+/* ── Remote write gate ──────────────────────────────────────────── */
 function applyRemoteWritePolicy(remote = state.remote) {
   const locked = Boolean(remote?.is_remote && !remote?.can_write);
   document.body.classList.toggle("remote-readonly", locked);
@@ -28,6 +31,7 @@ function applyRemoteWritePolicy(remote = state.remote) {
   }
 }
 
+/* ── Rendering ──────────────────────────────────────────────────── */
 function renderRemoteInbox() {
   const target = $("#remote-inbox-list");
   if (!target) return;
@@ -117,6 +121,7 @@ function renderRemote(remote) {
   applyRemoteWritePolicy(remote);
 }
 
+/* ── Remote actions ─────────────────────────────────────────────── */
 async function refreshRemote(showToast = false) {
   try {
     state.remote = await api("/api/remote/status");

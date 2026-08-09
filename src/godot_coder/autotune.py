@@ -21,6 +21,7 @@ MATRIX = (
 
 
 def _atomic_json(path: Path, payload: Any) -> None:
+    """Write JSON atomically via a temp file + os.replace."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -70,6 +71,7 @@ def normalize_autotuned_config(root: Path) -> bool:
 
 
 def _variant(root: Path, label: str, base_path: str, context: int, checkpointing: bool, compile_enabled: bool, batch: int) -> Path:
+    """Generate a single variant config from a base template for the autotune sweep."""
     raw = yaml.safe_load((root / base_path).read_text(encoding="utf-8"))
     raw["profile"] = dict(raw.get("profile") or {})
     raw["profile"].update({"id": label.lower(), "title": label, "probe_max_batch_size": batch})
@@ -101,11 +103,21 @@ def _mark_safety(result: dict[str, Any]) -> dict[str, Any]:
     return result
 
 def _score(result: dict[str, Any]) -> tuple[float, int, int]:
-    # Speed is primary, then model capacity and context. Results over 90% VRAM are excluded earlier.
+    """Rank autotune results: speed first, then model size, then context.
+
+    Unsafe results (over 90% VRAM) are excluded before this is called.
+    """
+    # Speed is primary, then model capacity and context.
     return (float(result.get("tokens_per_second") or 0), int(result.get("parameters") or 0), int(result.get("sequence_length") or 0))
 
 
 def run_autotune(root: Path, *, full: bool, warmup_steps: int, measure_steps: int) -> dict[str, Any]:
+    """Run the hardware autotuner: probe VRAM and throughput on every config variant.
+
+    A quick run (full=False) tests 3 batch sizes without compile.
+    A full run tests 5 batch sizes with and without torch.compile on 4 base configs.
+    The safest and fastest variant becomes configs/autotuned_night.yaml.
+    """
     started = time.time()
     batches = (1, 2, 4, 6, 8) if full else (1, 2, 4)
     compile_modes = (False, True) if full else (False,)

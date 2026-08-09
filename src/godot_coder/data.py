@@ -295,6 +295,11 @@ def prepare_dataset(
 
 @dataclass
 class TokenStream:
+    """A lazily-loaded shard of tokenised training files with its manifest.
+
+    Use TokenStream.from_data_dir(data_dir, split) to load a prepared split.
+    __getitem__ returns (input, target) tensors moved to the requested device.
+    """
     path: Path | None
     dtype: np.dtype
     expected_tokens: int | None = None
