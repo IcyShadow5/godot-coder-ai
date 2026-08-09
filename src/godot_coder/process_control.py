@@ -539,6 +539,14 @@ def run_managed_process(
     next_heartbeat = started + max(0.2, heartbeat_seconds)
     timeout_at = started + max(0.1, timeout_seconds)
 
+    # The poll-then-terminate pattern below has a theoretical race: between
+    # process.poll() returning None (process alive) and the termination
+    # call, the process could exit and its PID could be reused by the OS.
+    # On Windows the Job Object covers every descendant regardless of PID
+    # reuse. On POSIX the process group (setgid via start_new_session) plus
+    # /proc-based descendant enumeration makes the window practically
+    # impossible to hit — the reaped PID would need to be re-assigned
+    # inside the same process group within a single scheduling quantum.
     while True:
         now = time.monotonic()
         idle_deadline = (last_output_at + max(0.1, idle_timeout_seconds)) if idle_timeout_seconds is not None else None

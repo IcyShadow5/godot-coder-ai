@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import argparse
-import os
 import json
+import os
 import shutil
 import warnings
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from .godot_cli import build_check_command
 # Same per-file timeout as the import pipeline (GODOT_CODER_PARSER_FILE_TIMEOUT_SECONDS).
@@ -13,6 +15,46 @@ from .godot_cli import build_check_command
 # copy of the helper is enough.
 from .local_sources import _parser_file_timeout_seconds
 from .process_control import run_managed_process
+
+
+@dataclass
+class PerFileResult:
+    """Outcome of a single Godot parser check on one GDScript file."""
+    path: str
+    passed: bool
+    return_code: int | None
+    output: str
+
+
+@dataclass
+class ValidationReport:
+    """Structured report for a validate_dataset run."""
+    format: str = "godot-coder-dataset-validation"
+    input: str = ""
+    total: int = 0
+    passed: int = 0
+    failed: int = 0
+    pass_rate: float = 0.0
+    results: list[PerFileResult] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "format": self.format,
+            "input": self.input,
+            "total": self.total,
+            "passed": self.passed,
+            "failed": self.failed,
+            "pass_rate": self.pass_rate,
+            "results": [
+                {
+                    "path": r.path,
+                    "passed": r.passed,
+                    "return_code": r.return_code,
+                    "output": r.output,
+                }
+                for r in self.results
+            ],
+        }
 
 
 def find_godot() -> str | None:
@@ -28,7 +70,7 @@ def validate_dataset(
     *,
     godot: str | None = None,
     timeout: float | None = None,
-) -> dict[str, object]:
+) -> ValidationReport:
     root = Path(input_dir).resolve()
     project_file = root / "project.godot"
     if not project_file.exists():
@@ -38,7 +80,7 @@ def validate_dataset(
         raise FileNotFoundError("Godot executable was not found")
 
     per_file_timeout = timeout if timeout is not None else _parser_file_timeout_seconds()
-    results: list[dict[str, object]] = []
+    results: list[PerFileResult] = []
     for script in sorted(root.rglob("*.gd"), key=lambda path: path.as_posix().lower()):
         command = build_check_command(executable, root, script)
         try:
@@ -56,7 +98,7 @@ def validate_dataset(
             if result.startup_error:
                 output = output or f"Godot could not be started: {result.startup_error}"
                 passed = False
-                return_code = -1
+                return_code: int | None = -1
                 warnings.warn(
                     f"Godot failed to start on {script.relative_to(root).as_posix()}: {result.startup_error}"
                 )
@@ -74,26 +116,25 @@ def validate_dataset(
             return_code = -1
             warnings.warn(f"Godot crashed on {script.relative_to(root).as_posix()}: {exc}")
         results.append(
-            {
-                "path": script.relative_to(root).as_posix(),
-                "passed": passed,
-                "return_code": return_code,
-                "output": output,
-            }
+            PerFileResult(
+                path=script.relative_to(root).as_posix(),
+                passed=passed,
+                return_code=return_code,
+                output=output,
+            )
         )
         print(f"[{len(results):03d}] {'PASS' if passed else 'FAIL'} {script.relative_to(root).as_posix()}")
 
-    passed = sum(1 for item in results if item["passed"])
-    report: dict[str, object] = {
-        "format": "godot-coder-dataset-validation",
-        "input": str(root),
-        "total": len(results),
-        "passed": passed,
-        "failed": len(results) - passed,
-        "pass_rate": passed / len(results) if results else 0.0,
-        "results": results,
-    }
-    (root / "validation_report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    total_passed = sum(1 for r in results if r.passed)
+    report = ValidationReport(
+        input=str(root),
+        total=len(results),
+        passed=total_passed,
+        failed=len(results) - total_passed,
+        pass_rate=total_passed / len(results) if results else 0.0,
+        results=results,
+    )
+    (root / "validation_report.json").write_text(json.dumps(report.to_dict(), indent=2), encoding="utf-8")
     return report
 
 
@@ -113,8 +154,8 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     report = validate_dataset(args.input, godot=args.godot, timeout=args.timeout)
-    print(json.dumps({key: report[key] for key in ("total", "passed", "failed", "pass_rate")}, indent=2))
-    if report["failed"]:
+    print(json.dumps({"total": report.total, "passed": report.passed, "failed": report.failed, "pass_rate": report.pass_rate}, indent=2))
+    if report.failed:
         raise SystemExit(1)
 
 

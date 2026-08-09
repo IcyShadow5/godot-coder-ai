@@ -16,6 +16,7 @@ import zipfile
 from pathlib import Path, PureWindowsPath
 from typing import Any, Callable, Iterable
 
+from . import __version__
 from .local_sources import _archive_preflight, inbox_path
 from .progress_events import ProgressEmitter, mask_secrets
 
@@ -27,7 +28,7 @@ TRUSTED_REMOTE_HOSTS = {
     "gitlab.com",
     "bitbucket.org",
 }
-_USER_AGENT = "Godot-Coder-AI/0.7.5 (+local private corpus import)"
+_USER_AGENT = f"Godot-Coder-AI/{__version__} (+local private corpus import)"
 
 
 class RemoteSourceError(RuntimeError):
@@ -157,8 +158,6 @@ def validate_staged_zip(path: Path) -> dict[str, Any]:
         return _archive_preflight(path)
     except (ValueError, OSError, zipfile.BadZipFile) as exc:
         raise RemoteSourceError(str(exc)) from exc
-
-
 
 
 def _sha256_file(path: Path) -> str:

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
-import subprocess
 from pathlib import Path
 
 from .godot_cli import build_check_command
+from .process_control import run_managed_process
 
 
 def main() -> None:
@@ -27,12 +28,27 @@ def main() -> None:
         raise FileNotFoundError(script)
 
     command = build_check_command(executable, project, script)
-    result = subprocess.run(command, capture_output=True, text=True, timeout=args.timeout, check=False)
-    combined = "\n".join(part for part in (result.stdout.strip(), result.stderr.strip()) if part)
+    # run_managed_process (not subprocess.run) so a hung Mono-Godot child
+    # is killed as a tree, the Windows Job Object guarantees no orphans
+    # survive a parent crash, and idle/stuck Godot instances are detected.
+    result = run_managed_process(
+        command,
+        cwd=project,
+        env=os.environ.copy(),
+        timeout_seconds=args.timeout,
+        idle_timeout_seconds=min(args.timeout, 10.0),
+    )
+    combined = result.output.strip()
+    if result.startup_error:
+        print(f"Godot could not be started: {result.startup_error}")
+        raise SystemExit(1)
+    if result.timed_out:
+        print(combined or f"Timeout after {args.timeout}s")
+        raise SystemExit(1)
     if combined:
         print(combined)
-    if result.returncode != 0:
-        raise SystemExit(result.returncode)
+    if result.return_code != 0:
+        raise SystemExit(result.return_code)
     print("Godot parser check passed.")
 
 
