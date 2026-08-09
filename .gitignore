@@ -57,3 +57,6 @@ configs/autotuned_*.yaml
 
 # Upgrade package build output (assembled from upgrade/ templates)
 upgrade/payload/
+
+# MkDocs build output (GitHub Pages)
+site/

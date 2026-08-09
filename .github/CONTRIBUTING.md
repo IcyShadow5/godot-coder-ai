@@ -44,5 +44,5 @@ and why. The changelog is written from these, so be honest about intent.
 
 ## Where things live
 
-See `ARCHITECTURE.md` for the pipeline map and `ROADMAP.md` for what is
+See `docs/ARCHITECTURE.md` for the pipeline map and `docs/ROADMAP.md` for what is
 planned. `docs/` holds per-version patch notes and the config reference.

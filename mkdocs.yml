@@ -1,0 +1,61 @@
+# Godot Coder AI — documentation site config.
+# Built and deployed to GitHub Pages by .github/workflows/pages.yml.
+site_name: Godot Coder AI
+site_description: Train a compact Godot/GDScript coding assistant from scratch on your own GPU — corpus curation, local web Studio, from-scratch PyTorch transformer.
+site_url: https://icyshadow5.github.io/godot-coder-ai/
+repo_url: https://github.com/IcyShadow5/godot-coder-ai
+repo_name: IcyShadow5/godot-coder-ai
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+    - scheme: default
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+  features:
+    - navigation.instant
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+  icon:
+    logo: material/gamepad-variant
+
+nav:
+  - Home: index.md
+  - Studio: STUDIO.md
+  - Roadmap: ROADMAP.md
+  - Architecture: ARCHITECTURE.md
+  - Configuration Reference: CONFIG_REFERENCE.md
+  - Progress Event Schema: PROGRESS_EVENT_SCHEMA_v1.md
+  - Install Guide: INSTALL_v0.10.14.md
+  - Changelog: CHANGELOG_v0.10.14.md
+  - Historical:
+      - Audit v0.6: AUDIT_v0.6.md
+      - Instruction Roadmap v0.7: INSTRUCTION_ROADMAP_v0.7.md
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.details
+
+extra_css: []
+
+copyright: Copyright &copy; 2024–2026 IcyShadow5 &mdash; MIT licensed code; trained model weights released separately.

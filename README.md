@@ -245,9 +245,9 @@ The Studio binds to `127.0.0.1:8765` by default. For phone/tablet access inside 
 
 ## Documentation
 
-- `STUDIO.md` — the Studio areas in detail
-- `ROADMAP.md` — what's done and what's next
-- `ARCHITECTURE.md` — pipeline and validation paths
+- `docs/STUDIO.md` — the Studio areas in detail
+- `docs/ROADMAP.md` — what's done and what's next
+- `docs/ARCHITECTURE.md` — pipeline and validation paths
 - `docs/CONFIG_REFERENCE.md` — YAML config key reference
 - `docs/INSTALL_v0.10.14.md` — install/upgrade guide (latest)
 - `docs/CHANGELOG_v0.10.14.md` — patch notes (latest; earlier `CHANGELOG_v0.10.x.md` files stay for history)
