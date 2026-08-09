@@ -1,7 +1,7 @@
 # Installing / upgrading to v0.10.5
 
 v0.10.5 closes the last validation gap: context-warning records are now
-additionally parsed per file, so nothing is kept unverified.
+also parsed per file, so nothing is kept unverified.
 
 ## If you are on v0.10.3 (recommended path)
 

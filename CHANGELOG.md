@@ -168,7 +168,7 @@ Preflight correctness fixes, found while running the first real training runs:
 
 ## v0.10.5 (2026-08-08)
 
-No record is ever kept unverified: context-warning scripts are additionally
+No record is ever kept unverified: context-warning scripts are also
 parsed standalone per file with Godot `--check-only`. Validator cache bumped
 to v4.
 

@@ -21,7 +21,7 @@ python -m venv .venv
 ## Upgrading an existing installation (v0.10.1 -> v0.10.2)
 
 1. Stop running training, download, audit or corpus jobs and close the Studio.
-2. Use the finished upgrade package (v0.10.2) - it is shipped separately with the release and contains `APPLY_V0102_UPGRADE.ps1` (or `.bat`) plus `payload/`. The repo itself keeps only **templates** in `upgrade/` (see `upgrade/README.md`) in order to build its own package for future releases.
+2. Use the finished upgrade package (v0.10.2) - it is shipped separately with the release and contains `APPLY_V0102_UPGRADE.ps1` (or `.bat`) plus `payload/`. The repo itself keeps only **templates** in `upgrade/` (see `upgrade/README.md`) to build its own package for future releases.
 3. If the package does not contain a `payload/` yet: run the included `build_v0102_payload.ps1` (builds the payload from the current repo state).
 4. Start `APPLY_V0102_UPGRADE.bat` and specify the path to the existing Godot-Coder-AI folder
    (or directly: `APPLY_V0102_UPGRADE.ps1 -ExistingProject "C:\...\CodingAi"`).
@@ -44,7 +44,7 @@ automatic rollback - manually: copy the backup files back.
 .\.venv\Scripts\python.exe -m godot_coder.studio
 ```
 
-`doctor` additionally checks Godot and the CUDA runtime. On a machine without
+`doctor` also checks Godot and the CUDA runtime. On a machine without
 a correctly installed Godot or CUDA path this check can fail even though
 the pure Python tests passed.
 

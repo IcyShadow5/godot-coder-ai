@@ -9,7 +9,7 @@ Patch notes, so I still know later what I was thinking.
 - **No record is ever kept unverified anymore.** A `context_warning` means a
   script could not be positively checked inside its project (the resource did
   not load, no checker marker was produced, or the project import/checker
-  itself failed or timed out). Every such record is now additionally parsed
+  itself failed or timed out). Every such record is now also parsed
   standalone with Godot `--check-only`:
   - a real syntax error still becomes a hard exclusion (`syntax_error`), and
   - a clean parse keeps the record as a verified context warning, with the

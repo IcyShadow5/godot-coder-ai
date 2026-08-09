@@ -21,7 +21,7 @@ python -m venv .venv
 ## Upgrading an existing installation (v0.10.2 -> v0.10.3)
 
 1. Stop running training, download, audit or corpus jobs and close the Studio.
-2. Use the finished upgrade package (v0.10.3) - it is shipped separately with the release and contains `APPLY_V0103_UPGRADE.ps1` (or `.bat`) plus `payload/`. The repo itself keeps only **templates** in `upgrade/` (see `upgrade/README.md`) in order to build its own package for future releases.
+2. Use the finished upgrade package (v0.10.3) - it is shipped separately with the release and contains `APPLY_V0103_UPGRADE.ps1` (or `.bat`) plus `payload/`. The repo itself keeps only **templates** in `upgrade/` (see `upgrade/README.md`) to build its own package for future releases.
 3. If the package does not contain a `payload/` yet: run the included `build_v0103_payload.ps1` (builds the payload from the current repo state).
 4. Start `APPLY_V0103_UPGRADE.bat` and specify the path to the existing Godot-Coder-AI folder
    (or directly: `APPLY_V0103_UPGRADE.ps1 -ExistingProject "C:\...\CodingAi"`).
@@ -44,7 +44,7 @@ automatic rollback - manually: copy the backup files back.
 .\.venv\Scripts\python.exe -m godot_coder.studio
 ```
 
-`doctor` additionally checks Godot and the CUDA runtime. On a machine without
+`doctor` also checks Godot and the CUDA runtime. On a machine without
 a correctly installed Godot or CUDA path this check can fail even though
 the pure Python tests passed.
 
@@ -53,7 +53,7 @@ the pure Python tests passed.
 See `docs/CHANGELOG_v0.10.3.md`. In short: The corpus validation now runs
 via the managed-process runner (job objects kill the complete
 process tree) - large Mono projects can no longer hang the validate step.
-The Studio JobManager additionally terminates jobs that deliver no output for
+The Studio JobManager also terminates jobs that deliver no output for
 longer than `GODOT_CODER_JOB_STALL_TIMEOUT_SECONDS` (default 20 minutes, `0` disables)
 and marks them as failed instead of endlessly as
 "running". In addition a missing `import os` in `validate_dataset.py`

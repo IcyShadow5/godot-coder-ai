@@ -53,7 +53,7 @@ The Godot project validation (`corpus validate`) runs since v0.10.3 via the
 managed-process runner (`process_control.run_managed_process`, Windows
 job objects), which terminates the complete process tree on timeouts - Mono Godot
 grandchild processes that inherit the stdout/stderr pipes can no longer cause
-deadlocks or orphans. The Studio JobManager additionally terminates jobs that
+deadlocks or orphans. The Studio JobManager also terminates jobs that
 have been silent for longer than `GODOT_CODER_JOB_STALL_TIMEOUT_SECONDS`
 (default 1200s).
 
@@ -61,7 +61,7 @@ Since v0.10.4 the classification is strict: only the error line itself
 decides hard vs. context (a benign context error no longer demotes a real
 parse error), and the hard-error list covers unambiguous syntax errors beyond
 `expected ...` phrasing. Since v0.10.5 every context-warning record is
-additionally parsed standalone with `--check-only` - no record is kept
+also parsed standalone with `--check-only` - no record is kept
 unverified. Decisions are cached per validator version
 (`godot_project_validation_v4.json`), so a classifier change forces a clean
 re-check.

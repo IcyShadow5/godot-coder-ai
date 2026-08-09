@@ -131,7 +131,7 @@ $env:GODOT_CODER_ERROR_ABORT_THRESHOLD = "60"
 ..\.venv\Scripts\python.exe -m godot_coder.studio
 ```
 
-When you skip the project import, full validation is deferred: `validate_dataset.py` runs a complete Godot pass over the assembled dataset (same env-var timeout, managed process runner). For maximum thoroughness during import, leave the env vars off or use only `FAST_STATIC=1`. Either way nothing is kept unverified: since v0.10.5, any script that could not be positively checked inside its project (a `context_warning`) is additionally parsed standalone per file.
+When you skip the project import, full validation is deferred: `validate_dataset.py` runs a complete Godot pass over the assembled dataset (same env-var timeout, managed process runner). For maximum thoroughness during import, leave the env vars off or use only `FAST_STATIC=1`. Either way nothing is kept unverified: since v0.10.5, any script that could not be positively checked inside its project (a `context_warning`) is also parsed standalone per file.
 
 ## Configuration Files
 
