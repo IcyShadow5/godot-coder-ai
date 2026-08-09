@@ -1,4 +1,5 @@
 from __future__ import annotations
+"""Build Godot CLI command lines for --check, --import, and --script runs."""
 
 from pathlib import Path
 

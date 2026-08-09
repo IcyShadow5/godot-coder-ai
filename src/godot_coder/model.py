@@ -1,4 +1,5 @@
 from __future__ import annotations
+"""The TinyGPT architecture: RMSNorm, SwiGLU, RoPE, and a compact transformer."""
 
 import math
 from dataclasses import dataclass

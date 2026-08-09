@@ -1,4 +1,5 @@
 from __future__ import annotations
+"""BPE tokenizer (train, save, load, encode, decode) backed by HuggingFace tokenizers."""
 
 import hashlib
 import json

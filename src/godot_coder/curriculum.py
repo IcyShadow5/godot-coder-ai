@@ -1,4 +1,5 @@
 from __future__ import annotations
+"""Generate the controlled v0.3 synthetic curriculum (192 lessons across 8 topics)."""
 
 import argparse
 import json

@@ -1,4 +1,5 @@
 from __future__ import annotations
+"""CLI entry point for text generation with a trained checkpoint."""
 
 import argparse
 import math

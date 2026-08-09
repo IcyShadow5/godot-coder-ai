@@ -1,4 +1,5 @@
 from __future__ import annotations
+"""ModelConfig and TrainConfig dataclasses with YAML loading and validation."""
 
 import math
 from dataclasses import asdict, dataclass

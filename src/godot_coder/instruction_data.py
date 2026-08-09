@@ -1,4 +1,5 @@
 from __future__ import annotations
+"""Build instruction-tuning examples from passing corpus records."""
 
 import argparse
 import hashlib
