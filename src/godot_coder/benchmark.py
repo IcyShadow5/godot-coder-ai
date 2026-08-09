@@ -10,6 +10,7 @@ from typing import Iterable
 from .checkpoint import load_checkpoint
 from .tokenizer import TokenizerLike, load_tokenizer
 from .ui.services import GenerationService, validate_code
+from .golden_tasks import GOLDEN_TASKS
 
 # These prompts remain useful for the old curriculum model. They are not called
 # "exact" for corpus-trained models because they were never part of that corpus.
@@ -259,17 +260,20 @@ def run_benchmark(
     root = Path(project_root).resolve()
     _, tokenizer, checkpoint_kind = _load_checkpoint_context(root, checkpoint)
     selected_mode = checkpoint_kind if mode == "auto" else mode
-    if selected_mode not in {"corpus", "curriculum", "task"}:
-        raise ValueError("mode must be auto, corpus, curriculum, or task")
+    if selected_mode not in {"corpus", "curriculum", "golden", "task"}:
+        raise ValueError("mode must be auto, corpus, curriculum, golden, or task")
 
     if selected_mode == "corpus":
         heldout = _corpus_heldout_prompts(root, tokenizer, max_new_tokens=max_new_tokens)
         tiers: tuple[tuple[str, tuple[dict[str, object], ...]], ...] = (
             ("heldout_completion", heldout),
+            ("golden_tasks", GOLDEN_TASKS),
             ("task_transfer", TASK_TRANSFER_PROMPTS),
         )
     elif selected_mode == "curriculum":
-        tiers = (("curriculum_like", CURRICULUM_PROMPTS), ("task_transfer", TASK_TRANSFER_PROMPTS))
+        tiers = (("curriculum_like", CURRICULUM_PROMPTS), ("golden_tasks", GOLDEN_TASKS), ("task_transfer", TASK_TRANSFER_PROMPTS))
+    elif selected_mode == "golden":
+        tiers = (("golden_tasks", GOLDEN_TASKS),)
     else:
         tiers = (("task_transfer", TASK_TRANSFER_PROMPTS),)
 
@@ -348,6 +352,7 @@ def run_benchmark(
             "heldout_completion": "Continuation of real held-out demo scripts from the corpus; appropriate for a base next-token model.",
             "curriculum_like": "Continuation of the synthetic v0.3 curriculum structures.",
             "task_transfer": "Hand-written task scaffolds. This becomes a primary metric only after instruction/post-training.",
+            "golden_tasks": "30 hand-written GDScript challenges with reference solutions. Parser pass rate + token-prefix accuracy.",
         },
     }
     destination = root / "reports" / "benchmarks"
@@ -371,7 +376,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-new-tokens", type=int, default=256)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--top-k", type=int, default=0)
-    parser.add_argument("--mode", choices=("auto", "corpus", "curriculum", "task"), default="auto")
+    parser.add_argument("--mode", choices=("auto", "corpus", "curriculum", "golden", "task"), default="auto")
     return parser.parse_args()
 
 
