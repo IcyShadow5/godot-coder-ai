@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import zipfile
 from pathlib import Path
 
@@ -19,8 +20,17 @@ def test_safe_child_rejects_absolute_paths(tmp_path: Path) -> None:
 
 
 def test_safe_child_rejects_backslash_traversal(tmp_path: Path) -> None:
-    with pytest.raises(ValueError):
-        safe_child(tmp_path, "..\\..\\pyproject.toml")
+    # Windows treats backslashes as separators, so this escapes and must raise.
+    # POSIX treats them as plain filename characters, so the result is a
+    # harmless name inside the root - the important part is that it never
+    # escapes. Assert the right behavior per platform instead of pretending
+    # backslash traversal exists everywhere.
+    if os.name == "nt":
+        with pytest.raises(ValueError):
+            safe_child(tmp_path, "..\\..\\pyproject.toml")
+    else:
+        result = safe_child(tmp_path, "..\\..\\pyproject.toml")
+        assert result.is_relative_to(tmp_path.resolve())
 
 
 def test_safe_child_requires_existing_when_requested(tmp_path: Path) -> None:

@@ -1,0 +1,30 @@
+# CodeRabbit review configuration.
+# Docs: https://docs.coderabbit.ai/reference/configuration
+
+language: "en-US"
+early_access: false
+
+reviews:
+  profile: "chill"
+  request_changes_workflow: false
+  high_level_summary: true
+
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - "main"
+
+  tools:
+    ruff:
+      enabled: true
+    shellcheck:
+      enabled: true
+    ast-grep:
+      rule_dirs: []
+      util_dirs: []
+      essential_rules: true
+      packages: []
+
+chat:
+  auto_reply: true
