@@ -40,7 +40,7 @@ few releases in one breath:
   now works, which finally explains the frozen orphaned processes. Chat
   validation cleans up its tree, the chat no longer echoes your prompt back
   as "AI output", empty completions show a hint, and warmup validation is
-  resume-aware. 41 new tests (228 total) after the security-gap review pass.
+  resume-aware. 52 new tests (244 total) after the security-gap review pass.
 - **v0.10.11** - chat samples actually get verified. Failed generations
   saved from the Studio chat were staged into the corpus but never parsed
   by Godot (the validator looked in the wrong folder), so a broken sample

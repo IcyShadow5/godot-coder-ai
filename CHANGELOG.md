@@ -5,24 +5,27 @@ each version live in `docs/CHANGELOG_v0.10.x.md`; this file is the quick tour.
 
 ## v0.10.12 (2026-08-09)
 
-Maintenance release from the deep code review - the Windows job-object
-cleanup never actually engaged (struct too small, so it failed silently
-and every managed run fell back to taskkill):
+Two full days from the deep code review. The Windows job-object cleanup
+never actually worked (struct too small, so it failed silently), and the
+validate_godot CLI was the last module still on raw subprocess.run:
 
-- **Job objects finally work.** Correct 144-byte struct with `LimitFlags`
-  at offset 16, correct assign rights, and a taskkill fallback when the job
-  path can't finish a termination. This explains the frozen orphaned
-  processes (stale `prepare_data` holding the output dir).
-- **Chat validation cleans up its tree** - `validate_code` now uses the
-  managed process runner, so a hung Mono-Godot child can't survive the
-  timeout as an orphan.
-- **No more prompt echo.** The chat returns only the completion, not your
-  prompt pasted back as "AI output". Empty completions show a hint instead
-  of a blank code block.
-- **Warmup validation is resume-aware** - resuming past warmup is no longer
-  blocked by the fresh-run check. `data.py` closes its memmap alias
-  explicitly.
-- 19 new tests (206 total).
+- **Job objects finally work.** Correct 144-byte struct, correct assign
+  rights, taskkill fallback when the job path can't finish.
+- **Every Godot call now through managed processes** — validate_godot.py
+  and chat-validate were the last two on raw subprocess.run.
+- **FailureKind enum** — 11-type taxonomy with Godot output pattern
+  matching. classify_failure() catches parse errors even when Godot
+  exits 0.
+- **metrics.py** — structured observability infrastructure (not wired into
+  train.py yet, ready for v0.11).
+- **ValidationReport + PerFileResult** — typed dataclasses replace bare
+  dicts in validate_dataset.py.
+- **SECURITY.md** — 10-point audit. CI security-gate job (85 tests on
+  every push). 10 new security-gap tests (command sandbox + prompt
+  injection). 6 validate_godot tests.
+- **Dynamic user-agent** — no more hardcoded 0.7.5 in remote_sources.py.
+- **No more prompt echo.** The chat returns only the completion.
+- 52 new tests (244 total).
 
 ## v0.10.11 (2026-08-09)
 
