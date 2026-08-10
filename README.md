@@ -184,6 +184,9 @@ python -m venv .venv
 # environment-specific). Pick your build at pytorch.org/get-started
 # and install it into the venv, e.g. for CUDA 12.x:
 .\.venv\Scripts\pip install torch --index-url https://download.pytorch.org/whl/cu124
+# Optional: Triton enables the torch.compile speedup (autotune probes
+# it and the trainer picks it up automatically once installed):
+.\.venv\Scripts\pip install -e ".[compile]"
 .\.venv\Scripts\pip install -e .
 .\.venv\Scripts\python.exe -m godot_coder.doctor
 .\.venv\Scripts\python.exe -m pytest -q

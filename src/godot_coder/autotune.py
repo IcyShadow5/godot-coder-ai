@@ -171,6 +171,7 @@ def run_autotune(root: Path, *, full: bool, warmup_steps: int, measure_steps: in
             }
         )
         generated_config["profile"] = generated_profile
+        destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(yaml.safe_dump(generated_config, sort_keys=False, allow_unicode=True), encoding="utf-8")
         recommendation = {
             "config": destination.relative_to(root).as_posix(),
