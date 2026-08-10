@@ -35,6 +35,12 @@ I keep the full history in `CHANGELOG.md` (per-version detail in
 `docs/CHANGELOG_v0.10.x.md`), so here is just the short version - the last
 few releases in one breath:
 
+- **v0.10.17** - the Triton release: optional `torch.compile` support
+  (`pip install -e ".[compile]"`, works on Windows via the community
+  `triton-windows` wheel), autotune compile-failure detection, and the
+  benchmark harness now grades scaffold + completion instead of bare
+  completions - the real golden baseline is 2/30 (6.7 %). 345 tests.
+
 - **v0.10.16** - maintainability release. `create_app` split into 5 route-group
   routers, `JobManager._run` decomposed into named helpers, semicolon chains
   gone from the entire codebase, 42 new tests (339 total), dead code removed.
@@ -262,8 +268,8 @@ The Studio binds to `127.0.0.1:8765` by default. For phone/tablet access inside 
 - `docs/ROADMAP.md` — what's done and what's next
 - `docs/ARCHITECTURE.md` — pipeline and validation paths
 - `docs/CONFIG_REFERENCE.md` — YAML config key reference
-- `docs/INSTALL_v0.10.16.md` — install/upgrade guide (latest)
-- `docs/CHANGELOG_v0.10.16.md` — patch notes (latest; earlier `CHANGELOG_v0.10.x.md` files stay for history)
+- `docs/INSTALL_v0.10.17.md` — install/upgrade guide (latest)
+- `docs/CHANGELOG_v0.10.17.md` — patch notes (latest; earlier `CHANGELOG_v0.10.x.md` files stay for history)
 - `docs/PROGRESS_EVENT_SCHEMA_v1.md` — the progress event format
 - `docs/AUDIT_v0.6.md` — the v0.6 training-core audit (historical record)
 - `docs/INSTRUCTION_ROADMAP_v0.7.md` — the planned instruction/agent roadmap (historical draft)

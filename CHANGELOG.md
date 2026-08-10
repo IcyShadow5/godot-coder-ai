@@ -1,3 +1,17 @@
+## v0.10.17 (2026-08-10)
+
+The Triton release - optional `torch.compile` support that finally works
+on Windows (new `compile` extra with the community `triton-windows` wheel),
+plus two fixes. The autotuner now recognizes compile probes that fail
+without a `status: error` (the real worker falls back to eager and just
+sets `compile_enabled: false`), and the benchmark harness was grading bare
+completions instead of scaffold + completion - the real golden baseline is
+2/30 (6.7 %), reproducible at temperature 0. 6 new tests (345 total), and
+a `.coderabbit.yaml` that teaches CodeRabbit the project's conventions.
+See `docs/CHANGELOG_v0.10.17.md` for the full list.
+
+345 tests.
+
 ## v0.10.16 (2026-08-10)
 
 This is a maintainability release — no new behavior, but the code
