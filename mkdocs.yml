@@ -7,6 +7,7 @@ repo_url: https://github.com/IcyShadow5/godot-coder-ai
 repo_name: IcyShadow5/godot-coder-ai
 edit_uri: edit/main/docs/
 
+
 theme:
   name: material
   palette:
@@ -41,6 +42,7 @@ nav:
   - Progress Event Schema: PROGRESS_EVENT_SCHEMA_v1.md
   - Install Guide: INSTALL_v0.10.21.md
   - Changelog: CHANGELOG_v0.10.21.md
+  - Releasing: RELEASE.md
   - Historical:
       - Audit v0.6: AUDIT_v0.6.md
       - Instruction Roadmap v0.7: INSTRUCTION_ROADMAP_v0.7.md
