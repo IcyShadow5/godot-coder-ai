@@ -150,7 +150,7 @@ def build_corpus_router(app: FastAPI) -> APIRouter:
 
     @router.get("/api/corpus/scale-plan")
     async def corpus_scale_plan() -> dict[str, Any]:
-        from ..scale_plan import build_scale_plan
+        from ...scale_plan import build_scale_plan
         return await asyncio.to_thread(build_scale_plan, root)
 
     @router.post("/api/jobs/corpus/prepare")
