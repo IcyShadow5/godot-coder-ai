@@ -18,14 +18,9 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Iterator
 
 from .corpus import (
-    MAX_ARCHIVE_FILES,
-    MAX_ARCHIVE_UNCOMPRESSED,
-    MAX_SINGLE_FILE,
-    MAX_COMPRESSION_RATIO,
     _archive_preflight,
     _find_godot,
     _json_write,
-    _safe_member,
     _source_metadata_path,
     corpus_root,
     load_registry,
