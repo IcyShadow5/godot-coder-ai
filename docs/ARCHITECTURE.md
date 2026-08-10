@@ -21,6 +21,8 @@ Licensed Godot sources
   and measurement (parser pass rate, token-prefix accuracy, fixed golden set).
 - `instruction_data.py`: instruction / completion / repair dataset builder.
 - `ui/`: local interface; it uses the same core and has no second model logic.
+- `ui/routers/`: the FastAPI route groups (remote, corpus, training, chat, system);
+  `server.py` stays a thin app factory and `ui/schemas.py` holds the request models.
 - `jobs.py`: isolated, stoppable processes for training, Git and hardware probes.
 
 Tokenizer or architecture changes require new weights, but no rebuild of the

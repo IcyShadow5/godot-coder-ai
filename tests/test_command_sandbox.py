@@ -119,8 +119,11 @@ def test_remote_middleware_blocks_write_without_session() -> None:
 # ---- server.py uses safe_child for path arguments --------------------
 
 def test_server_py_uses_safe_child() -> None:
-    """Every path argument in server.py must go through safe_child.
-    If someone adds a new endpoint without it, this catches it."""
-    server_path = Path(__file__).resolve().parent.parent / "src" / "godot_coder" / "ui" / "server.py"
-    text = server_path.read_text(encoding="utf-8")
-    assert "safe_child" in text, "server.py must use safe_child for path validation"
+    """The ui endpoints must keep using safe_child for path validation.
+    Weak guard: it only checks that safe_child is still referenced somewhere
+    in server.py or the route groups, so path handling cannot silently regress
+    to unchecked joins."""
+    ui_dir = Path(__file__).resolve().parent.parent / "src" / "godot_coder" / "ui"
+    files = [ui_dir / "server.py", *sorted((ui_dir / "routers").glob("*.py"))]
+    text = "\n".join(f.read_text(encoding="utf-8") for f in files)
+    assert "safe_child" in text, "server.py/routers must use safe_child for path validation"

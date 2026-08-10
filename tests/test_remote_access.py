@@ -176,7 +176,7 @@ def test_remote_link_endpoint_starts_pc_side_download_job(tmp_path: Path, monkey
         return {"id": "remote123", "kind": kind, "status": "starting"}
 
     app.state.jobs.start = fake_start
-    monkeypatch.setattr("godot_coder.ui.server.validate_remote_url", lambda value: value)
+    monkeypatch.setattr("godot_coder.ui.routers.remote.validate_remote_url", lambda value: value)
     with TestClient(app, base_url="https://studio.example.test") as client:
         unlocked = client.post("/api/remote/unlock", headers=REMOTE_HEADERS, json={"pin": "123456"})
         headers = {**REMOTE_HEADERS, "X-Godot-Coder-CSRF": unlocked.json()["csrf_token"]}

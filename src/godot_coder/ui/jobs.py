@@ -30,7 +30,6 @@ _LOCAL_PROJECT_PATTERN = re.compile(
     r"validation=(?P<validation>\w+)\s+enabled=(?P<enabled>True|False)"
 )
 _ACTIVE_STATUSES = {"starting", "running", "stopping"}
-_FINAL_STATUSES = {"completed", "failed", "stopped"}
 
 
 def _level_from_text(text: str) -> str:
@@ -496,89 +495,109 @@ class JobManager:
         temporary.write_text(json.dumps(job.snapshot(), ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
         os.replace(temporary, path)
 
-    def _run(self, job: Job) -> None:
+    def _spawn_process(self, job: Job) -> subprocess.Popen[str]:
+        """Start the child in its own process group, without a window on Windows."""
         creation_flags = 0
         if os.name == "nt":
             creation_flags = (
                 getattr(subprocess, "CREATE_NO_WINDOW", 0)
                 | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
             )
-        try:
-            child_env = os.environ.copy()
-            # Studio import toggles arrive via job.extra_env — no shell needed.
-            child_env.update(job.extra_env)
-            child_env["PYTHONUTF8"] = "1"
-            child_env["PYTHONIOENCODING"] = "utf-8"
-            child_env["GODOT_CODER_JOB_ID"] = job.id
-            process = subprocess.Popen(
-                job.command,
-                cwd=job.cwd,
-                env=child_env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                bufsize=1,
-                creationflags=creation_flags,
-                start_new_session=os.name != "nt",
-            )
+        child_env = os.environ.copy()
+        # Studio import toggles arrive via job.extra_env — no shell needed.
+        child_env.update(job.extra_env)
+        child_env["PYTHONUTF8"] = "1"
+        child_env["PYTHONIOENCODING"] = "utf-8"
+        child_env["GODOT_CODER_JOB_ID"] = job.id
+        return subprocess.Popen(
+            job.command,
+            cwd=job.cwd,
+            env=child_env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+            creationflags=creation_flags,
+            start_new_session=os.name != "nt",
+        )
+
+    def _mark_running(self, job: Job, process: subprocess.Popen[str]) -> None:
+        """Record the live process and flip the job to "running"."""
+        with self._lock:
+            job.process = process
+            job.pid = process.pid
+            job.status = "running"
+            job.started_at = time.time()
+            job.last_output_at = time.monotonic()
+            job.progress_state["job_status"] = "running"
+            self._persist_snapshot(job)
+
+    def _drain_output(self, job: Job, process: subprocess.Popen[str]) -> None:
+        """Forward the child's stdout to the job log/event stream until it closes."""
+        assert process.stdout is not None
+        for raw_line in process.stdout:
+            line = raw_line.rstrip("\r\n")
             with self._lock:
-                job.process = process
-                job.pid = process.pid
-                job.status = "running"
-                job.started_at = time.time()
-                job.last_output_at = time.monotonic()
-                job.progress_state["job_status"] = "running"
-                self._persist_snapshot(job)
-            self._start_stall_watchdog(job)
-            assert process.stdout is not None
-            for raw_line in process.stdout:
-                line = raw_line.rstrip("\r\n")
-                with self._lock:
-                    event = parse_event_line(line, job_id=job.id)
-                    if event is not None:
-                        self._append_event(job, event)
-                    else:
-                        self._append_log(job, line)
-                    self._persist_snapshot(job)
-            return_code = process.wait()
-            with self._lock:
-                job.finished_at = time.time()
-                if job.status not in _ACTIVE_STATUSES:
-                    # The stall watchdog (or a stop) already ended this job -
-                    # keep its verdict, exit code and failure reason instead of
-                    # overwriting them from the child's exit code.
-                    pass
-                elif job.status == "stopping":
-                    job.status = "stopped"
-                    job.return_code = return_code
+                event = parse_event_line(line, job_id=job.id)
+                if event is not None:
+                    self._append_event(job, event)
                 else:
-                    job.status = "completed" if return_code == 0 else "failed"
-                    job.return_code = return_code
-                job.progress_state["job_status"] = job.status
-                if job.status == "completed":
-                    job.progress_state["overall_progress"] = 1.0
-                self._append_event(job, {
-                    "schema": "godot-coder-progress-event",
-                    "schema_version": EVENT_SCHEMA_VERSION,
-                    "event": "job_finished",
-                    "timestamp": utc_timestamp(),
-                    "job_id": job.id,
-                    "level": "info" if job.status == "completed" else "error",
-                    "job_status": job.status,
-                    "return_code": max(0, return_code) if return_code >= 0 else None,
-                    "elapsed_seconds": job.elapsed_seconds(),
-                    "overall_progress": 1.0 if job.status == "completed" else job.progress_state.get("overall_progress"),
-                    "message": "Job finished." if job.status == "completed" else "The job did not finish successfully.",
-                })
+                    self._append_log(job, line)
                 self._persist_snapshot(job)
+
+    def _finalize(self, job: Job, return_code: int) -> None:
+        """Translate the child exit into a terminal state and emit job_finished."""
+        with self._lock:
+            job.finished_at = time.time()
+            if job.status not in _ACTIVE_STATUSES:
+                # The stall watchdog (or a stop) already ended this job -
+                # keep its verdict, exit code and failure reason instead of
+                # overwriting them from the child's exit code.
+                pass
+            elif job.status == "stopping":
+                job.status = "stopped"
+                job.return_code = return_code
+            else:
+                job.status = "completed" if return_code == 0 else "failed"
+                job.return_code = return_code
+            job.progress_state["job_status"] = job.status
+            if job.status == "completed":
+                job.progress_state["overall_progress"] = 1.0
+            self._append_event(job, {
+                "schema": "godot-coder-progress-event",
+                "schema_version": EVENT_SCHEMA_VERSION,
+                "event": "job_finished",
+                "timestamp": utc_timestamp(),
+                "job_id": job.id,
+                "level": "info" if job.status == "completed" else "error",
+                "job_status": job.status,
+                "return_code": max(0, return_code) if return_code >= 0 else None,
+                "elapsed_seconds": job.elapsed_seconds(),
+                "overall_progress": 1.0 if job.status == "completed" else job.progress_state.get("overall_progress"),
+                "message": "Job finished." if job.status == "completed" else "The job did not finish successfully.",
+            })
+            self._persist_snapshot(job)
+
+    def _fail(self, job: Job, exc: Exception) -> None:
+        """Record a studio-side failure so the job ends as failed instead of hanging."""
+        with self._lock:
+            self._append_log(job, f"Studio job error: {type(exc).__name__}: {exc}", level="error")
+            job.return_code = -1
+            job.finished_at = time.time()
+            job.status = "failed"
+            job.progress_state["job_status"] = "failed"
+            job.progress_state["failure_reason"] = f"{type(exc).__name__}: {mask_secrets(str(exc))}"
+            self._persist_snapshot(job)
+
+    def _run(self, job: Job) -> None:
+        try:
+            process = self._spawn_process(job)
+            self._mark_running(job, process)
+            self._start_stall_watchdog(job)
+            self._drain_output(job, process)
+            return_code = process.wait()
+            self._finalize(job, return_code)
         except Exception as exc:  # pragma: no cover - defensive process boundary
-            with self._lock:
-                self._append_log(job, f"Studio job error: {type(exc).__name__}: {exc}", level="error")
-                job.return_code = -1
-                job.finished_at = time.time()
-                job.status = "failed"
-                job.progress_state["job_status"] = "failed"
-                job.progress_state["failure_reason"] = f"{type(exc).__name__}: {mask_secrets(str(exc))}"
-                self._persist_snapshot(job)
+            self._fail(job, exc)

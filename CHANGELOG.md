@@ -1,7 +1,10 @@
-# Changelog
+## v0.10.16 (2026-08-10)
 
-Patch notes, so I still know later what I was thinking. Detailed notes for
-each version live in `docs/CHANGELOG_v0.10.x.md`; this file is the quick tour.
+This is a maintainability release — no new behavior, but the code
+that hurt to read is readable now. See `docs/CHANGELOG_v0.10.16.md`
+for the full list.
+
+339 tests.
 
 ## v0.10.15 (2026-08-10)
 

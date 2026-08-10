@@ -160,7 +160,7 @@ def test_remote_self_check_uses_actual_local_request_port(tmp_path: Path, monkey
     def fake_check(root, *, port=None):
         captured["port"] = port
         return {"ok": True, "port": port, "checks": []}
-    monkeypatch.setattr("godot_coder.ui.server.remote_self_check", fake_check)
+    monkeypatch.setattr("godot_coder.ui.routers.remote.remote_self_check", fake_check)
     with TestClient(create_app(tmp_path), base_url="http://127.0.0.1:9988") as client:
         response = client.get("/api/remote/self-check")
     assert response.status_code == 200
@@ -168,7 +168,7 @@ def test_remote_self_check_uses_actual_local_request_port(tmp_path: Path, monkey
 
 
 def test_local_import_extra_env_maps_request_flags() -> None:
-    from godot_coder.ui.server import _local_import_extra_env
+    from godot_coder.ui.schemas import _local_import_extra_env
 
     assert _local_import_extra_env(
         skip_project_import=False, fast_static=False, error_abort_threshold=None
@@ -206,7 +206,7 @@ def test_train_endpoint_accepts_config_with_null_max_steps(tmp_path: Path, monke
         "  dtype: float32\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr("godot_coder.ui.server.build_preflight", lambda *a, **k: {"can_start": True})
+    monkeypatch.setattr("godot_coder.ui.routers.training.build_preflight", lambda *a, **k: {"can_start": True})
     started: dict[str, object] = {}
 
     def fake_start(kind, args, *, max_steps=None, extra_env=None):
@@ -246,7 +246,7 @@ def test_train_endpoint_passes_explicit_max_steps_through(tmp_path: Path, monkey
         "  dtype: float32\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr("godot_coder.ui.server.build_preflight", lambda *a, **k: {"can_start": True})
+    monkeypatch.setattr("godot_coder.ui.routers.training.build_preflight", lambda *a, **k: {"can_start": True})
     started: dict[str, object] = {}
 
     def fake_start(kind, args, *, max_steps=None, extra_env=None):

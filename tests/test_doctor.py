@@ -3,7 +3,6 @@
 import sys
 from types import SimpleNamespace
 
-import pytest
 import torch
 
 from godot_coder.doctor import _find_godot, collect_status, parse_args

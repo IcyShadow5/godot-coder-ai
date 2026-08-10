@@ -79,22 +79,6 @@ def _encode_document(path: Path, input_dir: Path, tokenizer: TokenizerLike) -> t
         raise ValueError(f"tokenizer produced an out-of-range id for {relative}")
     return relative, np.asarray(ids, dtype=_token_dtype(tokenizer.vocab_size))
 
-
-def encode_files(files: list[Path], input_dir: Path, tokenizer: TokenizerLike, *, dtype: np.dtype | None = None) -> np.ndarray:
-    storage_dtype = dtype or _token_dtype(tokenizer.vocab_size)
-    documents = []
-    skipped = 0
-    for path in files:
-        result = _encode_document(path, input_dir, tokenizer)
-        if result is None:
-            skipped += 1
-            continue
-        documents.append(result[1].astype(storage_dtype, copy=False))
-    if skipped:
-        warnings.warn(f"Skipped {skipped} unreadable file(s) during encoding")
-    return np.concatenate(documents) if documents else np.asarray([], dtype=storage_dtype)
-
-
 def _explicit_split_files(source: Path, extensions: Sequence[str]) -> dict[str, list[Path]] | None:
     split_dirs = {name: source / name for name in ("train", "val", "test")}
     if not (split_dirs["train"].is_dir() and split_dirs["val"].is_dir()):
@@ -400,13 +384,16 @@ class TokenStream:
         ys: list[np.ndarray] = []
         for shard_index in choices:
             x_parts, y_parts = self._sample_from_shard(self.shards[int(shard_index)], 1, seq_len, generator)
-            xs.extend(x_parts); ys.extend(y_parts)
-        x = torch.from_numpy(np.stack(xs)); y = torch.from_numpy(np.stack(ys))
+            xs.extend(x_parts)
+            ys.extend(y_parts)
+        x = torch.from_numpy(np.stack(xs))
+        y = torch.from_numpy(np.stack(ys))
         if device.type == "cuda":
             x = x.pin_memory().to(device, non_blocking=True)
             y = y.pin_memory().to(device, non_blocking=True)
         else:
-            x = x.to(device); y = y.to(device)
+            x = x.to(device)
+            y = y.to(device)
         return x, y
 
     def fixed_windows(self, seq_len: int, count: int, seed: int) -> np.ndarray:
@@ -428,11 +415,14 @@ class TokenStream:
     def batch_at(self, windows: np.ndarray, seq_len: int, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
         xs = [np.asarray(self.shards[int(shard)][int(start):int(start) + seq_len], dtype=np.int64) for shard, start in windows]
         ys = [np.asarray(self.shards[int(shard)][int(start) + 1:int(start) + seq_len + 1], dtype=np.int64) for shard, start in windows]
-        x = torch.from_numpy(np.stack(xs)); y = torch.from_numpy(np.stack(ys))
+        x = torch.from_numpy(np.stack(xs))
+        y = torch.from_numpy(np.stack(ys))
         if device.type == "cuda":
-            x = x.pin_memory().to(device, non_blocking=True); y = y.pin_memory().to(device, non_blocking=True)
+            x = x.pin_memory().to(device, non_blocking=True)
+            y = y.pin_memory().to(device, non_blocking=True)
         else:
-            x = x.to(device); y = y.to(device)
+            x = x.to(device)
+            y = y.to(device)
         return x, y
 
 

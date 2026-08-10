@@ -437,7 +437,9 @@ def main() -> None:
                 final_val_loss = val_loss
                 significant = val_loss < best_val_loss - train_config.early_stopping_min_delta
                 improved = val_loss < best_val_loss
-                if improved: best_val_loss = val_loss; best_step = step + 1
+                if improved:
+                    best_val_loss = val_loss
+                    best_step = step + 1
                 no_improvement = 0 if significant else no_improvement + 1
                 run_metrics.record(MetricEvent.RUNTIME_SUCCESS if val_loss < 100 else MetricEvent.RUNTIME_ERROR, step=step + 1, duration_seconds=duration, details={"loss": val_loss, "perplexity": math.exp(min(val_loss, 20))})
                 _append_jsonl(metrics_path, {"event": "validation", "time": time.time(), "step": step + 1, "loss": val_loss, "perplexity": math.exp(min(val_loss, 20)), "duration_seconds": duration, "improved": improved, "best_val_loss": best_val_loss, "best_step": best_step, "no_improvement_count": no_improvement})
