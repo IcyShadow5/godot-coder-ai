@@ -1,3 +1,15 @@
+## v0.10.20 (2026-08-10)
+
+Follow-up to v0.10.19. The panel's compile cross-check now fully prefers
+the autotune probe verdict - a proven success wins even when the static
+Triton import check currently fails, not just a proven failure showing
+"not available" - preflight stops listing irrelevant corpus stages on a
+fresh project, and the release pipeline is automated (a `v*` tag push now
+builds the zip and publishes the GitHub release on its own). See
+`docs/CHANGELOG_v0.10.20.md` for the full list.
+
+382 tests.
+
 ## v0.10.19 (2026-08-10)
 
 Polish from the last review round. The system panel's `torch.compile` card

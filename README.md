@@ -35,6 +35,13 @@ I keep the full history in `CHANGELOG.md` (per-version detail in
 `docs/CHANGELOG_v0.10.x.md`), so here is just the short version - the last
 few releases in one breath:
 
+- **v0.10.20** - follow-up: the `torch.compile` panel now fully
+  prefers the autotune probe verdict (a proven success wins even if the
+  static Triton import check currently fails), preflight stops listing
+  irrelevant corpus stages on a fresh project, and releasing is now a
+  one-liner - pushing a `v*` tag builds the zip and publishes the GitHub
+  release automatically. 382 tests.
+
 - **v0.10.19** - polish round: the `torch.compile` panel card now
   prefers the autotuner's probe result - a fresh probe verdict is the
   ground truth (a proven kernel-build failure shows "not available" with
@@ -280,8 +287,8 @@ The Studio binds to `127.0.0.1:8765` by default. For phone/tablet access inside 
 - `docs/ROADMAP.md` — what's done and what's next
 - `docs/ARCHITECTURE.md` — pipeline and validation paths
 - `docs/CONFIG_REFERENCE.md` — YAML config key reference
-- `docs/INSTALL_v0.10.19.md` — install/upgrade guide (latest)
-- `docs/CHANGELOG_v0.10.19.md` — patch notes (latest; earlier `CHANGELOG_v0.10.x.md` files stay for history)
+- `docs/INSTALL_v0.10.20.md` — install/upgrade guide (latest)
+- `docs/CHANGELOG_v0.10.20.md` — patch notes (latest; earlier `CHANGELOG_v0.10.x.md` files stay for history)
 - `docs/PROGRESS_EVENT_SCHEMA_v1.md` — the progress event format
 - `docs/AUDIT_v0.6.md` — the v0.6 training-core audit (historical record)
 - `docs/INSTRUCTION_ROADMAP_v0.7.md` — the planned instruction/agent roadmap (historical draft)
