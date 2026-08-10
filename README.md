@@ -35,6 +35,11 @@ I keep the full history in `CHANGELOG.md` (per-version detail in
 `docs/CHANGELOG_v0.10.x.md`), so here is just the short version - the last
 few releases in one breath:
 
+- **v0.10.19** - polish round: the `torch.compile` panel card now
+  cross-checks the autotuner's probe result (a proven kernel-build failure
+  shows "not available" with the reason), the last three UI route
+  coverage gaps are closed, and 12 new tests bring the suite to 381.
+
 - **v0.10.18** - review backlog paid down: the system panel now shows
   `torch.compile` availability at a glance, preflight no longer crashes on
   a fresh project (500 -> a proper blocker), and 24 new tests cover the
@@ -273,8 +278,8 @@ The Studio binds to `127.0.0.1:8765` by default. For phone/tablet access inside 
 - `docs/ROADMAP.md` — what's done and what's next
 - `docs/ARCHITECTURE.md` — pipeline and validation paths
 - `docs/CONFIG_REFERENCE.md` — YAML config key reference
-- `docs/INSTALL_v0.10.18.md` — install/upgrade guide (latest)
-- `docs/CHANGELOG_v0.10.18.md` — patch notes (latest; earlier `CHANGELOG_v0.10.x.md` files stay for history)
+- `docs/INSTALL_v0.10.19.md` — install/upgrade guide (latest)
+- `docs/CHANGELOG_v0.10.19.md` — patch notes (latest; earlier `CHANGELOG_v0.10.x.md` files stay for history)
 - `docs/PROGRESS_EVENT_SCHEMA_v1.md` — the progress event format
 - `docs/AUDIT_v0.6.md` — the v0.6 training-core audit (historical record)
 - `docs/INSTRUCTION_ROADMAP_v0.7.md` — the planned instruction/agent roadmap (historical draft)
