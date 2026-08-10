@@ -579,10 +579,10 @@ def _autotune_compile_signal(project_root: Path) -> tuple[bool | None, str | Non
 def system_status(project_root: Path) -> dict[str, Any]:
     compile_available, triton_version = _compile_status()
     probe_available, compile_disabled_reason = _autotune_compile_signal(project_root)
-    if probe_available is False:
-        # The probe proved compile fails on this box. The static signal only
-        # checks whether Triton imports, not whether kernels actually build.
-        compile_available = False
+    if probe_available is not None:
+        # A fresh probe verdict is the ground truth - it actually builds a
+        # kernel, which the static import check cannot prove either way.
+        compile_available = probe_available
     cuda_available = torch.cuda.is_available()
     mps_present = mps_available()
     rocm_present = rocm_available()

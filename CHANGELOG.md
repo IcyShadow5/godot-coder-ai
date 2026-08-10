@@ -1,10 +1,11 @@
 ## v0.10.19 (2026-08-10)
 
 Polish from the last review round. The system panel's `torch.compile` card
-now cross-checks the autotuner's probe result - a proven kernel-build
-failure shows up as "not available" with the reason instead of the static
-import check claiming otherwise - and the three remaining coverage gaps in
-the UI routes are closed. 12 new tests. See
+now prefers the autotuner's probe result - a fresh probe verdict is the
+ground truth in both directions (a proven kernel-build failure shows up as
+"not available" with the reason; a proven success wins even if the static
+Triton import check currently fails) - and the three remaining coverage
+gaps in the UI routes are closed. 12 new tests. See
 `docs/CHANGELOG_v0.10.19.md` for the full list.
 
 381 tests.

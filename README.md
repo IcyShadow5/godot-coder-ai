@@ -36,9 +36,11 @@ I keep the full history in `CHANGELOG.md` (per-version detail in
 few releases in one breath:
 
 - **v0.10.19** - polish round: the `torch.compile` panel card now
-  cross-checks the autotuner's probe result (a proven kernel-build failure
-  shows "not available" with the reason), the last three UI route
-  coverage gaps are closed, and 12 new tests bring the suite to 381.
+  prefers the autotuner's probe result - a fresh probe verdict is the
+  ground truth (a proven kernel-build failure shows "not available" with
+  the reason; a proven success wins even if Triton is currently not
+  importable) - the last three UI route coverage gaps are closed, and 12
+  new tests bring the suite to 381.
 
 - **v0.10.18** - review backlog paid down: the system panel now shows
   `torch.compile` availability at a glance, preflight no longer crashes on

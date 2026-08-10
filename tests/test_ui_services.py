@@ -200,11 +200,11 @@ def test_system_status_autotune_probe_overrides_static(tmp_path, monkeypatch) ->
     assert status["compile_disabled_reason"] == "kernel build failed"
 
 
-def test_system_status_autotune_true_does_not_upgrade_static_false(tmp_path, monkeypatch) -> None:
-    """A stale probe saying yes never overrides a current static no."""
+def test_system_status_autotune_true_preferred_over_static_false(tmp_path, monkeypatch) -> None:
+    """A fresh probe that proved compile works wins over a static no."""
     _autotune_report(tmp_path, True)
     status = _quiet_system_status(tmp_path, (False, None), monkeypatch)
-    assert status["compile_available"] is False
+    assert status["compile_available"] is True
     assert status["compile_disabled_reason"] is None
 
 

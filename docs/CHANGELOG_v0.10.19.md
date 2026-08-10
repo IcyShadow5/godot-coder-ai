@@ -11,13 +11,16 @@ are closed, and two tiny hygiene fixes landed.
 
 ### New
 
-- **System panel cross-checks the autotune probe.** `/api/overview` now
-  reads `reports/hardware/autotune_latest.json` and lets the autotuner's
-  real probe verdict override the static check: when the probe proved
-  `compile` fails (kernel build error), the panel says "not available ·
-  <reason>" instead of trusting that Triton merely imports. The verdict
-  is only honored for 30 days - install the `[compile]` extra after a
-  failed run and the panel flips back once the report is stale.
+- **System panel prefers the autotune probe.** `/api/overview` now
+  reads `reports/hardware/autotune_latest.json` and treats a fresh probe
+  verdict as the ground truth in both directions: when the probe proved
+  `compile` works, the panel says available even if the static Triton
+  import check currently fails; when it proved a kernel-build failure,
+  the panel says "not available · <reason>" instead of trusting that
+  Triton merely imports. The static check only decides when no (fresh)
+  report exists. The verdict is honored for 30 days - install the
+  `[compile]` extra after a failed run and the panel flips back once the
+  report is stale.
 
 ### Fixed
 
