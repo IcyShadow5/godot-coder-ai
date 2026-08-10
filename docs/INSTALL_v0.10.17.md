@@ -20,8 +20,7 @@ python -m venv .venv
 
 ## Upgrading an existing install
 
-Replace these files from the release zip (or apply the packaged upgrade
-script):
+Replace these files from the release zip:
 
 ```
 docs/CHANGELOG_v0.10.17.md

@@ -71,8 +71,8 @@ configs/autotuned_*.yaml
 # Test caches
 .pytest_cache/
 
-# Upgrade package build output (assembled from upgrade/ templates)
-upgrade/payload/
+# Upgrade templates live in tools/upgrade (optional; package build output)
+tools/upgrade/payload/
 
 # MkDocs build output (GitHub Pages)
 site/
