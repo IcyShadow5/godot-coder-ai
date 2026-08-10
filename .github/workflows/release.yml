@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build the full source zip
+        run: |
+          # git archive packs exactly the tracked files, same set the manual
+          # release script used to zip (git ls-files).
+          ZIP="godot-coder-ai-${GITHUB_REF_NAME}-full.zip"
+          git archive --format=zip -o "$ZIP" HEAD
+          echo "zip=$ZIP" >> "$GITHUB_ENV"
+          unzip -l "$ZIP" | tail -1
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTES="docs/CHANGELOG_${GITHUB_REF_NAME}.md"
+          if [ -f "$NOTES" ]; then
+            gh release create "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$GITHUB_REF_NAME" \
+              --notes-file "$NOTES" \
+              "${{ env.zip }}"
+          else
+            # No per-version changelog yet - let GitHub draft notes.
+            gh release create "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes \
+              "${{ env.zip }}"
+          fi
