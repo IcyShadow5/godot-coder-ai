@@ -512,7 +512,11 @@ def _pipeline_freshness(project_root: Path, data_manifest_path: Path | None) -> 
     # data_manifest_path is None on a fresh project (no tokenized stream yet).
     # _is_corpus_stream already handles None, but the parent lookup below would
     # crash on it - keep preflight answering with a blocker instead of 500.
-    if data_manifest_path is not None and not _is_corpus_stream(data_manifest_path):
+    # A missing manifest also means there is nothing to judge freshness against,
+    # so report no stages instead of the irrelevant corpus artifacts.
+    if data_manifest_path is None:
+        stage_paths = {}
+    elif not _is_corpus_stream(data_manifest_path):
         raw_source = project_root / "data" / "raw" / data_manifest_path.parent.name
         stage_paths = {"raw_source": raw_source} if raw_source.exists() else {}
     mtimes = {name: path.stat().st_mtime if path.exists() else None for name, path in stage_paths.items()}

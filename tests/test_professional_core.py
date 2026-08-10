@@ -290,3 +290,34 @@ def test_audit_resume_skips_processed_records(tmp_path: Path) -> None:
     # All 4 records must be present (2 resumed + 2 fresh).
     assert report["summary"]["records"] == 4
     assert not snapshot.exists(), "checkpoint must be cleaned after a successful resume"
+
+
+def test_pipeline_freshness_stages_for_each_manifest_state(tmp_path: Path) -> None:
+    """_pipeline_freshness reports stages that match the stream kind:
+    none for a fresh project, raw_source only for synthetic streams, and the
+    full corpus set for corpus-derived streams."""
+    from godot_coder.corpus_audit import _pipeline_freshness
+
+    # 1. No manifest at all (fresh project) -> no stages listed.
+    fresh = _pipeline_freshness(tmp_path, None)
+    assert fresh["stages"] == {}
+    assert fresh["stale"] is False
+    assert fresh["processed_mtime"] is None
+
+    # 2. Synthetic stream (curriculum) -> raw_source only.
+    curriculum = tmp_path / "data" / "processed" / "curriculum_v03" / "manifest.json"
+    curriculum.parent.mkdir(parents=True, exist_ok=True)
+    curriculum.write_text("{}", encoding="utf-8")
+    raw = tmp_path / "data" / "raw" / "curriculum_v03"
+    raw.mkdir(parents=True, exist_ok=True)
+    synthetic = _pipeline_freshness(tmp_path, curriculum)
+    assert set(synthetic["stages"]) == {"raw_source"}
+    assert synthetic["stages"]["raw_source"]["exists"] is True
+
+    # 3. Corpus stream -> full pipeline stage set.
+    corpus_manifest = tmp_path / "data" / "processed" / "corpus_v06" / "manifest.json"
+    corpus_manifest.parent.mkdir(parents=True, exist_ok=True)
+    corpus_manifest.write_text("{}", encoding="utf-8")
+    corpus = _pipeline_freshness(tmp_path, corpus_manifest)
+    assert set(corpus["stages"]) == {"scan", "validation", "audit", "tokenizer", "data_changes"}
+    assert set(corpus["stages"]["scan"]) == {"exists", "modified_at"}
