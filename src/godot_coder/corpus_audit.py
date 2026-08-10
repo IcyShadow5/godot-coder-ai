@@ -509,7 +509,10 @@ def _pipeline_freshness(project_root: Path, data_manifest_path: Path | None) -> 
     # their own raw source and must not be judged stale by corpus stages they
     # never depend on; tokenizer drift on those datasets is already covered by
     # the tokenizer-fingerprint gate.
-    if not _is_corpus_stream(data_manifest_path):
+    # data_manifest_path is None on a fresh project (no tokenized stream yet).
+    # _is_corpus_stream already handles None, but the parent lookup below would
+    # crash on it - keep preflight answering with a blocker instead of 500.
+    if data_manifest_path is not None and not _is_corpus_stream(data_manifest_path):
         raw_source = project_root / "data" / "raw" / data_manifest_path.parent.name
         stage_paths = {"raw_source": raw_source} if raw_source.exists() else {}
     mtimes = {name: path.stat().st_mtime if path.exists() else None for name, path in stage_paths.items()}

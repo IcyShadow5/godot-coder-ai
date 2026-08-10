@@ -521,7 +521,25 @@ def find_godot() -> str | None:
     return None
 
 
+def _compile_status() -> tuple[bool, str | None]:
+    """Cheap availability check for torch.compile on this box.
+
+    The autotuner proves compile support with a real probe (profile_probe
+    reports compile_enabled). The system panel shows a quick signal instead:
+    torch.compile exists and Triton can actually be imported - which is the
+    piece that's missing on Windows without the [compile] extra.
+    """
+    if not hasattr(torch, "compile"):
+        return False, None
+    try:
+        import triton  # noqa: F401
+    except Exception:
+        return False, None
+    return True, getattr(triton, "__version__", None)
+
+
 def system_status(project_root: Path) -> dict[str, Any]:
+    compile_available, triton_version = _compile_status()
     cuda_available = torch.cuda.is_available()
     mps_present = mps_available()
     rocm_present = rocm_available()
@@ -559,6 +577,8 @@ def system_status(project_root: Path) -> dict[str, Any]:
         "cuda_available": cuda_available,
         "rocm_available": rocm_present,
         "mps_available": mps_present,
+        "compile_available": compile_available,
+        "triton": triton_version,
         "gpu": gpu,
         "godot": godot,
         "godot_version": godot_version,

@@ -1,3 +1,15 @@
+## v0.10.18 (2026-08-10)
+
+The review backlog, paid down. The system panel now shows whether
+`torch.compile` is actually usable on this machine - the same signal the
+autotuner's compile probe proves for real, just visible at a glance - and
+while writing route tests preflight stopped crashing on a fresh project
+with no tokenized stream (it answered 500 instead of a blocker). 24 new
+tests close the gaps in the chat, config, preflight and jobs endpoints.
+See `docs/CHANGELOG_v0.10.18.md` for the full list.
+
+369 tests.
+
 ## v0.10.17 (2026-08-10)
 
 The Triton release - optional `torch.compile` support that finally works

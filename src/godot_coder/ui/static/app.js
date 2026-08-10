@@ -1359,6 +1359,7 @@ function renderSystem() {
   const items = [
     ["Python", o.python],
     ["PyTorch", o.torch],
+    ["torch.compile", o.compile_available ? (o.triton ? `available · triton ${o.triton}` : "available") : "not installed"],
     ["CUDA Build", o.torch_cuda || (o.torch_hip ? "n/a (HIP build)" : "CPU")],
     ["ROCm Build", o.torch_hip || "off"],
     ["GPU", o.gpu?.name || "Not active"],
