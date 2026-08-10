@@ -268,3 +268,83 @@ def test_checkpoints_and_configs_lists(tmp_path: Path) -> None:
     assert configs.status_code == 200
     assert isinstance(checkpoints.json(), list)
     assert isinstance(configs.json(), list)
+
+
+
+def test_config_raw_put_invalid_train_config_400(tmp_path: Path) -> None:
+    """YAML that parses but fails TrainConfig validation is rejected."""
+    _scaffold(tmp_path)
+    app = create_app(tmp_path)
+    bad_config = MINIMAL_YAML.replace("  batch_size: 1", "  batch_size: 0")
+    with _client(app) as client:
+        response = client.put(
+            "/api/config/raw",
+            json={"path": "configs/bad_train.yaml", "content": bad_config},
+        )
+    assert response.status_code == 400
+
+
+def test_corpus_sources_put_valid_saves(tmp_path: Path) -> None:
+    _scaffold(tmp_path)
+    app = create_app(tmp_path)
+    payload = {
+        "sources": [
+            {
+                "id": "my-proj",
+                "title": "My Project",
+                "url": "https://github.com/name/project.git",
+                "branch": "main",
+                "kind": "godot_projects",
+                "license": "MIT",
+            }
+        ]
+    }
+    with _client(app) as client:
+        response = client.put("/api/corpus/sources", json=payload)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["sources"][0]["id"] == "my-proj"
+    assert body["sources"][0]["url"] == "https://github.com/name/project.git"
+    assert (tmp_path / "data" / "corpus" / "sources.json").exists()
+
+
+def test_corpus_sources_put_invalid_id_400(tmp_path: Path) -> None:
+    _scaffold(tmp_path)
+    app = create_app(tmp_path)
+    payload = {"sources": [{"id": "Bad ID!", "url": "https://github.com/name/project.git"}]}
+    with _client(app) as client:
+        response = client.put("/api/corpus/sources", json=payload)
+    assert response.status_code == 400
+
+
+def test_corpus_sources_put_invalid_license_400(tmp_path: Path) -> None:
+    _scaffold(tmp_path)
+    app = create_app(tmp_path)
+    payload = {"sources": [{"id": "my-proj", "url": "https://github.com/name/project.git", "license": "WTFPL"}]}
+    with _client(app) as client:
+        response = client.put("/api/corpus/sources", json=payload)
+    assert response.status_code == 400
+
+
+def test_jobs_stop_no_job_returns_null(tmp_path: Path) -> None:
+    _scaffold(tmp_path)
+    app = create_app(tmp_path)
+    with _client(app) as client:
+        response = client.post("/api/jobs/stop")
+    assert response.status_code == 200
+    assert response.json() is None
+
+
+def test_jobs_stop_with_running_snapshot(tmp_path: Path) -> None:
+    _scaffold(tmp_path)
+    app = create_app(tmp_path)
+    snapshot = {"kind": "training", "status": "stopping", "pid": 4242}
+
+    def fake_stop():
+        return snapshot
+
+    app.state.jobs = SimpleNamespace(stop=fake_stop)  # type: ignore[assignment]
+    with _client(app) as client:
+        response = client.post("/api/jobs/stop")
+    assert response.status_code == 200
+    assert response.json() == snapshot

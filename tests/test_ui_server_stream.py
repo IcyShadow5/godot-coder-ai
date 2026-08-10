@@ -18,7 +18,7 @@ def _scaffold(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text("[project]\nname='test'\n", encoding="utf-8")
 
 
-def test_chat_generate_stream_emits_sse_tokens_then_done(tmp_path: Path, monkeypatch) -> None:
+def test_chat_generate_stream_emits_sse_tokens_then_done(tmp_path: Path) -> None:
     _scaffold(tmp_path)
     app = create_app(tmp_path)
 
@@ -46,7 +46,7 @@ def test_chat_generate_stream_emits_sse_tokens_then_done(tmp_path: Path, monkeyp
     assert response.text.strip().endswith("data: [DONE]")
 
 
-def test_chat_generate_stream_rejects_while_job_running(tmp_path: Path, monkeypatch) -> None:
+def test_chat_generate_stream_rejects_while_job_running(tmp_path: Path) -> None:
     _scaffold(tmp_path)
     app = create_app(tmp_path)
 

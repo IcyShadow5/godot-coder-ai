@@ -11,6 +11,7 @@ import threading
 import uuid
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -533,13 +534,55 @@ def _compile_status() -> tuple[bool, str | None]:
         return False, None
     try:
         import triton  # noqa: F401
-    except Exception:
+    except ImportError:  # missing extra or broken DLL - both surface as ImportError
         return False, None
     return True, getattr(triton, "__version__", None)
 
 
+# A probe verdict only stays authoritative for a while - the user may install
+# the [compile] extra after a failed run, which the static check would catch.
+_AUTOTUNE_PROBE_MAX_AGE_DAYS = 30
+
+
+def _autotune_compile_signal(project_root: Path) -> tuple[bool | None, str | None]:
+    """Best-effort read of the last autotune probe's compile verdict.
+
+    The autotuner proves compile support with a real probe instead of the
+    static import check, so its verdict wins when it exists. Returns
+    (available_or_None, disabled_reason); both None when no report exists yet
+    or the report is too old to trust.
+    """
+    report = project_root / "reports" / "hardware" / "autotune_latest.json"
+    try:
+        data = json.loads(report.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None, None
+    if not isinstance(data, dict) or not isinstance(data.get("compile_available"), bool):
+        return None, None
+    created = data.get("created_at")
+    if isinstance(created, (int, float)):
+        # autotune.py writes time.time() - a Unix epoch in seconds
+        age_days = (time.time() - created) / 86400.0
+        if age_days > _AUTOTUNE_PROBE_MAX_AGE_DAYS:
+            return None, None
+    elif isinstance(created, str):
+        try:
+            age = datetime.now(timezone.utc) - datetime.fromisoformat(created)
+            if age.days > _AUTOTUNE_PROBE_MAX_AGE_DAYS:
+                return None, None
+        except ValueError:
+            return None, None
+    reason = data.get("compile_disabled_reason")
+    return data["compile_available"], (reason if isinstance(reason, str) and reason else None)
+
+
 def system_status(project_root: Path) -> dict[str, Any]:
     compile_available, triton_version = _compile_status()
+    probe_available, compile_disabled_reason = _autotune_compile_signal(project_root)
+    if probe_available is False:
+        # The probe proved compile fails on this box. The static signal only
+        # checks whether Triton imports, not whether kernels actually build.
+        compile_available = False
     cuda_available = torch.cuda.is_available()
     mps_present = mps_available()
     rocm_present = rocm_available()
@@ -578,6 +621,7 @@ def system_status(project_root: Path) -> dict[str, Any]:
         "rocm_available": rocm_present,
         "mps_available": mps_present,
         "compile_available": compile_available,
+        "compile_disabled_reason": compile_disabled_reason,
         "triton": triton_version,
         "gpu": gpu,
         "godot": godot,
