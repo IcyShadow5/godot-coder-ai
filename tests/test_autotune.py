@@ -112,9 +112,23 @@ def test_compile_disabled_after_first_failure_skips_the_rest(tmp_path, monkeypat
     compile_calls = {"n": 0}
 
     def failing_worker(root, relative, batch, device, warmup, measure):
-        if "compile1" in Path(relative).name.lower():
+        is_compile = "compile1" in Path(relative).name.lower()
+        if is_compile:
             compile_calls["n"] += 1
-        return {"status": "error", "error": "TritonMissing: no triton", "batch_size": batch}
+        # the real worker does not fail: it falls back to eager and reports
+        # compile_enabled=False + compile_error while status stays "pass"
+        return {
+            "status": "pass",
+            "batch_size": batch,
+            "tokens_per_second": 20000.0,
+            "peak_reserved_gib": 2.0,
+            "peak_reserved_fraction": 0.3,
+            "parameters": 90_000_000,
+            "sequence_length": 1024,
+            # like the real worker: non-compile configs never attempt compile
+            "compile_enabled": False,
+            "compile_error": "TritonMissing: no triton" if is_compile else None,
+        }
 
     monkeypatch.setattr(autotune, "_variant", _fake_variant)
     monkeypatch.setattr(autotune, "_run_worker", failing_worker)
