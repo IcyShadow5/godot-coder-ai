@@ -32,6 +32,9 @@ if (-not (Test-Path (Join-Path $TargetSrc "local_sources.py"))) {
 }
 
 # Replace this list with every file that changed in this release:
+# Windows PowerShell 5.1 rejects a trailing comma after the LAST entry
+# ("Missing expression after ','" - PS7 tolerates it, PS5.1 does not).
+# So the final path line must NOT end with a comma.
 $files = @(
     # "src\godot_coder\example.py",
     # "docs\CHANGELOG_v0.11.0.md",
