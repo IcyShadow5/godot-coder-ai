@@ -4,6 +4,7 @@
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 [![Godot](https://img.shields.io/badge/Godot-4.x-purple.svg)](https://godotengine.org)
 [![CI](https://github.com/IcyShadow5/godot-coder-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/IcyShadow5/godot-coder-ai/actions/workflows/ci.yml)
+[![Release](https://github.com/IcyShadow5/godot-coder-ai/actions/workflows/release.yml/badge.svg)](https://github.com/IcyShadow5/godot-coder-ai/actions/workflows/release.yml)
 
 A local training studio for building a compact Godot/GDScript language model from scratch — train your own GPT-style model that actually understands GDScript. No cloud, no API keys, everything runs on your machine.
 
