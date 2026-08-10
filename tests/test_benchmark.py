@@ -77,7 +77,6 @@ def test_run_benchmark_validates_prompt_plus_completion(monkeypatch, tmp_path) -
 
     assert len(validated) == len(GOLDEN_TASKS)
     assert all(code.endswith(completion) for code in validated)
-    # the scaffold must be re-attached - never validate the bare completion
     assert all(len(code) > len(completion) for code in validated)
     assert all(code.startswith("extends") for code in validated)
 
