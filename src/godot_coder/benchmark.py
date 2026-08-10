@@ -298,7 +298,10 @@ def run_benchmark(
                 device_name="auto",
             )
             case_project = str(case.get("validation_project", validation_project))
-            validation = validate_code(root, generated, case_project)
+            # generate() returns only the completion (the chat flow strips the
+            # prompt), so re-attach the scaffold before validating - a bare
+            # completion is not parseable as a standalone script.
+            validation = validate_code(root, prompt_text + generated, case_project)
             prompt = prompt_text
             suffix = generated[len(prompt) :] if generated.startswith(prompt) else generated
             reference = case.get("reference_suffix")

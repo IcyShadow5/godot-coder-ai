@@ -145,8 +145,22 @@ def run_autotune(root: Path, *, full: bool, warmup_steps: int, measure_steps: in
                         }
                     else:
                         result = _run_worker(root, relative, batch, "auto", warmup_steps, measure_steps)
-                        if compile_enabled and result.get("status") == "error":
-                            compile_disabled_reason = str(result.get("error") or "torch.compile probe failed")[:1000]
+                        # The probe worker keeps running without compile and reports
+                        # status=pass with compile_enabled=False + compile_error when
+                        # torch.compile is unavailable - so a missing compile shows up
+                        # as those fields, not as a probe error.
+                        compile_failed = (
+                            compile_enabled
+                            and (
+                                result.get("status") == "error"
+                                or result.get("compile_enabled") is False
+                                or bool(result.get("compile_error"))
+                            )
+                        )
+                        if compile_failed:
+                            compile_disabled_reason = str(
+                                result.get("compile_error") or result.get("error") or "torch.compile probe failed"
+                            )[:1000]
                     result.update({"matrix_label": label, "checkpointing": checkpointing, "compile_requested": compile_enabled, "config": relative})
                     _mark_safety(result)
                     attempts.append(result)
@@ -171,6 +185,7 @@ def run_autotune(root: Path, *, full: bool, warmup_steps: int, measure_steps: in
             }
         )
         generated_config["profile"] = generated_profile
+        destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(yaml.safe_dump(generated_config, sort_keys=False, allow_unicode=True), encoding="utf-8")
         recommendation = {
             "config": destination.relative_to(root).as_posix(),
