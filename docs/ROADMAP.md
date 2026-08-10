@@ -1,12 +1,12 @@
 # Roadmap
 
-## Where things stand — v0.10.15
+## Where things stand — v0.10.16
 
 The pipeline is complete and measured: import → validate → tokenize →
 train → generate → benchmark, all running locally. The list below is the
 honest state and the order I plan to work in.
 
-### Done (v0.10.1 → v0.10.15)
+### Done (v0.10.1 → v0.10.16)
 
 **Corpus & data**
 - licensed Godot corpus (local + cataloged), registry fetch covering
@@ -65,4 +65,4 @@ honest state and the order I plan to work in.
 8. **Scale** — bigger context, longer training, a larger model only once
    the small one stops improving.
 
-Per-version detail lives in the [changelog](CHANGELOG_v0.10.15.md).
+Per-version detail lives in the [changelog](CHANGELOG_v0.10.16.md).
