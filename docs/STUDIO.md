@@ -1,4 +1,4 @@
-# Godot Coder Studio v0.10.23
+# Godot Coder Studio v0.10.24
 
 The Studio continues to run locally on `127.0.0.1` and requires no cloud API. Optionally, Tailscale Serve provides a private HTTPS entry point within your own tailnet.
 

@@ -1,3 +1,16 @@
+## v0.10.24 (2026-08-11)
+
+The quality release: the chat gets a Stop button and a "generation
+stopped" badge, conversations are persistent sessions, and the
+deep-review backlog is fully closed (helper-file leak, path
+traversal, secret masking, GET side effects, verify hardening).
+The license is now Apache-2.0 with NOTICE for the separately-released
+weights. 694 tests.
+
+### Tests
+
+694 total.
+
 ## v0.10.23 (2026-08-11)
 
 The chat finally streams. Tokens arrive live instead of one finished

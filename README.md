@@ -36,6 +36,11 @@ I keep the full history in `CHANGELOG.md` (per-version detail in
 `docs/CHANGELOG_v0.10.x.md`), so here is just the short version - the last
 few releases in one breath:
 
+- **v0.10.24** - quality release: chat Stop button + "generation
+  stopped" badge, persistent chat sessions, deep-review backlog closed
+  (corpus helper-file leak, data-catalog path traversal, secret
+  masking, no-write GETs, verify hardening), Apache-2.0 license with
+  NOTICE. 694 tests.
 - **v0.10.23** - streaming release: chat tokens arrive live (KV-cache
   `generate_stream` + SSE worker thread, blinking caret, `done` event,
   disconnect-safe), the training workspace shows the loss live with a

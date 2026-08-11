@@ -46,8 +46,8 @@ python -m venv .venv
 - [**Architecture**](ARCHITECTURE.md) — pipeline and validation paths
 - [**Roadmap**](ROADMAP.md) — what's done and what's next
 - [**Configuration Reference**](CONFIG_REFERENCE.md) — every YAML key explained
-- [**Install Guide**](INSTALL_v0.10.16.md) — install/upgrade walkthrough
-- [**Changelog**](CHANGELOG_v0.10.16.md) — the release notes
+- [**Install Guide**](INSTALL_v0.10.24.md) — install/upgrade walkthrough
+- [**Changelog**](CHANGELOG_v0.10.24.md) — the release notes
 
 ## License
 
