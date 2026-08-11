@@ -1,6 +1,6 @@
 # Godot Coder AI
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 [![Godot](https://img.shields.io/badge/Godot-4.x-purple.svg)](https://godotengine.org)
 [![CI](https://github.com/IcyShadow5/godot-coder-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/IcyShadow5/godot-coder-ai/actions/workflows/ci.yml)
@@ -380,7 +380,7 @@ of the backends is present).
 
 ## License
 
-The code is MIT-licensed (see `LICENSE`). Two things stay separate from the code:
+The code is Apache-2.0-licensed (see `LICENSE`). Two things stay separate from the code:
 
 - **Corpus sources** keep their original licenses — always check before redistributing trained models. Local imports are marked `LicenseRef-User-Owned-Private` and are never redistributed.
 - **Trained model weights** are released separately, under their own terms — the code and the models are not the same license.

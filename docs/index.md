@@ -2,7 +2,7 @@
 
 A local training studio for building a compact Godot/GDScript language model from scratch — train your own GPT-style model that actually understands GDScript. No cloud, no API keys, everything runs on your machine.
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/IcyShadow5/godot-coder-ai/blob/main/LICENSE)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/IcyShadow5/godot-coder-ai/blob/main/LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://github.com/IcyShadow5/godot-coder-ai/blob/main/pyproject.toml)
 [![Godot](https://img.shields.io/badge/Godot-4.x-purple.svg)](https://godotengine.org)
 [![CI](https://github.com/IcyShadow5/godot-coder-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/IcyShadow5/godot-coder-ai/actions/workflows/ci.yml)
@@ -51,4 +51,4 @@ python -m venv .venv
 
 ## License
 
-The code is MIT-licensed. Corpus sources keep their original licenses — always check before redistributing trained models. Local imports are marked `LicenseRef-User-Owned-Private` and are never redistributed. **Trained model weights are released separately, under their own terms** — the code and the models are not the same license.
+The code is Apache-2.0-licensed. Corpus sources keep their original licenses — always check before redistributing trained models. Local imports are marked `LicenseRef-User-Owned-Private` and are never redistributed. **Trained model weights are released separately, under their own terms** — the code and the models are not the same license.

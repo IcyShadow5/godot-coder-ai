@@ -60,4 +60,4 @@ markdown_extensions:
 
 extra_css: []
 
-copyright: Copyright &copy; 2024–2026 IcyShadow5 &mdash; MIT licensed code; trained model weights released separately.
+copyright: Copyright &copy; 2024–2026 IcyShadow5 &mdash; Apache-2.0 licensed code; trained model weights released separately.
