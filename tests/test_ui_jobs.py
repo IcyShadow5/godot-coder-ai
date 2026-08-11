@@ -783,3 +783,61 @@ def test_spawn_process_sets_env_and_creation_flags(
     assert kwargs["stderr"] == jobs_module.subprocess.STDOUT
     if os.name == "nt":
         assert kwargs["creationflags"] & getattr(jobs_module.subprocess, "CREATE_NO_WINDOW", 0)
+
+
+def test_stop_writes_stop_file_and_child_sees_it(tmp_path: Path) -> None:
+    manager = JobManager(tmp_path)
+    script = (
+        "import os, time\n"
+        "print(os.environ.get('GODOT_CODER_STOP_FILE', ''), flush=True)\n"
+        "time.sleep(30)\n"
+    )
+    started = manager.start("test-kind", ["-c", script])
+    job_id = started["id"]
+    stop_path = tmp_path / "reports" / "studio_jobs" / f"{job_id}.stop"
+    # The stop file exists only after stop() asks for a graceful shutdown.
+    assert not stop_path.exists()
+    # stop() returns early while the child process is not spawned yet, so
+    # wait for the run to be live first (same pattern as the busy test).
+    deadline = time.time() + 8
+    while time.time() < deadline:
+        snapshot = manager.current()
+        if snapshot and snapshot["status"] == "running":
+            break
+        time.sleep(0.03)
+    manager.stop()
+    assert stop_path.exists()
+    assert stop_path.read_text(encoding="utf-8") == "stop"
+    snapshot = _wait_for_terminal(manager)
+    assert snapshot["status"] == "stopped"
+    logs = "\n".join(snapshot["logs"])
+    assert str(stop_path) in logs  # the child received the path via the env
+
+
+def test_interrupted_event_updates_progress_state(tmp_path: Path) -> None:
+    manager = JobManager(tmp_path)
+    job = _make_job(tmp_path)
+    manager._append_event(job, {
+        "schema": "godot-coder-progress-event",
+        "schema_version": 1,
+        "event": "interrupted",
+        "job_id": job.id,
+        "interrupted_step": 42,
+        "interrupted_checkpoint": "checkpoints/v06/step_00000042.pt",
+        "timestamp": "2026-01-01T00:00:00Z",
+    })
+    state = job.snapshot()["progress_state"]
+    assert state["interrupted_step"] == 42
+    assert state["interrupted_checkpoint"] == "checkpoints/v06/step_00000042.pt"
+
+
+def test_start_accepts_initial_progress(tmp_path: Path) -> None:
+    manager = JobManager(tmp_path)
+    started = manager.start(
+        "test-kind",
+        ["-c", "print('hi', flush=True)"],
+        initial_progress={"resume_step": 5, "resumed_from": "checkpoints/v06/latest.pt"},
+    )
+    assert started["progress_state"]["resume_step"] == 5
+    assert started["progress_state"]["resumed_from"] == "checkpoints/v06/latest.pt"
+    _wait_for_terminal(manager)

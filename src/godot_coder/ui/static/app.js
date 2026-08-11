@@ -1231,6 +1231,23 @@ async function probeProfiles() {
   } catch (error) { toast(error.message, "error"); }
 }
 
+function updateResumeBanner(job) {
+  // After an interrupted run the trainer saved a resume checkpoint; offer
+  // continuing from it instead of making the user hunt for the file.
+  const banner = $("#training-resume-banner");
+  if (!banner) return;
+  const interrupted = job?.progress_state?.interrupted_step
+    ? { step: job.progress_state.interrupted_step, checkpoint: job.progress_state.interrupted_checkpoint }
+    : (state.trainingReports || []).find((report) => report?.status === "stopped" && Number(report?.last_step) > 0);
+  if (!interrupted) { banner.hidden = true; return; }
+  const target = interrupted.checkpoint
+    || state.checkpoints.find((item) => item.kind === "latest")?.path
+    || state.checkpoints.find((item) => item.kind === "best")?.path;
+  $("#training-resume-text").textContent = `Training stopped at step ${interrupted.step} - a checkpoint was saved.`;
+  if (target) $("#training-resume").value = target;
+  banner.hidden = false;
+}
+
 async function startTraining() {
   const config = $("#training-config").value;
   if (!config) return toast("No configuration selected.", "error");
@@ -1319,8 +1336,10 @@ function renderJob(job) {
   const pill = $("#job-pill");
   pill.classList.toggle("running", active);
   pill.classList.toggle("failed", job?.status === "failed");
-  $("#job-pill-text").textContent = !job ? "Ready" : `${friendlyJobLabel(job.kind)} · ${projectStatusLabel(job.status)}`;
+  const resumeNote = job?.progress_state?.resume_step ? ` · resume from step ${job.progress_state.resume_step}` : "";
+  $("#job-pill-text").textContent = !job ? "Ready" : `${friendlyJobLabel(job.kind)} · ${projectStatusLabel(job.status)}${resumeNote}`;
   renderWorkflowSteps(job);
+  updateResumeBanner(job);
   renderProfessionalRun(job);
   renderLocalProgress(job);
   renderLog(job);
@@ -1522,6 +1541,7 @@ function bindEvents() {
     if (event.ctrlKey && event.key === "Enter") { event.preventDefault(); generate(); }
   });
   $("#clear-chat").addEventListener("click", clearChat);
+  $("#training-resume-now")?.addEventListener("click", () => startTraining());
   $("#validate-last").addEventListener("click", () => validateCode(state.lastGenerated));
   $("#save-last").addEventListener("click", () => openNewFileModal("generated"));
   $("#start-training").addEventListener("click", startTraining);

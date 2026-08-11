@@ -277,3 +277,19 @@ def test_evaluate_sliding_mode_runs_with_stride() -> None:
         lambda: torch.no_grad(),
     )
     assert loss > 0
+
+
+def test_interrupt_requested_detects_stop_file(tmp_path: Path) -> None:
+    assert train._interrupt_requested(None) is False
+    assert train._interrupt_requested(str(tmp_path / "missing.stop")) is False
+    stop = tmp_path / "job.stop"
+    stop.write_text("stop", encoding="utf-8")
+    assert train._interrupt_requested(str(stop)) is True
+
+
+def test_interrupt_flag_set_by_signal_handler() -> None:
+    train._interrupt_flag.clear()
+    assert train._interrupt_requested(None) is False
+    train._interrupt_flag.set()
+    assert train._interrupt_requested(None) is True
+    train._interrupt_flag.clear()

@@ -171,6 +171,10 @@ class JobManager:
         job_id = job if isinstance(job, str) else job.id
         return self.state_dir / f"{job_id}.log.jsonl"
 
+    def _stop_file_path(self, job: Job | str) -> Path:
+        job_id = job if isinstance(job, str) else job.id
+        return self.state_dir / f"{job_id}.stop"
+
     def _load_history(self) -> None:
         snapshots: list[tuple[float, Job]] = []
         for path in self.state_dir.glob("*.snapshot.json"):
@@ -228,11 +232,19 @@ class JobManager:
         *,
         max_steps: int | None = None,
         extra_env: Mapping[str, str] | None = None,
+        initial_progress: Mapping[str, Any] | None = None,
     ) -> dict[str, object]:
         with self._lock:
             if self.is_busy():
                 raise RuntimeError("another studio task is already running")
             command = [sys.executable, "-u", *args]
+            progress_state: dict[str, Any] = {
+                "schema_version": EVENT_SCHEMA_VERSION,
+                "job_status": "starting",
+                "projects": [],
+            }
+            if initial_progress:
+                progress_state.update(initial_progress)
             job = Job(
                 id=uuid.uuid4().hex[:12],
                 kind=kind,
@@ -240,12 +252,14 @@ class JobManager:
                 cwd=str(self.project_root),
                 max_steps=max_steps,
                 extra_env=dict(extra_env or {}),
-                progress_state={
-                    "schema_version": EVENT_SCHEMA_VERSION,
-                    "job_status": "starting",
-                    "projects": [],
-                },
+                progress_state=progress_state,
             )
+            # The stop file is the cross-platform graceful-stop signal: the
+            # trainer polls it between steps and saves a resume checkpoint
+            # before exiting, so a Studio stop never loses more than a step.
+            stop_path = self._stop_file_path(job)
+            stop_path.unlink(missing_ok=True)
+            job.extra_env["GODOT_CODER_STOP_FILE"] = str(stop_path)
             self._current = job
             self._history.append(job)
             self._persist_snapshot(job)
@@ -260,6 +274,10 @@ class JobManager:
                 return job.snapshot() if job else None
             job.status = "stopping"
             job.progress_state["job_status"] = "stopping"
+            try:
+                self._stop_file_path(job).write_text("stop", encoding="utf-8")
+            except OSError:
+                pass  # A read-only state dir must not block the stop itself
             self._persist_snapshot(job)
             process = job.process
         self._terminate_tree(process)
@@ -392,6 +410,7 @@ class JobManager:
             "bytes_received", "bytes_total", "source_name", "source_url", "eta_status",
             "validation_mode", "validation_fallback", "validation_infrastructure_failure",
             "parser_checked_files", "parser_failed_files", "phase_elapsed_seconds", "accepted",
+            "interrupted_step", "interrupted_checkpoint", "resume_step", "resumed_from",
         ):
             if key in event and event[key] is not None:
                 state[key] = event[key]

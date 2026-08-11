@@ -4,7 +4,10 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import random
+import signal
+import threading
 import time
 import uuid
 import warnings
@@ -41,6 +44,29 @@ def set_seeds(seed: int) -> None:
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
+
+
+_interrupt_flag = threading.Event()
+
+
+def _request_interrupt(signum: int, frame: Any) -> None:
+    """Signal handler: ask the training loop to stop after the current step."""
+    _interrupt_flag.set()
+
+
+def install_interrupt_handlers() -> None:
+    """Register the graceful-stop handler where the platform supports it.
+
+    Windows cannot deliver SIGTERM to a subprocess reliably, so the Studio
+    also writes a stop file (GODOT_CODER_STOP_FILE); the file poll is the
+    cross-platform path, the signal handler is the POSIX fast path.
+    """
+    if hasattr(signal, "SIGTERM"):
+        signal.signal(signal.SIGTERM, _request_interrupt)
+
+
+def _interrupt_requested(stop_file: str | None) -> bool:
+    return _interrupt_flag.is_set() or (stop_file is not None and Path(stop_file).exists())
 
 
 def learning_rate(step: int, config: TrainConfig, max_steps: int) -> float:
@@ -382,6 +408,33 @@ def main() -> None:
     # structured train_loss event that the JobManager turns into the loss
     # history the UI renders while the run is still going.
     progress = ProgressEmitter()
+    install_interrupt_handlers()
+    stop_file = os.environ.get("GODOT_CODER_STOP_FILE")
+
+    def save_interrupt_checkpoint(save_step: int) -> Path:
+        """Save the current state so a stopped run can resume from here.
+
+        keep_last=0 keeps every saved step and updates the latest alias,
+        so the Studio's resume selector sees the checkpoint immediately.
+        """
+        started = time.perf_counter()
+        saved = save_checkpoint(
+            output_dir,
+            step=save_step,
+            model=raw_model,
+            optimizer=optimizer,
+            scaler=scaler,
+            model_config=model_config.to_dict(),
+            train_config=train_config.to_dict(),
+            tokenizer_fingerprint=tokenizer.fingerprint(),
+            best_val_loss=best_val_loss,
+            best_step=best_step,
+            data_rng_state={"train": train_rng.bit_generator.state, "eval": eval_rng.bit_generator.state},
+            is_best=False,
+            keep_last=0,
+        )
+        print(f"INTERRUPT_CHECKPOINT saved: {project_relative(saved, project_root)} seconds={time.perf_counter() - started:.2f}")
+        return saved
 
     model.train()
     prefetcher = BatchPrefetcher(train_stream, train_config.batch_size, model_config.max_seq_len, train_rng, train_config.prefetch_batches > 0)
@@ -429,6 +482,19 @@ def main() -> None:
                 gradient_norm=round(float(gradient_norm), 4),
                 tokens_per_second=round(tokens_per_optimizer_step / max(elapsed, 1e-9), 1),
             )
+            if _interrupt_requested(stop_file):
+                status = "stopped"
+                error_message = "Training interrupted by stop request"
+                try:
+                    interrupted_path = save_interrupt_checkpoint(last_step_completed)
+                    progress.emit(
+                        "interrupted",
+                        interrupted_step=last_step_completed,
+                        interrupted_checkpoint=project_relative(interrupted_path, project_root),
+                    )
+                except Exception:
+                    pass  # A failed emergency save must not mask the stop
+                break
             should_log = interval_steps >= train_config.log_interval or step + 1 == max_steps
             should_eval = (step + 1) % eval_interval_steps == 0 or step + 1 == max_steps
             if should_log:
@@ -487,6 +553,10 @@ def main() -> None:
     except KeyboardInterrupt:
         status = "stopped"
         error_message = "Training interrupted by user"
+        try:
+            save_interrupt_checkpoint(last_step_completed)
+        except Exception:
+            pass  # A failed emergency save must not mask the interrupt
     except Exception as exc:
         status = "failed"
         error_message = f"{type(exc).__name__}: {exc}"

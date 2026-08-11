@@ -6,6 +6,7 @@ from typing import Any
 import yaml
 from fastapi import APIRouter, FastAPI, HTTPException
 
+from ...checkpoint import load_checkpoint
 from ...config import load_config
 from ...corpus_audit import build_preflight
 from ..paths import safe_child
@@ -82,11 +83,18 @@ def build_training_router(app: FastAPI) -> APIRouter:
             max_steps = int(raw.get("train", {}).get("max_steps") or 0) or None
             await asyncio.to_thread(app.state.generation.unload)
             args = ["-m", "godot_coder.train", "--config", str(config_path)]
+            initial_progress: dict[str, Any] | None = None
             if request.resume:
                 resume = safe_child(root, request.resume, must_exist=True)
                 resume.relative_to((root / "checkpoints").resolve())
                 args.extend(["--resume", str(resume)])
-            return app.state.jobs.start("training", args, max_steps=max_steps)
+                initial_progress = {"resumed_from": relative_posix(resume, root)}
+                try:
+                    peek = load_checkpoint(resume, map_location="cpu")
+                    initial_progress["resume_step"] = int(peek.get("step") or 0)
+                except Exception:
+                    pass  # A failed peek must not block resuming the run
+            return app.state.jobs.start("training", args, max_steps=max_steps, initial_progress=initial_progress)
         except (ValueError, FileNotFoundError, RuntimeError, yaml.YAMLError) as exc:
             raise HTTPException(status_code=400 if not isinstance(exc, RuntimeError) else 409, detail=str(exc)) from exc
 

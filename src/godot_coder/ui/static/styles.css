@@ -126,6 +126,9 @@ h1 { margin: 4px 0 0; font-size: 25px; letter-spacing: -.035em; }
 .context-tokens { flex: 0 0 90px; text-align: right; color: var(--muted); }
 .context-warning { margin-top: 7px; padding: 6px 8px; border-radius: 8px; background: rgba(255,193,7,.08); border: 1px solid rgba(255,193,7,.25); color: #ffd57a; }
 .context-note { margin-top: 6px; color: var(--muted); }
+.resume-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: rgba(255,193,7,.07); border: 1px solid rgba(255,193,7,.25); }
+.resume-banner[hidden] { display: none; }
+.resume-banner-text { color: #ffd57a; font-size: 12px; line-height: 1.45; }
 .prompt-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 13px; }
 .composer-wrap { border: 1px solid rgba(120,217,255,.18); border-radius: 18px; background: rgba(2,13,24,.75); box-shadow: 0 -12px 40px rgba(2,9,17,.24), inset 0 1px rgba(255,255,255,.025); }
 .composer-wrap textarea { width: 100%; resize: none; border: 0; outline: 0; padding: 15px 16px 8px; color: var(--text); background: transparent; font-family: "Cascadia Code", Consolas, monospace; font-size: 13px; line-height: 1.5; }

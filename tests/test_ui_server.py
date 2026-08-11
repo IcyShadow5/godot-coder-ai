@@ -209,7 +209,7 @@ def test_train_endpoint_accepts_config_with_null_max_steps(tmp_path: Path, monke
     monkeypatch.setattr("godot_coder.ui.routers.training.build_preflight", lambda *a, **k: {"can_start": True})
     started: dict[str, object] = {}
 
-    def fake_start(kind, args, *, max_steps=None, extra_env=None):
+    def fake_start(kind, args, *, max_steps=None, extra_env=None, initial_progress=None):
         started["kind"] = kind
         started["max_steps"] = max_steps
         return {"id": "fake", "kind": kind, "status": "starting"}
@@ -249,7 +249,7 @@ def test_train_endpoint_passes_explicit_max_steps_through(tmp_path: Path, monkey
     monkeypatch.setattr("godot_coder.ui.routers.training.build_preflight", lambda *a, **k: {"can_start": True})
     started: dict[str, object] = {}
 
-    def fake_start(kind, args, *, max_steps=None, extra_env=None):
+    def fake_start(kind, args, *, max_steps=None, extra_env=None, initial_progress=None):
         started["kind"] = kind
         started["max_steps"] = max_steps
         return {"id": "fake", "kind": kind, "status": "starting"}

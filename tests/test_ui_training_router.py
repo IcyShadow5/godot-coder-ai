@@ -61,7 +61,7 @@ class FakeJobs:
     def stop(self) -> None:
         """Lifespan teardown calls this; nothing is running."""
 
-    def start(self, kind, args, *, max_steps=None, extra_env=None):
+    def start(self, kind, args, *, max_steps=None, extra_env=None, initial_progress=None):
         if self._busy:
             raise RuntimeError("another studio task is already running")
         self.starts.append(
@@ -70,6 +70,7 @@ class FakeJobs:
                 "args": list(args),
                 "max_steps": max_steps,
                 "extra_env": dict(extra_env or {}),
+                "initial_progress": initial_progress,
             }
         )
         return {"id": "fake-job", "kind": kind, "status": "running"}
@@ -178,6 +179,10 @@ def test_start_training_appends_resume_checkpoint(tmp_path: Path, monkeypatch) -
     assert len(jobs.starts) == 1
     call = jobs.starts[0]
     assert call["args"][-2:] == ["--resume", str(tmp_path / "checkpoints" / "best.pt")]
+    assert call["initial_progress"]["resumed_from"] == "checkpoints/best.pt"
+    # Der Fake-Checkpoint ist kein echtes .pt -> Peek schlaegt fehl, der Run
+    # darf davon aber nicht blockiert werden (nur resumed_from, kein step).
+    assert "resume_step" not in call["initial_progress"]
 
 
 def test_start_training_rejects_resume_outside_checkpoints(tmp_path: Path, monkeypatch) -> None:
@@ -298,3 +303,25 @@ def test_start_hardware_probe_409_when_busy(tmp_path: Path, monkeypatch) -> None
     assert response.status_code == 409
     assert "already running" in response.json()["detail"]
     assert jobs.starts == []
+
+
+def test_start_training_resume_surfaces_step(tmp_path: Path, monkeypatch) -> None:
+    app, jobs, gen = _make_app(tmp_path, monkeypatch)
+    checkpoint_root = tmp_path / "checkpoints" / "v06"
+    checkpoint_root.mkdir(parents=True)
+    checkpoint = checkpoint_root / "step_00000005.pt"
+    checkpoint.write_bytes(b"dummy")
+    monkeypatch.setattr(
+        "godot_coder.ui.routers.training.load_checkpoint",
+        lambda path, map_location: {"step": 5, "best_val_loss": 1.2},
+    )
+    with _client(app) as client:
+        response = client.post(
+            "/api/jobs/train",
+            json={"config": "configs/night.yaml", "resume": "checkpoints/v06/step_00000005.pt"},
+        )
+    assert response.status_code == 200, response.text
+    call = jobs.starts[-1]
+    assert "--resume" in call["args"]
+    assert call["initial_progress"]["resume_step"] == 5
+    assert call["initial_progress"]["resumed_from"] == "checkpoints/v06/step_00000005.pt"
