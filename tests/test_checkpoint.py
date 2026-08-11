@@ -215,3 +215,23 @@ def test_checkpoint_rejects_untrusted_globals(tmp_path: Path) -> None:
     torch.save(payload, path)
     with pytest.raises(pickle.UnpicklingError):
         load_checkpoint(path)
+
+
+def test_restore_rng_state_handles_loaded_checkpoint_on_any_device(tmp_path: Path) -> None:
+    """A checkpoint loaded with map_location=cuda puts the CPU RNG state on
+    CUDA; restore_rng_state must still coerce it back to a CPU ByteTensor
+    instead of crashing like torch.set_rng_state would on a CUDA tensor."""
+    state = capture_rng_state()
+    if torch.cuda.is_available():
+        state["torch"] = state["torch"].cuda()
+    restore_rng_state(state)
+    # The CPU generator must have accepted the (possibly CUDA-placed) state.
+    torch.randn(1)
+
+
+def test_restore_rng_state_accepts_legacy_list_torch_state() -> None:
+    """Older checkpoints stored the torch RNG state as a plain list of ints."""
+    state = capture_rng_state()
+    state["torch"] = state["torch"].tolist()
+    restore_rng_state(state)
+    torch.randn(1)

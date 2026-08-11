@@ -31,9 +31,22 @@ def capture_rng_state() -> dict[str, Any]:
 def restore_rng_state(state: dict[str, Any]) -> None:
     random.setstate(state["python"])
     np.random.set_state(_coerce_numpy_state(state["numpy"]))
-    torch.set_rng_state(state["torch"])
+    torch_state = state["torch"]
+    if isinstance(torch_state, torch.Tensor):
+        # Resuming loads the whole checkpoint with map_location=device, which
+        # puts the CPU RNG state on CUDA. torch.set_rng_state only accepts a
+        # CPU ByteTensor, so bring it back home first.
+        torch_state = torch_state.detach().cpu()
+    else:
+        # Legacy checkpoints kept the torch state as a plain list of ints.
+        torch_state = torch.tensor(torch_state, dtype=torch.uint8)
+    torch.set_rng_state(torch_state)
     if torch.cuda.is_available() and "cuda" in state:
-        torch.cuda.set_rng_state_all(state["cuda"])
+        # Same story as the CPU state: set_rng_state_all expects CPU ByteTensors
+        # and copies them over lazily, so a map_location=cuda load must be
+        # brought back to CPU first.
+        cuda_states = [s.detach().cpu() if isinstance(s, torch.Tensor) else s for s in state["cuda"]]
+        torch.cuda.set_rng_state_all(cuda_states)
 
 
 def _rng_state_to_primitives(state: dict[str, Any]) -> dict[str, Any]:
