@@ -28,11 +28,19 @@ class GenerateRequest(BaseModel):
     task_format: bool = False
     # Refuse calls whose context would exceed the window instead of trimming.
     strict_context: bool = False
+    # When set, the turn is persisted into this chat session (JSONL under
+    # reports/chat/). The session is created lazily on first use, so an
+    # empty draft never touches the disk.
+    session_id: str | None = None
 
 
 class ValidateRequest(BaseModel):
     code: str
     project: str = "data/raw/seed_project"
+    # When set, the check result is attached to the last assistant
+    # message of this session so the history shows whether the
+    # completion parsed (badges on reload).
+    session_id: str | None = None
 
 
 class FileWriteRequest(BaseModel):

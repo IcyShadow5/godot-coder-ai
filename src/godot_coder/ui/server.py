@@ -12,6 +12,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .. import __version__
 from ..remote_access import RemoteAccessManager
+from ..chat_store import ChatStore
 from .jobs import JobManager
 from .routers import (
     build_chat_router,
@@ -127,6 +128,7 @@ def create_app(project_root: Path) -> FastAPI:
     app.state.project_root = root
     app.state.jobs = JobManager(root)
     app.state.generation = GenerationService(root)
+    app.state.chat_store = ChatStore(root)
     app.state.remote_access = RemoteAccessManager(root)
 
     # Pure ASGI middleware: avoids BaseHTTPMiddleware Content-Length bug

@@ -10,6 +10,8 @@ const state = {
   currentFileOriginal: "",
   lastGenerated: "",
   lastPrompt: "",
+  chatSessionId: "",
+  chatSessions: [],
   currentJob: null,
   curriculum: null,
   corpus: null,
@@ -1097,6 +1099,7 @@ async function generate() {
       body: JSON.stringify({
         checkpoint: state.activeCheckpoint,
         prompt,
+        session_id: state.chatSessionId || null,
         task_format: useTaskFormat,
         max_new_tokens: Number($("#max-tokens").value),
         temperature: Number($("#temperature").value),
@@ -1151,6 +1154,7 @@ async function generate() {
     setupMessageTools(msg, result);
     $("#validate-last").disabled = false;
     $("#save-last").disabled = false;
+    refreshChatSessions();
   } catch (error) {
     if (loading.parentNode) loading.remove();
     toast(`Generation failed: ${error.message}`, "error", 7000);
@@ -1188,7 +1192,7 @@ function setValidationState(result) {
 async function validateCode(code, options = {}) {
   if (!code) return toast("No code to check.", "error");
   try {
-    const result = await api("/api/chat/validate", { method: "POST", body: JSON.stringify({ code }) });
+    const result = await api("/api/chat/validate", { method: "POST", body: JSON.stringify({ code, session_id: state.chatSessionId || null }) });
     setValidationState(result);
     toast(result.passed ? "Godot parser passed." : result.timed_out ? "Godot check timed out - the process tree was cleaned up." : "Godot found a parser error.", result.passed ? "info" : "error", 5500);
     if (!result.passed && result.output) addMessage("assistant", result.output, { code: true });
@@ -1219,6 +1223,137 @@ function clearChat() {
   $("#validate-last").disabled = true;
   $("#save-last").disabled = true;
   setValidationState(null);
+  // A new conversation: the server only materializes the session
+  // once the first real message of it arrives.
+  state.chatSessionId = newChatSessionId();
+  refreshChatSessions();
+}
+
+function newChatSessionId() {
+  return crypto.randomUUID ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+async function loadChatHistory() {
+  // Restore the most recently touched conversation after a refresh.
+  try {
+    const payload = await api("/api/chat/sessions");
+    state.chatSessions = payload.sessions || [];
+    if (!state.chatSessions.length) {
+      state.chatSessionId = newChatSessionId();
+      renderChatSessions();
+      return;
+    }
+    const last = state.chatSessions[state.chatSessions.length - 1];
+    state.chatSessionId = last.id;
+    const detail = await api(`/api/chat/sessions/${encodeURIComponent(last.id)}`);
+    renderStoredMessages(detail.messages || []);
+    renderChatSessions();
+  } catch (error) {
+    // History is best-effort: without it the chat still works.
+    state.chatSessionId = newChatSessionId();
+  }
+}
+
+async function refreshChatSessions() {
+  try {
+    const payload = await api("/api/chat/sessions");
+    state.chatSessions = payload.sessions || [];
+    renderChatSessions();
+  } catch { /* best-effort, same as load */ }
+}
+
+async function switchChatSession(id) {
+  if (id === state.chatSessionId) return;
+  try {
+    const detail = await api(`/api/chat/sessions/${encodeURIComponent(id)}`);
+    state.chatSessionId = id;
+    $$("#chat-feed .message:not(.intro-message)").forEach((item) => item.remove());
+    renderStoredMessages(detail.messages || []);
+    renderChatSessions();
+  } catch (error) { toast(error.message, "error"); }
+}
+
+async function deleteChatSession(id) {
+  try {
+    await api(`/api/chat/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (state.chatSessionId === id) {
+      state.chatSessionId = newChatSessionId();
+      $$("#chat-feed .message:not(.intro-message)").forEach((item) => item.remove());
+    }
+    await refreshChatSessions();
+  } catch (error) { toast(error.message, "error"); }
+}
+
+function renderStoredMessages(messages) {
+  // Rebuild the feed from a persisted session, including the context
+  // panel and the validation badge the message originally carried.
+  for (const record of messages) {
+    const role = record.role === "user" ? "user" : "assistant";
+    const msg = addMessage(role, record.content || "", { code: true, skipTools: role === "user" });
+    if (role === "assistant") {
+      setupMessageTools(msg, record.content || "");
+      if (record.context) renderContextPanel(msg, record.context);
+      if (record.validation) {
+        const meta = msg.querySelector(".message-meta");
+        if (meta) {
+          const badge = document.createElement("span");
+          badge.className = `session-validation ${record.validation.passed ? "passed" : "failed"}`;
+          badge.textContent = record.validation.passed ? "✓ parsed" : "✗ parse failed";
+          meta.appendChild(badge);
+        }
+      }
+    }
+  }
+  // The global Check-with-Godot / Save buttons act on the newest completion,
+  // so restore them the same way a live generation does.
+  const lastAssistant = [...messages].reverse().find((record) => record.role === "assistant");
+  if (lastAssistant && lastAssistant.content) {
+    state.lastGenerated = lastAssistant.content;
+    state.lastPrompt = [...messages].reverse().find((record) => record.role === "user")?.content || "";
+    $("#validate-last").disabled = false;
+    $("#save-last").disabled = false;
+  }
+  $("#chat-feed").scrollTop = $("#chat-feed").scrollHeight;
+}
+
+function renderChatSessions() {
+  const list = $("#chat-sessions");
+  if (!list) return;
+  list.innerHTML = "";
+  const toggle = document.createElement("button");
+  toggle.className = "chat-sessions-toggle";
+  toggle.textContent = `Conversations (${state.chatSessions.length})`;
+  toggle.addEventListener("click", () => list.classList.toggle("open"));
+  list.appendChild(toggle);
+  const items = document.createElement("div");
+  items.className = "chat-sessions-items";
+  for (const session of state.chatSessions) {
+    const item = document.createElement("button");
+    item.className = `chat-session-item${session.id === state.chatSessionId ? " active" : ""}`;
+    const title = document.createElement("span");
+    title.className = "chat-session-title";
+    title.textContent = session.title || "New conversation";
+    title.title = session.title || "";
+    const meta = document.createElement("small");
+    meta.textContent = `${session.message_count} msgs`;
+    item.append(title, meta);
+    item.addEventListener("click", () => switchChatSession(session.id));
+    const del = document.createElement("span");
+    del.className = "chat-session-delete";
+    del.textContent = "\u00d7";
+    del.title = "Delete conversation";
+    del.addEventListener("click", (event) => { event.stopPropagation(); deleteChatSession(session.id); });
+    item.appendChild(del);
+    items.appendChild(item);
+  }
+  if (!state.chatSessions.length) {
+    const empty = document.createElement("div");
+    empty.className = "chat-sessions-empty";
+    empty.textContent = "No saved conversations yet - they persist across refreshes.";
+    items.appendChild(empty);
+  }
+  list.appendChild(items);
 }
 
 async function probeProfiles() {
@@ -1730,6 +1865,7 @@ async function init() {
   window.addEventListener("online", updateNetworkState);
   window.addEventListener("offline", updateNetworkState);
   await refreshAll();
+  await loadChatHistory();
   setInterval(pollJob, 900);
   setInterval(() => refreshRemote(false), 15000);
   setInterval(() => { if ($("#view-data")?.classList.contains("active") && !document.hidden) refreshDataCatalog(false); }, 2500);
