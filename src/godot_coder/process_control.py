@@ -9,6 +9,7 @@ import subprocess
 import threading
 import time
 import warnings
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
@@ -626,7 +627,7 @@ def run_managed_process(
 
     reader = threading.Thread(target=_read_output, daemon=True)
     reader.start()
-    output_parts: list[str] = []
+    output_parts: deque[str] = deque()
     output_chars = 0
     last_line: str | None = None
     reader_finished = False
@@ -679,7 +680,9 @@ def run_managed_process(
             output_parts.append(line)
             output_chars += encoded_length
             while output_parts and output_chars > max_output_chars:
-                removed = output_parts.pop(0)
+                # popleft instead of pop(0): the cap can eat thousands of
+                # tiny lines, and list.pop(0) would make that O(n^2).
+                removed = output_parts.popleft()
                 output_chars -= len(removed) + 1
             if on_line is not None:
                 on_line(line)

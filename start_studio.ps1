@@ -1,8 +1,12 @@
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
-$python = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
-if (-not (Test-Path $python)) {
-    throw ".venv was not found. Create the virtual environment first and install the project."
+$venvPython = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
+if (Test-Path $venvPython) {
+    $python = $venvPython
+} else {
+    $python = "python"
+    $env:PYTHONPATH = Join-Path $PSScriptRoot "src"
+    Write-Host "[Godot Coder Studio] .venv not found - using system python with PYTHONPATH=src"
 }
 
 # Single instance: refuse to start a second Studio on the same port.

@@ -12,6 +12,7 @@ from .config import ModelConfig
 from .model import TinyGPT
 from .project import find_project_root, resolve_project_path
 from .runtime import resolve_device
+from .sampling import DEFAULT_REPETITION_PENALTY, DEFAULT_TEMPERATURE, DEFAULT_TOP_K, DEFAULT_TOP_P
 from .tokenizer import load_tokenizer
 
 
@@ -22,10 +23,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--prompt", default="extends Node\n\n")
     parser.add_argument("--prompt-file", default=None)
     parser.add_argument("--max-new-tokens", type=int, default=300)
-    parser.add_argument("--temperature", type=float, default=0.8)
-    parser.add_argument("--top-k", type=int, default=40)
-    parser.add_argument("--top-p", type=float, default=None)
-    parser.add_argument("--repetition-penalty", type=float, default=1.15)
+    parser.add_argument("--temperature", type=float, default=DEFAULT_TEMPERATURE)
+    parser.add_argument("--top-k", type=int, default=DEFAULT_TOP_K)
+    parser.add_argument("--top-p", type=float, default=DEFAULT_TOP_P)
+    parser.add_argument("--repetition-penalty", type=float, default=DEFAULT_REPETITION_PENALTY)
     parser.add_argument("--output", default=None)
     parser.add_argument("--suffix-only", action="store_true", help="Print/write only tokens generated after the prompt")
     parser.add_argument("--device", default="auto")

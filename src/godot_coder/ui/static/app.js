@@ -443,8 +443,34 @@ function renderProfessionalRun(job) {
     const val = summary.final_val_loss == null ? "–" : Number(summary.final_val_loss).toFixed(4);
     $("#professional-run-detail").textContent = `${formatNumber(summary.run_steps_completed || 0)} steps · ${formatNumber(speed)} tok/s · ${peak} GiB peak · Val ${val}`;
   } else {
-    $("#professional-run-detail").textContent = job.step && job.max_steps ? `Step ${formatNumber(job.step)} of ${formatNumber(job.max_steps)}` : "Status updates live.";
+    const loss = job.progress_state?.current_loss;
+    const lossText = loss == null ? "" : ` · Loss ${Number(loss).toFixed(4)}`;
+    $("#professional-run-detail").textContent = job.step && job.max_steps ? `Step ${formatNumber(job.step)} of ${formatNumber(job.max_steps)}${lossText}` : "Status updates live.";
   }
+  renderLossSamples(job);
+}
+
+function renderLossSamples(job) {
+  const box = $("#professional-loss");
+  if (!box) return;
+  const samples = (job?.progress_state?.loss_samples || []).filter((sample) => Number.isFinite(Number(sample.loss)));
+  if (!samples.length) { box.hidden = true; return; }
+  box.hidden = false;
+  const current = job?.progress_state?.current_loss;
+  $("#professional-loss-value").textContent = current == null ? "–" : Number(current).toFixed(4);
+  const recent = samples.slice(-60);
+  const losses = recent.map((sample) => Number(sample.loss));
+  const min = Math.min(...losses);
+  const max = Math.max(...losses);
+  const span = Math.max(1e-9, max - min);
+  const chart = $("#professional-loss-chart");
+  if (losses.length < 2) { chart.innerHTML = ""; return; }
+  const points = losses.map((value, index) => {
+    const x = (index / (losses.length - 1)) * 100;
+    const y = 100 - ((value - min) / span) * 100;
+    return `${x.toFixed(2)},${y.toFixed(2)}`;
+  }).join(" ");
+  chart.innerHTML = `<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polyline points="${points}" /></svg>`;
 }
 
 function profileProbeEntry(profileId) {
@@ -1057,27 +1083,31 @@ async function generate() {
     loading.remove();
     const msg = addMessage("assistant", "", { code: true, skipTools: true });
     const pre = msg.querySelector(".message-code");
+    pre.classList.add("streaming"); // blinking caret while tokens arrive
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-      for (const line of lines) {
-        if (!line.startsWith("data: ")) continue;
-        const payload = line.slice(6);
-        if (payload === "[DONE]") continue;
-        try {
-          const parsed = JSON.parse(payload);
-          if (parsed.token) pre.textContent += parsed.token;
-          if (parsed.error) { pre.textContent += `\n[Error: ${parsed.error}]`; break; }
-        } catch {}
+      // stream.js owns the SSE line splitting so the parsing stays testable.
+      const { events, rest } = GodotCoderStream.consumeStreamChunk(
+        buffer, decoder.decode(value, { stream: true }),
+      );
+      buffer = rest;
+      for (const parsed of events) {
+        if (parsed.token) pre.textContent += parsed.token;
+        if (parsed.done) {
+          // Stream finished: swap the raw streamed text for the cleaned
+          // completion (repetition loops collapsed) from the backend.
+          if (parsed.text) pre.textContent = parsed.text;
+          pre.classList.remove("streaming");
+        }
+        if (parsed.error) { pre.textContent += `\n[Error: ${parsed.error}]`; pre.classList.remove("streaming"); break; }
       }
       $("#chat-feed").scrollTop = $("#chat-feed").scrollHeight;
     }
+    pre.classList.remove("streaming");
     let result = pre.textContent;
     if (!result.trim()) {
       // The model hit its end-of-sequence token immediately. Show a hint

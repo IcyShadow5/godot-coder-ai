@@ -6,6 +6,7 @@ import pytest
 import torch
 
 import godot_coder.generate as generate
+from godot_coder.sampling import DEFAULT_REPETITION_PENALTY, DEFAULT_TEMPERATURE, DEFAULT_TOP_K, DEFAULT_TOP_P
 
 
 class _FakeTokenizer:
@@ -102,8 +103,11 @@ def test_parse_args_defaults(monkeypatch):
     assert args.checkpoint == "checkpoints/tiny/latest.pt"
     assert args.prompt == "extends Node\n\n"
     assert args.max_new_tokens == 300
-    assert args.temperature == 0.8
-    assert args.top_k == 40
+    # The CLI defaults are the central sampling profile, not local numbers.
+    assert args.temperature == DEFAULT_TEMPERATURE
+    assert args.top_k == DEFAULT_TOP_K
+    assert args.top_p == DEFAULT_TOP_P
+    assert args.repetition_penalty == DEFAULT_REPETITION_PENALTY
     assert args.output is None
     assert args.suffix_only is False
 

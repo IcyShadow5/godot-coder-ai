@@ -6,7 +6,7 @@ repetition penalty (Studio default 1.15, plus a slider) and optional nucleus
 completions. Measured on the golden suite, parser pass rate goes from
 2/30 (6.7 %) to 6/30 (20 %) with the new defaults - no retraining involved.
 Also fixes a latent checkpoint-resume crash on GPU (RNG state) that would
-have broken any continue-training run. 483 tests.
+have broken any continue-training run. 564 tests.
 
 ## Fresh install (from source)
 
@@ -52,7 +52,7 @@ tests/test_ui_server_stream.py      # extended: stream fake signature
 
 ## After upgrading
 
-- `python -m pytest -q` should report **483 passed**.
+- `python -m pytest -q` should report **564 passed**.
 - Restart the Studio so the server picks up the changed modules.
 - The service worker will refresh the Studio UI once (cache bumped to
   `v0.10.22-1`). If anything still looks stale, hard-refresh with

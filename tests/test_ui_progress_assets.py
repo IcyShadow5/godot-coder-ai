@@ -33,16 +33,19 @@ def test_html_progress_structure_has_unique_ids_and_script_order() -> None:
     }:
         assert required in parser.ids
     assert parser.scripts.index("/static/progress.js") < parser.scripts.index("/static/app.js")
+    # The stream parser must load before the chat code that uses it.
+    assert parser.scripts.index("/static/stream.js") < parser.scripts.index("/static/app.js")
 
 
 def test_javascript_syntax_and_ui_behavior_tests() -> None:
-    for script in (STATIC / "progress.js", STATIC / "app.js"):
+    for script in (STATIC / "progress.js", STATIC / "stream.js", STATIC / "app.js"):
         subprocess.run(["node", "--check", str(script)], check=True, capture_output=True, text=True)
-    result = subprocess.run(
-        ["node", str(ROOT / "tests" / "js_progress_test.cjs")],
-        check=True, capture_output=True, text=True,
-    )
-    assert "passed" in result.stdout
+    for test in ("js_progress_test.cjs", "js_stream_test.cjs"):
+        result = subprocess.run(
+            ["node", str(ROOT / "tests" / test)],
+            check=True, capture_output=True, text=True,
+        )
+        assert "passed" in result.stdout
 
 
 def test_responsive_and_status_css_is_present() -> None:

@@ -1,4 +1,5 @@
 import json
+import math
 from pathlib import Path
 
 from godot_coder.scale_plan import build_scale_plan
@@ -29,3 +30,21 @@ def test_scale_plan_selects_largest_active_corpus_manifest(tmp_path: Path) -> No
     report = build_scale_plan(tmp_path)
     assert report["current_train_tokens"] == 900
     assert report["manifest_path"] == "data/processed/corpus_v99/manifest.json"
+
+
+def test_scale_plan_uses_autotune_tokens_per_step(tmp_path: Path) -> None:
+    """The autotuner now reports tokens_per_step; the plan must use it instead
+    of falling back to the training report or the hardcoded default."""
+    manifest = tmp_path / "data" / "processed" / "corpus_v06" / "manifest.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(json.dumps({"train_tokens": 100_000}), encoding="utf-8")
+    autotune = tmp_path / "reports" / "hardware" / "autotune_latest.json"
+    autotune.parent.mkdir(parents=True)
+    autotune.write_text(
+        json.dumps({"recommendation": {"tokens_per_second": 20_000, "tokens_per_step": 2048}}),
+        encoding="utf-8",
+    )
+    report = build_scale_plan(tmp_path, passes=4.0)
+    assert report["effective_tokens_per_step"] == 2048
+    target = next(item for item in report["targets"] if item["target_unique_tokens"] == 20_000_000)
+    assert target["estimated_steps"] == math.ceil(80_000_000 / 2048)

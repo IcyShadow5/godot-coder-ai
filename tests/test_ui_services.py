@@ -7,6 +7,8 @@ import json
 import torch
 
 from godot_coder.process_control import ManagedProcessResult
+from godot_coder.sampling import DEFAULT_REPETITION_PENALTY, DEFAULT_TEMPERATURE, DEFAULT_TOP_K, DEFAULT_TOP_P
+from godot_coder.ui.schemas import GenerateRequest
 from godot_coder.ui.services import GenerationService, system_status, validate_code
 
 
@@ -71,6 +73,43 @@ def test_validate_code_reports_timeout_flag(tmp_path: Path, monkeypatch) -> None
     assert result["return_code"] is None
 
 
+def test_validate_code_records_real_duration(tmp_path: Path, monkeypatch) -> None:
+    """The parse metrics must carry the measured duration, not a fixed 30s."""
+    _seed_project(tmp_path)
+    monkeypatch.setattr("godot_coder.ui.services.find_godot", lambda: "fake-godot")
+    records: list[tuple[object, dict[str, object]]] = []
+
+    def fake_record(collector, event, /, **fields):
+        records.append((event, fields))
+        return None
+
+    monkeypatch.setattr("godot_coder.metrics.MetricsCollector.record", fake_record)
+    monkeypatch.setattr(
+        "godot_coder.ui.services.run_managed_process",
+        lambda command, **kwargs: ManagedProcessResult(
+            command=list(command),
+            return_code=0,
+            output="ok",
+            timed_out=False,
+            duration_seconds=3.7,
+            pid=1,
+            termination_attempted=False,
+        ),
+    )
+    validate_code(tmp_path, "extends Node\n")
+    assert records
+    assert records[0][1]["duration_seconds"] == 3.7
+
+
+def test_generate_request_defaults_follow_sampling() -> None:
+    """Studio chat defaults must come from sampling.py, not drift independently."""
+    request = GenerateRequest(checkpoint="x", prompt="p")
+    assert request.temperature == DEFAULT_TEMPERATURE
+    assert request.top_k == DEFAULT_TOP_K
+    assert request.top_p == DEFAULT_TOP_P
+    assert request.repetition_penalty == DEFAULT_REPETITION_PENALTY
+
+
 class _FakeTokenizer:
     vocab_size = 269
     eos_id = 0
@@ -102,9 +141,11 @@ class _FakeModel:
     def load_state_dict(self, state) -> None:
         pass
 
-    def generate(self, input_ids, **kwargs) -> torch.Tensor:
-        # Model returns the full sequence: 3 prompt tokens + 2 new tokens.
-        return torch.tensor([[10, 11, 12, 99, 100]])
+    def generate_stream(self, input_ids, **kwargs):
+        # The service only uses the streaming API now: 3 prompt tokens, then
+        # the two new completion tokens yielded one at a time.
+        yield torch.tensor([[99]])
+        yield torch.tensor([[100]])
 
 
 def test_generate_returns_only_completion_not_prompt(tmp_path: Path, monkeypatch) -> None:
@@ -146,6 +187,37 @@ def test_generate_returns_only_completion_not_prompt(tmp_path: Path, monkeypatch
     )
     assert text.startswith("extends Node")  # decode result from the fake tokenizer
     assert tokenizer.decoded_ids == [99, 100], "the prompt prefix must be stripped from the completion"
+
+
+def test_generate_stream_yields_deltas_then_done(tmp_path: Path, monkeypatch) -> None:
+    """The stream emits live deltas first, then a done event with the cleaned text."""
+    (tmp_path / "checkpoints" / "v06").mkdir(parents=True)
+    (tmp_path / "checkpoints" / "v06" / "best.pt").write_bytes(b"dummy")
+    monkeypatch.setattr("godot_coder.ui.services.load_checkpoint", lambda path, map_location: {
+        "train_config": {"tokenizer_path": "artifacts/tokenizer.json"},
+        "tokenizer_fingerprint": "fp-123",
+        "model_config": {"vocab_size": 269, "max_seq_len": 32, "n_layers": 1, "d_model": 32,
+                         "n_heads": 4, "d_ff": 64, "dropout": 0.0, "rope_base": 10000.0,
+                         "tie_embeddings": True, "gradient_checkpointing": False},
+        "model_state": {},
+    })
+    tokenizer = _FakeTokenizer()
+    monkeypatch.setattr("godot_coder.ui.services.load_tokenizer", lambda path: tokenizer)
+    monkeypatch.setattr("godot_coder.ui.services.TinyGPT", _FakeModel)
+    monkeypatch.setattr("godot_coder.ui.services.resolve_device", lambda name: torch.device("cpu"))
+
+    service = GenerationService(tmp_path)
+    events = list(service.generate_stream(
+        "checkpoints/v06/best.pt", "extends Node", max_new_tokens=16, temperature=0.8, top_k=40,
+    ))
+    tokens = [event["token"] for event in events if "token" in event]
+    done = [event for event in events if "done" in event][-1]
+    assert tokens  # at least one live delta was emitted
+    assert done["done"] is True
+    assert done["tokens"] == 2
+    assert done["text"].startswith("extends Node")
+    # Only the completion tokens were decoded, never the prompt prefix.
+    assert tokenizer.decoded_ids == [99, 100]
 
 
 def test_generate_accepts_temperature_and_top_k_bounds(tmp_path: Path, monkeypatch) -> None:

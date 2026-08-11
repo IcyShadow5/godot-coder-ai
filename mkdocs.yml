@@ -40,8 +40,8 @@ nav:
   - Architecture: ARCHITECTURE.md
   - Configuration Reference: CONFIG_REFERENCE.md
   - Progress Event Schema: PROGRESS_EVENT_SCHEMA_v1.md
-  - Install Guide: INSTALL_v0.10.22.md
-  - Changelog: CHANGELOG_v0.10.22.md
+  - Install Guide: INSTALL_v0.10.23.md
+  - Changelog: CHANGELOG_v0.10.23.md
   - Releasing: RELEASE.md
   - Historical:
       - Audit v0.6: AUDIT_v0.6.md

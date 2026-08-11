@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import TypeAlias
+from typing import Iterator, TypeAlias
 
 import torch
 import torch.nn as nn
@@ -255,8 +255,7 @@ class TinyGPT(nn.Module):
             logits = TinyGPT._apply_top_p(logits, top_p)
         return torch.multinomial(F.softmax(logits, dim=-1), num_samples=1)
 
-    @torch.no_grad()
-    def generate(
+    def generate_stream(
         self,
         input_ids: torch.Tensor,
         *,
@@ -267,7 +266,13 @@ class TinyGPT(nn.Module):
         repetition_penalty: float = 1.0,
         eos_id: int | None = None,
         use_kv_cache: bool = True,
-    ) -> torch.Tensor:
+    ) -> Iterator[torch.Tensor]:
+        """Yield each freshly sampled token id ([1, 1] tensor) as it appears.
+
+        The KV cache stays alive across yields, so after the first step every
+        forward pass only sees the most recent token. `generate` is exactly
+        the concatenation of this stream - the two must never drift apart.
+        """
         if max_new_tokens < 0:
             raise ValueError("max_new_tokens cannot be negative")
         if not math.isfinite(temperature) or temperature < 0:
@@ -281,11 +286,28 @@ class TinyGPT(nn.Module):
         self.eval()
         # Only the freshly generated ids are penalized, never the prompt.
         generated: list[torch.Tensor] = []
-        if not use_kv_cache or input_ids.shape[1] + max_new_tokens > self.config.max_seq_len:
+        with torch.no_grad():
+            if not use_kv_cache or input_ids.shape[1] + max_new_tokens > self.config.max_seq_len:
+                for _ in range(max_new_tokens):
+                    context = input_ids[:, -self.config.max_seq_len:]
+                    next_id = self._sample(
+                        self(context).logits[:, -1, :],
+                        temperature,
+                        top_k,
+                        top_p=top_p,
+                        repetition_penalty=repetition_penalty,
+                        past_ids=torch.cat(generated, dim=1) if generated else None,
+                    )
+                    generated.append(next_id)
+                    input_ids = torch.cat((input_ids, next_id), dim=1)
+                    yield next_id
+                    if eos_id is not None and torch.all(next_id == eos_id):
+                        return
+                return
+            logits, cache = self.forward_cached(input_ids)
             for _ in range(max_new_tokens):
-                context = input_ids[:, -self.config.max_seq_len:]
                 next_id = self._sample(
-                    self(context).logits[:, -1, :],
+                    logits[:, -1, :],
                     temperature,
                     top_k,
                     top_p=top_p,
@@ -294,25 +316,40 @@ class TinyGPT(nn.Module):
                 )
                 generated.append(next_id)
                 input_ids = torch.cat((input_ids, next_id), dim=1)
+                yield next_id
                 if eos_id is not None and torch.all(next_id == eos_id):
-                    break
-            return input_ids
-        logits, cache = self.forward_cached(input_ids)
-        for _ in range(max_new_tokens):
-            next_id = self._sample(
-                logits[:, -1, :],
-                temperature,
-                top_k,
+                    return
+                logits, cache = self.forward_cached(next_id, cache)
+
+    @torch.no_grad()
+    def generate(
+        self,
+        input_ids: torch.Tensor,
+        *,
+        max_new_tokens: int,
+        temperature: float = 0.8,
+        top_k: int | None = 40,
+        top_p: float | None = None,
+        repetition_penalty: float = 1.0,
+        eos_id: int | None = None,
+        use_kv_cache: bool = True,
+    ) -> torch.Tensor:
+        """Generate up to max_new_tokens tokens; returns prompt plus new tokens."""
+        generated = list(
+            self.generate_stream(
+                input_ids,
+                max_new_tokens=max_new_tokens,
+                temperature=temperature,
+                top_k=top_k,
                 top_p=top_p,
                 repetition_penalty=repetition_penalty,
-                past_ids=torch.cat(generated, dim=1) if generated else None,
+                eos_id=eos_id,
+                use_kv_cache=use_kv_cache,
             )
-            generated.append(next_id)
-            input_ids = torch.cat((input_ids, next_id), dim=1)
-            if eos_id is not None and torch.all(next_id == eos_id):
-                break
-            logits, cache = self.forward_cached(next_id, cache)
-        return input_ids
+        )
+        if not generated:
+            return input_ids
+        return torch.cat([input_ids, *generated], dim=1)
 
     def parameter_count(self, *, trainable_only: bool = True) -> int:
         parameters = self.parameters()

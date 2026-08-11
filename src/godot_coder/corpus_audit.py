@@ -596,7 +596,9 @@ def build_preflight(project_root: Path, *, config_path: Path | None = None, mode
             minimum_tokens = 0
         if train_tokens < minimum_tokens:
             label = "Smoke test" if mode == "smoke" else f"Profile {profile_id}"
-            blockers.append(f"{label} needs at least {minimum_tokens:,} fresh training tokens; available are {train_tokens:,}".replace(",", "."))
+            # English sentence, so English thousands separators (no German
+            # style dots that made the number read as a decimal fraction).
+            blockers.append(f"{label} needs at least {minimum_tokens:,} fresh training tokens; available are {train_tokens:,}")
         if int(data.get("val_tokens") or 0) <= 0:
             blockers.append("Validation split contains no tokens")
         if mode == "full" and int(data.get("test_tokens") or 0) <= 0:

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import queue
+import threading
 from typing import Any
 
 from fastapi import APIRouter, FastAPI, HTTPException
@@ -43,31 +45,52 @@ def build_chat_router(app: FastAPI) -> APIRouter:
             raise HTTPException(status_code=409, detail="Stop the active training/data job before generating.")
 
         async def token_stream():
+            # The model samples on a worker thread so a slow forward pass
+            # never blocks the event loop (job progress, other API calls).
+            # queue.Queue is thread-safe; asyncio.to_thread wakes this
+            # coroutine once per token without copying data.
+            events: queue.Queue[dict[str, Any] | None] = queue.Queue()
+            stop = threading.Event()
+
+            def worker() -> None:
+                try:
+                    for event in app.state.generation.generate_stream(
+                        request.checkpoint,
+                        request.prompt,
+                        max_new_tokens=request.max_new_tokens,
+                        temperature=request.temperature,
+                        top_k=request.top_k,
+                        top_p=request.top_p,
+                        repetition_penalty=request.repetition_penalty,
+                        device_name=request.device,
+                    ):
+                        # A disconnected client must not leave the model
+                        # generating (and holding the generation lock) until
+                        # max_new_tokens: finish the current token, then stop.
+                        if stop.is_set():
+                            break
+                        events.put(event)
+                except Exception as exc:
+                    events.put({"error": str(exc)})
+                finally:
+                    events.put(None)  # end-of-stream sentinel
+
+            threading.Thread(target=worker, daemon=True).start()
             try:
-                # Load model once for this stream
-                text = await asyncio.to_thread(
-                    app.state.generation.generate,
-                    request.checkpoint,
-                    request.prompt,
-                    max_new_tokens=request.max_new_tokens,
-                    temperature=request.temperature,
-                    top_k=request.top_k,
-                    top_p=request.top_p,
-                    repetition_penalty=request.repetition_penalty,
-                    device_name=request.device,
-                )
-                # Split into token-sized chunks for streaming display
-                # For now, stream character-by-character since the model generates all at once.
-                # A true token-level streaming generator would require modifying the model.
-                chunk_size = max(1, len(text) // 20) if len(text) > 20 else 1
-                for i in range(0, len(text), chunk_size):
-                    token_json = json.dumps({"token": text[i:i + chunk_size]})
-                    yield f"data: {token_json}\n"
-                    await asyncio.sleep(0.01)
-                yield "data: [DONE]\n"
-            except Exception as exc:
-                err = json.dumps({"error": str(exc)})
-                yield f"data: {err}\n"
+                while True:
+                    event = await asyncio.to_thread(events.get)
+                    if event is None:
+                        break
+                    if event.get("error"):
+                        yield f"data: {json.dumps({'error': event['error']})}\n"
+                        break
+                    yield f"data: {json.dumps(event)}\n"
+            except asyncio.CancelledError:
+                stop.set()
+                raise
+            finally:
+                stop.set()
+            yield "data: [DONE]\n"
 
         return StreamingResponse(token_stream(), media_type="text/event-stream", headers={
             "Cache-Control": "no-cache",

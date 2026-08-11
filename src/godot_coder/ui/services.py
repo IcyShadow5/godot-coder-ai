@@ -13,7 +13,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 import torch
 import yaml
@@ -27,6 +27,7 @@ from ..model import TinyGPT
 from ..process_control import run_managed_process
 from ..metrics import MetricEvent, MetricsCollector
 from ..runtime import mps_available, resolve_device, rocm_available
+from ..sampling import DEFAULT_REPETITION_PENALTY, DEFAULT_TEMPERATURE, DEFAULT_TOP_K, DEFAULT_TOP_P
 from ..tokenizer import TokenizerLike, load_tokenizer
 from .paths import safe_child
 
@@ -714,18 +715,26 @@ class GenerationService:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
-    def generate(
+    def generate_stream(
         self,
         checkpoint_path: str,
         prompt: str,
         *,
         max_new_tokens: int,
-        temperature: float,
-        top_k: int,
-        top_p: float = 1.0,
-        repetition_penalty: float = 1.15,
+        temperature: float = DEFAULT_TEMPERATURE,
+        top_k: int = DEFAULT_TOP_K,
+        top_p: float = DEFAULT_TOP_P,
+        repetition_penalty: float = DEFAULT_REPETITION_PENALTY,
         device_name: str = "auto",
-    ) -> str:
+    ) -> Iterator[dict[str, Any]]:
+        """Yield live token deltas, then a done event with the cleaned text.
+
+        Each yielded event is ``{"token": "<text delta>"}`` while the model
+        samples (the KV cache stays alive across the whole stream), and the
+        stream ends with ``{"done": True, "text": ..., "tokens": n}``
+        carrying the repetition-collapsed final completion. ``generate`` is a
+        thin wrapper over this stream.
+        """
         if not prompt:
             raise ValueError("prompt cannot be empty")
         if not 1 <= max_new_tokens <= 4096:
@@ -772,8 +781,12 @@ class GenerationService:
 
             prompt_ids = loaded.tokenizer.encode(prompt, add_bos=True)
             input_ids = torch.tensor([prompt_ids], dtype=torch.long, device=loaded.device)
+            # The chat panel already shows the user's prompt; only the
+            # completion tokens are decoded and streamed.
+            accumulated: list[int] = []
+            prev_text = ""
             with torch.inference_mode():
-                generated = loaded.model.generate(
+                for token in loaded.model.generate_stream(
                     input_ids,
                     max_new_tokens=max_new_tokens,
                     temperature=temperature,
@@ -781,15 +794,50 @@ class GenerationService:
                     top_p=top_p,
                     repetition_penalty=repetition_penalty,
                     eos_id=loaded.tokenizer.eos_id,
-                )
-            # The chat panel already shows the user's prompt; return only the
-            # completion so the model output never repeats the prompt back.
-            all_ids = generated[0].tolist()
-            output_ids = all_ids[len(prompt_ids):]
+                ):
+                    accumulated.append(int(token.item()))
+                    text = loaded.tokenizer.decode(accumulated, skip_special_tokens=True)
+                    # Byte-level BPE decode is prefix-stable: only the tail
+                    # after the previously emitted text is new. Special
+                    # tokens decode to "" and are skipped silently.
+                    if text.startswith(prev_text) and len(text) > len(prev_text):
+                        yield {"token": text[len(prev_text):]}
+                    prev_text = text
+            raw_text = loaded.tokenizer.decode(accumulated, skip_special_tokens=True)
             gen_metrics = MetricsCollector(self.project_root / "reports" / "studio_metrics.jsonl")
-            gen_metrics.record(MetricEvent.TOKEN_USAGE, tokens=len(output_ids))
-            gen_metrics.record(MetricEvent.GENERATION_COMPLETE if output_ids else MetricEvent.GENERATION_ERROR)
-            return _clean_completion(loaded.tokenizer.decode(output_ids, skip_special_tokens=True))
+            gen_metrics.record(MetricEvent.TOKEN_USAGE, tokens=len(accumulated))
+            gen_metrics.record(MetricEvent.GENERATION_COMPLETE if raw_text else MetricEvent.GENERATION_ERROR)
+            yield {"done": True, "text": _clean_completion(raw_text), "tokens": len(accumulated)}
+
+    def generate(
+        self,
+        checkpoint_path: str,
+        prompt: str,
+        *,
+        max_new_tokens: int,
+        temperature: float = DEFAULT_TEMPERATURE,
+        top_k: int = DEFAULT_TOP_K,
+        top_p: float = DEFAULT_TOP_P,
+        repetition_penalty: float = DEFAULT_REPETITION_PENALTY,
+        device_name: str = "auto",
+    ) -> str:
+        """Generate a full completion; a thin wrapper over the live stream."""
+        done_text: str | None = None
+        for event in self.generate_stream(
+            checkpoint_path,
+            prompt,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            top_k=top_k,
+            top_p=top_p,
+            repetition_penalty=repetition_penalty,
+            device_name=device_name,
+        ):
+            if "done" in event:
+                done_text = event["text"]
+        if done_text is None:
+            raise RuntimeError("generation stream ended without a done event")
+        return done_text
 
 
 def validate_code(project_root: Path, code: str, project_path: str = "data/raw/seed_project") -> dict[str, Any]:
@@ -810,7 +858,11 @@ def validate_code(project_root: Path, code: str, project_path: str = "data/raw/s
         # as an orphan - the same protection the corpus path already uses.
         result = run_managed_process(command, timeout_seconds=30)
         validate_metrics = MetricsCollector(project_root / "reports" / "studio_metrics.jsonl")
-        validate_metrics.record(MetricEvent.PARSE_SUCCESS if result.return_code == 0 and not result.timed_out else MetricEvent.PARSE_ERROR, duration_seconds=30.0 if not result.timed_out else None, error=result.output[:200] if result.return_code != 0 else None)
+        validate_metrics.record(
+            MetricEvent.PARSE_SUCCESS if result.return_code == 0 and not result.timed_out else MetricEvent.PARSE_ERROR,
+            duration_seconds=result.duration_seconds if not result.timed_out else None,
+            error=result.output[:200] if result.return_code != 0 else None,
+        )
         return {
             "passed": result.return_code == 0,
             "return_code": result.return_code,

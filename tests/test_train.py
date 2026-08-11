@@ -12,6 +12,7 @@ import torch
 from godot_coder import train
 from godot_coder.config import ModelConfig, TrainConfig
 from godot_coder.model import TinyGPT
+from godot_coder.progress_events import EVENT_PREFIX, ProgressEmitter, parse_event_line
 
 
 def _model_config() -> ModelConfig:
@@ -153,6 +154,25 @@ def test_fixed_evaluation_windows_caches(tmp_path: Path) -> None:
     assert calls["n"] == 1  # second call loads the saved cache instead of recomputing
 
 
+def test_fixed_evaluation_windows_cleans_stale_variants(tmp_path: Path) -> None:
+    """A changed eval config must replace the cache, not pile up .npy files."""
+    def fake_fixed_windows(seq_len, count, seed):
+        return np.zeros((count, 2), dtype=np.int64)
+
+    stream = SimpleNamespace(dataset_fingerprint="abc", fixed_windows=fake_fixed_windows)
+    first_config = TrainConfig(eval_batches=2, batch_size=4, evaluation_seed=7)
+    stale = train._eval_cache_path(tmp_path, stream, first_config, _model_config())
+    train.fixed_evaluation_windows(tmp_path, stream, first_config, _model_config())
+    assert stale.exists()
+
+    second_config = TrainConfig(eval_batches=3, batch_size=4, evaluation_seed=7)
+    train.fixed_evaluation_windows(tmp_path, stream, second_config, _model_config())
+    # The old variant for the same dataset fingerprint is gone, and exactly
+    # one cache file remains.
+    assert not stale.exists()
+    assert len(list((tmp_path / "eval_cache").glob("fixed_abc_*.npy"))) == 1
+
+
 def test_evaluate_sample_mode_on_cpu() -> None:
     model = TinyGPT(_model_config())
 
@@ -218,6 +238,30 @@ def test_evaluate_fixed_mode_uses_cached_windows() -> None:
         lambda: torch.no_grad(), fixed_windows=windows,
     )
     assert loss > 0
+
+
+def test_train_loss_progress_event_round_trip() -> None:
+    """The live-loss event train.py emits must round-trip through the parser."""
+    sink: list[str] = []
+    emitter = ProgressEmitter(job_id="job123", sink=sink.append)
+    emitter.emit(
+        "train_loss",
+        step=5,
+        loss=0.5,
+        learning_rate=1e-4,
+        gradient_norm=0.12,
+        tokens_per_second=1234.5,
+    )
+    assert sink and sink[0].startswith(EVENT_PREFIX)
+    event = parse_event_line(sink[0], job_id="job123")
+    assert event is not None
+    assert event["event"] == "train_loss"
+    assert event["step"] == 5
+    assert event["loss"] == 0.5
+    assert event["learning_rate"] == 1e-4
+    assert event["gradient_norm"] == 0.12
+    assert event["tokens_per_second"] == 1234.5
+    assert event["job_id"] == "job123"
 
 
 def test_evaluate_sliding_mode_runs_with_stride() -> None:

@@ -97,6 +97,9 @@ def test_recommendation_excludes_unsafe_oom_and_errors(tmp_path, monkeypatch):
     assert rec["matrix_label"] == "A91-1024"
     assert rec["batch_size"] == 2
     assert rec["peak_reserved_fraction"] == 0.6
+    # The recommendation carries tokens_per_step (batch x context) so the
+    # scale plan can use measured hardware numbers instead of a fallback.
+    assert rec["tokens_per_step"] == 2 * 1024
 
     # The unsafe/oom/error configs are not the recommended one.
     for attempt in report["attempts"]:

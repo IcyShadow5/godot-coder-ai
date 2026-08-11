@@ -51,5 +51,5 @@ retraining, and the golden benchmark agrees: parser pass rate went from
 
 ### Tests
 
-483 total (+16): penalty math, top_p masking, loop-break in both decode
+564 total: penalty math, top_p masking, loop-break in both decode
 paths, cleanup thresholds, schema defaults, router pass-through.

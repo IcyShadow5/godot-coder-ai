@@ -31,6 +31,16 @@ _LOCAL_PROJECT_PATTERN = re.compile(
 )
 _ACTIVE_STATUSES = {"starting", "running", "stopping"}
 
+# Restart recovery reads the snapshot file, but rewriting it for every
+# output line means a chatty job spends its whole runtime on disk I/O.
+# Persist at most this often while draining; the log/JSONL sidecars are
+# already written per line and _finalize writes the final snapshot.
+_SNAPSHOT_THROTTLE_SECONDS = 0.5
+
+# The loss history is bounded so the polled /api/jobs/current payload stays
+# small even on very long training runs.
+_LOSS_SAMPLE_LIMIT = 400
+
 
 def _level_from_text(text: str) -> str:
     if _CORPUS_VALIDATE_PATTERN.search(text):
@@ -320,6 +330,7 @@ class JobManager:
         job.events.append(safe_event)
         self._append_jsonl(job, {"record_type": "event", **safe_event})
         self._update_progress(job, safe_event)
+        self._update_training_loss(job, safe_event)
 
     def _update_legacy_progress(self, job: Job, line: str) -> None:
         match = (
@@ -438,6 +449,20 @@ class JobManager:
                 "message": event.get("message"),
             }
 
+    def _update_training_loss(self, job: Job, event: dict[str, Any]) -> None:
+        """Keep a bounded live loss history for the training workspace."""
+        if event.get("event") != "train_loss":
+            return
+        step = event.get("step")
+        loss = event.get("loss")
+        if step is None or loss is None:
+            return
+        samples = list(job.progress_state.get("loss_samples") or [])
+        samples.append({"step": int(step), "loss": float(loss)})
+        job.progress_state["loss_samples"] = samples[-_LOSS_SAMPLE_LIMIT:]
+        job.progress_state["current_loss"] = float(loss)
+        job.progress_state["loss_step"] = int(step)
+
     def _start_stall_watchdog(self, job: Job) -> None:
         """Kill the job when its child stops producing output.
 
@@ -537,6 +562,7 @@ class JobManager:
     def _drain_output(self, job: Job, process: subprocess.Popen[str]) -> None:
         """Forward the child's stdout to the job log/event stream until it closes."""
         assert process.stdout is not None
+        last_snapshot_at = time.monotonic()
         for raw_line in process.stdout:
             line = raw_line.rstrip("\r\n")
             with self._lock:
@@ -545,7 +571,14 @@ class JobManager:
                     self._append_event(job, event)
                 else:
                     self._append_log(job, line)
-                self._persist_snapshot(job)
+                now = time.monotonic()
+                if now - last_snapshot_at >= _SNAPSHOT_THROTTLE_SECONDS:
+                    self._persist_snapshot(job)
+                    last_snapshot_at = now
+        # Leave a fresh snapshot even when the job finished inside the
+        # throttle window: restart recovery reads only this file.
+        with self._lock:
+            self._persist_snapshot(job)
 
     def _finalize(self, job: Job, return_code: int) -> None:
         """Translate the child exit into a terminal state and emit job_finished."""

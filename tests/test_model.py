@@ -90,3 +90,30 @@ def test_generate_penalty_works_without_kv_cache() -> None:
     assert withp.shape[1] == 43
     assert withp[0, 3] == 5
     assert withp[0, 4] != 5
+
+
+def test_generate_stream_matches_generate_on_both_paths() -> None:
+    """Streaming and batch generation must sample the exact same tokens."""
+    model = TinyGPT(tiny_config())
+    x = torch.randint(0, 269, (1, 8))
+    for use_kv_cache in (True, False):
+        expected = model.generate(x, max_new_tokens=6, temperature=0.0, use_kv_cache=use_kv_cache)
+        streamed = torch.cat(
+            [x, *list(model.generate_stream(x, max_new_tokens=6, temperature=0.0, use_kv_cache=use_kv_cache))],
+            dim=1,
+        )
+        assert torch.equal(streamed, expected), f"kv_cache={use_kv_cache}"
+
+
+def test_generate_stream_yields_each_token_then_stops_at_eos() -> None:
+    model = _loop_model()
+    x = torch.tensor([[1, 2, 3]])
+    ids = list(model.generate_stream(x, max_new_tokens=8, temperature=0.0))
+    assert len(ids) == 8
+    assert all(int(token.item()) == 5 for token in ids)
+
+    # eos_id=5: the very first sampled token equals eos, so the stream
+    # yields exactly one token and returns (like generate() would break).
+    stopped = list(model.generate_stream(x, max_new_tokens=8, temperature=0.0, eos_id=5))
+    assert len(stopped) == 1
+    assert int(stopped[0].item()) == 5

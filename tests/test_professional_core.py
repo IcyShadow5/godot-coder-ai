@@ -212,7 +212,10 @@ def test_preflight_full_keeps_token_gate_for_corpus_stream(tmp_path: Path) -> No
     full mode must still block."""
     root = _make_preflight_workspace(tmp_path, validator="project-aware-v4", train_tokens=88_000)
     report = build_preflight(root, config_path=root / "configs" / "night.yaml")
-    assert any("needs at least" in blocker for blocker in report["blockers"])
+    gate = [blocker for blocker in report["blockers"] if "needs at least" in blocker]
+    assert gate
+    # English sentence -> English thousands separators, not German dots.
+    assert "," in gate[0] and "." not in gate[0]
 
 
 def test_autotune_variant_changes_context_checkpointing_and_batch(tmp_path: Path) -> None:

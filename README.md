@@ -36,6 +36,18 @@ I keep the full history in `CHANGELOG.md` (per-version detail in
 `docs/CHANGELOG_v0.10.x.md`), so here is just the short version - the last
 few releases in one breath:
 
+- **v0.10.23** - streaming release: chat tokens arrive live (KV-cache
+  `generate_stream` + SSE worker thread, blinking caret, `done` event,
+  disconnect-safe), the training workspace shows the loss live with a
+  sparkline, and the deep-review backlog is paid down (central sampling
+  defaults, real validate timing, eval-cache cleanup, snapshot
+  throttling, naked-checkout start scripts). 564 tests.
+
+- **v0.10.22** - chat-quality sampling release: repetition penalty
+  (Studio default 1.15), optional nucleus (`top_p`), and completion
+  cleanup that collapses repeated blocks. Golden pass rate 6.7 % -> 20 %
+  without any retraining, plus the checkpoint-resume GPU fix.
+
 - **v0.10.21** - test-coverage round that found one real bug:
   `GET /api/corpus/scale-plan` had a broken relative import since the
   router refactor and always 500'd - fixed and verified live. 83 new
@@ -294,8 +306,8 @@ The Studio binds to `127.0.0.1:8765` by default. For phone/tablet access inside 
 - `docs/ROADMAP.md` — what's done and what's next
 - `docs/ARCHITECTURE.md` — pipeline and validation paths
 - `docs/CONFIG_REFERENCE.md` — YAML config key reference
-- `docs/INSTALL_v0.10.21.md` — install/upgrade guide (latest)
-- `docs/CHANGELOG_v0.10.21.md` — patch notes (latest; earlier `CHANGELOG_v0.10.x.md` files stay for history)
+- `docs/INSTALL_v0.10.23.md` — install/upgrade guide (latest)
+- `docs/CHANGELOG_v0.10.23.md` — patch notes (latest; earlier `CHANGELOG_v0.10.x.md` files stay for history)
 - `docs/PROGRESS_EVENT_SCHEMA_v1.md` — the progress event format
 - `docs/AUDIT_v0.6.md` — the v0.6 training-core audit (historical record)
 - `docs/INSTRUCTION_ROADMAP_v0.7.md` — the planned instruction/agent roadmap (historical draft)

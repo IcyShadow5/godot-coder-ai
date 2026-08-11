@@ -1,4 +1,4 @@
-const CACHE_NAME = "godot-coder-shell-v0.10.22-1";
+const CACHE_NAME = "godot-coder-shell-v0.10.23-1";
 const SHELL = [
   "/",
   "/manifest.webmanifest",
@@ -6,6 +6,7 @@ const SHELL = [
   "/static/progress.js",
   "/static/api.js",
   "/static/remote.js",
+  "/static/stream.js",
   "/static/app.js",
   "/static/app-icon.svg",
   "/static/app-icon-192.png",

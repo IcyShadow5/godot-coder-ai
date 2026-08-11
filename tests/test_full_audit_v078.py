@@ -68,7 +68,7 @@ def test_preflight_allows_smoke_but_blocks_underfilled_balanced_training(tmp_pat
     full = build_preflight(tmp_path, config_path=config, mode="full")
     assert smoke["can_start"] is True
     assert full["can_start"] is False
-    assert any("5.000.000" in item for item in full["blockers"])
+    assert any("5,000,000" in item for item in full["blockers"])
 
 
 def test_remote_configuration_persists_port_and_self_check(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

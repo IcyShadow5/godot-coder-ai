@@ -1,3 +1,28 @@
+## v0.10.23 (2026-08-11)
+
+The chat finally streams. Tokens arrive live instead of one finished
+block: `generate_stream` keeps the KV cache alive and yields every
+sampled token, the router streams them as SSE events from a worker
+thread, and the UI shows a blinking caret until a `done` event swaps in
+the cleaned completion. Disconnects are handled - drop the connection
+mid-generation and the worker stops after the current token. The
+training workspace shows the loss live too: `train.py` emits a
+`train_loss` event per optimizer step, the JobManager keeps a bounded
+history in the job snapshot, and the run card renders a sparkline of the
+last 60 samples.
+
+Underneath, the deep-review backlog is gone: sampling defaults live in
+one module (`sampling.py`), the scale plan uses the measured autotune
+`tokens_per_step`, `validate_code` records real timing, process output is
+bounded, job snapshots are throttled, stale eval caches are cleaned up,
+preflight messages use English separators, and `start_studio.bat`/`.ps1`
+work from a naked checkout. The chat's SSE parser is a pure, Node-tested
+module, and the service worker precaches it (cache bumped).
+
+### Tests
+
+564 total.
+
 ## v0.10.22 (2026-08-11)
 
 The chat finally stops looping. The garbage completions were not just an
@@ -47,7 +72,7 @@ retraining, and the golden benchmark agrees: parser pass rate went from
 
 ### Tests
 
-483 total (+16): penalty math, top_p masking, loop-break in both decode
+564 total: penalty math, top_p masking, loop-break in both decode
 paths, cleanup thresholds, schema defaults, router pass-through.
 
 ## v0.10.21 (2026-08-11)

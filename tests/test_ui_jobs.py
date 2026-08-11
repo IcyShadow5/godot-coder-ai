@@ -19,9 +19,9 @@ from pathlib import Path
 
 import pytest
 
-from godot_coder.progress_events import EVENT_SCHEMA_VERSION, serialize_event
+from godot_coder.progress_events import EVENT_SCHEMA_VERSION, parse_event_line, serialize_event
 from godot_coder.ui import jobs as jobs_module
-from godot_coder.ui.jobs import Job, JobManager, _level_from_text, _project_sort_key
+from godot_coder.ui.jobs import Job, JobManager, _LOSS_SAMPLE_LIMIT, _level_from_text, _project_sort_key
 
 
 def _wait_for_terminal(manager: JobManager, timeout: float = 8.0) -> dict[str, object]:
@@ -229,6 +229,67 @@ def test_persist_snapshot_writes_atomically(tmp_path: Path) -> None:
     path = manager._snapshot_path(job)
     assert json.loads(path.read_text(encoding="utf-8"))["id"] == job.id
     assert not list(manager.state_dir.glob("*.tmp"))
+
+
+def _training_loss_event(step: int, loss: float) -> dict[str, object]:
+    line = serialize_event({"event": "train_loss", "step": step, "loss": loss, "job_id": "job123"})
+    event = parse_event_line(line, job_id="job123")
+    assert event is not None
+    return event
+
+
+def test_train_loss_event_populates_loss_history(tmp_path: Path) -> None:
+    manager = JobManager(tmp_path)
+    job = _make_job(tmp_path)
+    manager._append_event(job, _training_loss_event(3, 0.5))
+    manager._append_event(job, _training_loss_event(4, 0.45))
+    state = job.progress_state
+    assert state["loss_samples"] == [{"step": 3, "loss": 0.5}, {"step": 4, "loss": 0.45}]
+    assert state["current_loss"] == 0.45
+    assert state["loss_step"] == 4
+    snapshot = job.snapshot()
+    assert snapshot["progress_state"]["loss_samples"] == state["loss_samples"]
+
+
+def test_loss_samples_ring_stays_bounded(tmp_path: Path) -> None:
+    manager = JobManager(tmp_path)
+    job = _make_job(tmp_path)
+    for step in range(1, _LOSS_SAMPLE_LIMIT + 50):
+        manager._append_event(job, _training_loss_event(step, step / 1000.0))
+    samples = job.progress_state["loss_samples"]
+    assert len(samples) == _LOSS_SAMPLE_LIMIT
+    assert samples[0]["step"] == 50
+    assert samples[-1]["step"] == _LOSS_SAMPLE_LIMIT + 49
+    assert job.progress_state["current_loss"] == (_LOSS_SAMPLE_LIMIT + 49) / 1000.0
+
+
+def test_train_loss_event_without_loss_or_step_is_ignored(tmp_path: Path) -> None:
+    manager = JobManager(tmp_path)
+    job = _make_job(tmp_path)
+    manager._append_event(job, _training_loss_event(1, 0.5))
+    line = serialize_event({"event": "train_loss", "step": 2})
+    event = parse_event_line(line)
+    assert event is not None and event.get("loss") is None
+    manager._append_event(job, event)
+    line = serialize_event({"event": "train_loss", "loss": 0.5})
+    event = parse_event_line(line)
+    assert event is not None and event.get("step") is None
+    manager._append_event(job, event)
+    assert job.progress_state["current_loss"] == 0.5
+    assert job.progress_state["loss_step"] == 1
+    assert job.progress_state["loss_samples"] == [{"step": 1, "loss": 0.5}]
+
+
+def test_non_loss_events_leave_loss_history_untouched(tmp_path: Path) -> None:
+    manager = JobManager(tmp_path)
+    job = _make_job(tmp_path)
+    manager._append_event(job, _training_loss_event(1, 0.5))
+    line = serialize_event({"event": "phase_status", "phase": "static_analysis", "phase_status": "passed"})
+    event = parse_event_line(line)
+    assert event is not None
+    manager._append_event(job, event)
+    assert job.progress_state["loss_samples"] == [{"step": 1, "loss": 0.5}]
+    assert job.progress_state["current_loss"] == 0.5
 
 
 def test_start_sets_env_and_snapshot_fields_e2e(tmp_path: Path) -> None:
@@ -596,6 +657,28 @@ def test_drain_output_splits_events_from_plain_lines(tmp_path: Path) -> None:
     assert job.progress_state["phase_status"] == "passed"
     # Snapshot was persisted per line.
     assert json.loads(manager._snapshot_path(job).read_text(encoding="utf-8"))["step"] is None
+
+
+def test_drain_output_throttles_snapshot_writes(tmp_path: Path, monkeypatch) -> None:
+    """A chatty child must not rewrite the full snapshot for every line."""
+    manager = JobManager(tmp_path)
+    job = _make_job(tmp_path)
+    writes: list[float] = []
+    real_persist = manager._persist_snapshot
+
+    def spy(target_job):
+        writes.append(time.monotonic())
+        return real_persist(target_job)
+
+    monkeypatch.setattr(manager, "_persist_snapshot", spy)
+    fake_process = types.SimpleNamespace(stdout=io.StringIO("\n".join(f"line {i}" for i in range(50)) + "\n"))
+    manager._drain_output(job, fake_process)
+    assert list(job.logs) == [f"line {i}" for i in range(50)]
+    # 50 rapid lines: zero throttled persists inside the loop, then exactly
+    # one final snapshot so restart recovery still sees the finished state.
+    # The count is coupled to _SNAPSHOT_THROTTLE_SECONDS — StringIO lines
+    # process in microseconds, far under the 0.5 s window, so it is stable.
+    assert len(writes) == 1
 
 
 def test_finalize_completed_and_failed(tmp_path: Path) -> None:

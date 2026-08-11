@@ -24,6 +24,7 @@ from .project import find_project_root, project_relative, resolve_project_path
 from .runtime import resolve_device
 from .tokenizer import load_tokenizer
 from .metrics import MetricEvent, MetricsCollector
+from .progress_events import ProgressEmitter
 
 
 def parse_args() -> argparse.Namespace:
@@ -77,8 +78,12 @@ def amp_settings(device: torch.device, dtype_name: str) -> tuple[bool, torch.dty
     return True, dtype
 
 
+def _eval_fingerprint(stream: TokenStream) -> str:
+    return (stream.dataset_fingerprint or "legacy")[:16]
+
+
 def _eval_cache_path(data_dir: Path, stream: TokenStream, config: TrainConfig, model_config: ModelConfig) -> Path:
-    fingerprint = (stream.dataset_fingerprint or "legacy")[:16]
+    fingerprint = _eval_fingerprint(stream)
     return data_dir / "eval_cache" / f"fixed_{fingerprint}_{model_config.max_seq_len}_{config.eval_batches}_{config.batch_size}_{config.evaluation_seed}.npy"
 
 
@@ -94,6 +99,16 @@ def fixed_evaluation_windows(data_dir: Path, stream: TokenStream, config: TrainC
     temporary = path.with_suffix(".tmp.npy")
     np.save(temporary, windows, allow_pickle=False)
     temporary.replace(path)
+    # Keep only one cached variant per dataset fingerprint: changing
+    # eval_batches/batch_size/seed (or rebuilding the dataset) must replace
+    # the old cache, not pile up .npy files in eval_cache forever.
+    for stale in path.parent.glob(f"fixed_{_eval_fingerprint(stream)}_*.npy"):
+        if stale == path or ".tmp." in stale.name:
+            continue
+        try:
+            stale.unlink()
+        except OSError:
+            pass
     return windows
 
 
@@ -363,6 +378,10 @@ def main() -> None:
     print("RUN_HEADER_JSON=" + json.dumps(header, ensure_ascii=True))
     _append_jsonl(metrics_path, {"event": "run_start", **header})
     run_metrics = MetricsCollector(output_dir / f"events_{run_id}.jsonl")
+    # Live training progress for the Studio: every optimizer step emits a
+    # structured train_loss event that the JobManager turns into the loss
+    # history the UI renders while the run is still going.
+    progress = ProgressEmitter()
 
     model.train()
     prefetcher = BatchPrefetcher(train_stream, train_config.batch_size, model_config.max_seq_len, train_rng, train_config.prefetch_batches > 0)
@@ -402,6 +421,14 @@ def main() -> None:
             running_loss += accumulated_loss
             interval_steps += 1
             last_step_completed = step + 1
+            progress.emit(
+                "train_loss",
+                step=step + 1,
+                loss=round(accumulated_loss, 6),
+                learning_rate=current_lr,
+                gradient_norm=round(float(gradient_norm), 4),
+                tokens_per_second=round(tokens_per_optimizer_step / max(elapsed, 1e-9), 1),
+            )
             should_log = interval_steps >= train_config.log_interval or step + 1 == max_steps
             should_eval = (step + 1) % eval_interval_steps == 0 or step + 1 == max_steps
             if should_log:

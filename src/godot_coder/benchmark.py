@@ -247,6 +247,9 @@ def _token_prefix_accuracy(tokenizer: TokenizerLike, generated: str, reference: 
     return matching / len(reference_ids)
 
 
+# Benchmarking is deliberately greedy (temperature 0 / top-k 0): evaluation
+# must be reproducible, so it does not share the interactive defaults in
+# sampling.py. The benchmark CLI uses the same deterministic profile.
 def run_benchmark(
     project_root: str | Path,
     checkpoint: str,

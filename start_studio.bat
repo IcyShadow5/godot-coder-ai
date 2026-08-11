@@ -1,11 +1,15 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-if not exist ".venv\Scripts\python.exe" (
-  echo [Godot Coder Studio] .venv was not found.
-  echo Create the virtual environment first and install the project.
-  pause
-  exit /b 1
+
+rem Prefer the project virtual environment; fall back to a system Python so
+rem a bare checkout without .venv can still start the Studio.
+if exist ".venv\Scripts\python.exe" (
+  set "PYTHON=.venv\Scripts\python.exe"
+) else (
+  set "PYTHON=python"
+  set "PYTHONPATH=%~dp0src"
+  echo [Godot Coder Studio] .venv not found - using system python with PYTHONPATH=src
 )
 
 rem Single instance: refuse to start a second Studio on the same port.
@@ -17,5 +21,4 @@ if not errorlevel 1 (
   exit /b 1
 )
 
-".venv\Scripts\python.exe" -m godot_coder.studio
-if errorlevel 1 pause
+"%PYTHON%" -m godot_coder.studio

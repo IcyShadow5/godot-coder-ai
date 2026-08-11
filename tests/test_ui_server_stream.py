@@ -22,13 +22,17 @@ def test_chat_generate_stream_emits_sse_tokens_then_done(tmp_path: Path) -> None
     _scaffold(tmp_path)
     app = create_app(tmp_path)
 
-    def fake_generate(checkpoint, prompt, *, max_new_tokens, temperature, top_k, top_p=1.0, repetition_penalty=1.15, device_name="auto"):
-        return "return a + b\n"
+    def fake_generate_stream(checkpoint, prompt, *, max_new_tokens, temperature, top_k, top_p=1.0, repetition_penalty=1.15, device_name="auto"):
+        # Real token streaming: the service yields live deltas, then the
+        # cleaned completion in a done event.
+        yield {"token": "return "}
+        yield {"token": "a + b"}
+        yield {"done": True, "text": "return a + b", "tokens": 2}
 
     def fake_unload():
         pass
 
-    app.state.generation = SimpleNamespace(generate=fake_generate, unload=fake_unload)
+    app.state.generation = SimpleNamespace(generate_stream=fake_generate_stream, unload=fake_unload)
     with TestClient(app) as client:
         response = client.post(
             "/api/chat/generate-stream",
@@ -40,9 +44,27 @@ def test_chat_generate_stream_emits_sse_tokens_then_done(tmp_path: Path) -> None
             },
         )
     assert response.status_code == 200
-    # Short completions (<=20 chars) stream per character.
-    assert 'data: {"token": "r"}' in response.text
-    assert response.text.count("data: ") >= 2
+    assert 'data: {"token": "return "}' in response.text
+    assert 'data: {"token": "a + b"}' in response.text
+    assert '"done": true' in response.text
+    assert response.text.strip().endswith("data: [DONE]")
+
+
+def test_chat_generate_stream_forwards_generation_errors(tmp_path: Path) -> None:
+    _scaffold(tmp_path)
+    app = create_app(tmp_path)
+
+    def failing_stream(checkpoint, prompt, **kwargs):
+        yield {"error": "checkpoint and tokenizer do not match"}
+
+    app.state.generation = SimpleNamespace(generate_stream=failing_stream, unload=lambda: None)
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/chat/generate-stream",
+            json={"checkpoint": "checkpoints/x.pt", "prompt": "func f():\n", "max_new_tokens": 4},
+        )
+    assert response.status_code == 200  # SSE: the error travels inside the stream
+    assert "checkpoint and tokenizer do not match" in response.text
     assert response.text.strip().endswith("data: [DONE]")
 
 

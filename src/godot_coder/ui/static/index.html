@@ -206,6 +206,10 @@
               <div class="professional-run-copy"><strong id="professional-run-title">Workflow running</strong><small id="professional-run-detail">Loading status …</small></div>
               <div class="professional-run-progress"><span id="professional-run-progress"></span></div>
               <strong class="professional-run-percent" id="professional-run-percent">0 %</strong>
+              <div class="loss-live" id="professional-loss" hidden aria-live="polite">
+                <span>Loss</span><strong id="professional-loss-value">–</strong>
+                <div class="loss-chart" id="professional-loss-chart"></div>
+              </div>
             </div>
             <div class="preflight-summary" id="preflight-summary">No complete preflight yet.</div>
             <details class="advanced-box compact-details professional-details"><summary>Advanced check details</summary><div id="preflight-details" class="manifest-mini">–</div></details>
@@ -649,6 +653,7 @@
   <script src="/static/progress.js" defer></script>
   <script src="/static/api.js" defer></script>
   <script src="/static/remote.js" defer></script>
+  <script src="/static/stream.js" defer></script>
   <script src="/static/app.js" defer></script>
 </body>
 </html>

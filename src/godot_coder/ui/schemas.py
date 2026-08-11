@@ -4,6 +4,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from ..sampling import DEFAULT_REPETITION_PENALTY, DEFAULT_TEMPERATURE, DEFAULT_TOP_K, DEFAULT_TOP_P
+
 
 # Request models and the one shared helper used by the ui route groups.
 # Kept out of server.py so the routers never need to import the app module.
@@ -13,10 +15,12 @@ class GenerateRequest(BaseModel):
     checkpoint: str
     prompt: str
     max_new_tokens: int = Field(default=300, ge=1, le=4096)
-    temperature: float = Field(default=0.4, ge=0.0, le=5.0)
-    top_k: int = Field(default=10, ge=0, le=1000)
-    top_p: float = Field(default=1.0, gt=0.0, le=1.0)
-    repetition_penalty: float = Field(default=1.15, ge=1.0, le=2.0)
+    # Interactive chat defaults live in one place (sampling.py) so the
+    # Studio and the CLI agree; each request can still override them.
+    temperature: float = Field(default=DEFAULT_TEMPERATURE, ge=0.0, le=5.0)
+    top_k: int = Field(default=DEFAULT_TOP_K, ge=0, le=1000)
+    top_p: float = Field(default=DEFAULT_TOP_P, gt=0.0, le=1.0)
+    repetition_penalty: float = Field(default=DEFAULT_REPETITION_PENALTY, ge=1.0, le=2.0)
     device: str = "auto"
 
 

@@ -105,6 +105,13 @@ h1 { margin: 4px 0 0; font-size: 25px; letter-spacing: -.035em; }
 .message-body p { margin: 0; color: #d8e9f2; }
 .message-meta { margin-bottom: 7px; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .message-code { margin: 0; padding: 12px; white-space: pre-wrap; overflow-wrap: anywhere; color: #dff9ff; background: rgba(1,9,17,.74); border: 1px solid rgba(124,217,255,.12); border-radius: 12px; font-size: 12px; line-height: 1.55; }
+.message-code.streaming::after {
+  content: "▌";
+  margin-left: 2px;
+  color: var(--ice);
+  animation: caretBlink 1s steps(2, start) infinite;
+}
+@keyframes caretBlink { to { visibility: hidden; } }
 .message-tools { display: flex; gap: 8px; margin-top: 10px; }
 .message-tools button, .prompt-chips button { border: 1px solid var(--line); border-radius: 9px; background: rgba(20,52,74,.45); color: var(--muted); padding: 6px 9px; font-size: 11px; cursor: pointer; }
 .message-tools button:hover, .prompt-chips button:hover { color: var(--text); border-color: var(--line-bright); }
@@ -399,6 +406,13 @@ button:disabled { opacity: .4; cursor: not-allowed; transform: none !important; 
 .professional-run-progress { height:6px; overflow:hidden; border-radius:999px; background:rgba(110,176,204,.13); }
 .professional-run-progress span { display:block; width:0; height:100%; border-radius:inherit; background:linear-gradient(90deg,var(--blue),var(--ice)); box-shadow:0 0 14px rgba(87,219,255,.45); transition:width .35s ease; }
 .professional-run-percent { min-width:38px; color:#ccefff; font-size:10px; text-align:right; }
+.loss-live { grid-column:1/-1; display:flex; align-items:center; gap:8px; padding-top:2px; }
+.loss-live[hidden] { display:none; }
+.loss-live > span { font-size:9px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; }
+.loss-live > strong { font-size:11px; color:#e8fbff; font-variant-numeric:tabular-nums; }
+.loss-chart { flex:1; height:26px; min-width:0; border-radius:8px; background:rgba(110,176,204,.08); overflow:hidden; }
+.loss-chart svg { display:block; width:100%; height:100%; }
+.loss-chart polyline { fill:none; stroke:var(--ice); stroke-width:1.4; vector-effect:non-scaling-stroke; filter:drop-shadow(0 0 4px rgba(110,231,255,.45)); }
 .preflight-summary { padding:.85rem 1rem; border-radius:14px; background:rgba(8,28,55,.46); border:1px solid rgba(125,203,255,.16); line-height:1.55; font-size:11px; }
 .preflight-summary strong { color:#dff7ff; }
 .professional-details { margin-top:10px; padding-top:9px; }

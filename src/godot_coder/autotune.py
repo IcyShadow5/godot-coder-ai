@@ -198,6 +198,7 @@ def run_autotune(root: Path, *, full: bool, warmup_steps: int, measure_steps: in
             "peak_reserved_gib": recommended.get("peak_reserved_gib"),
             "peak_reserved_fraction": recommended.get("peak_reserved_fraction"),
             "tokens_per_second": recommended.get("tokens_per_second"),
+            "tokens_per_step": recommended["batch_size"] * recommended["sequence_length"],
             "reason": "Fastest measured configuration below the 90% VRAM safety ceiling.",
         }
     report = {

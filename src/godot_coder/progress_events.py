@@ -85,6 +85,10 @@ _NUMERIC_FIELDS = {
     "return_code",
     "bytes_received",
     "bytes_total",
+    "loss",
+    "learning_rate",
+    "gradient_norm",
+    "tokens_per_second",
 }
 
 
@@ -148,6 +152,10 @@ def normalize_event(payload: Mapping[str, Any], *, job_id: str | None = None, no
                 "estimated_remaining_seconds",
                 "estimated_remaining_min_seconds",
                 "estimated_remaining_max_seconds",
+                "loss",
+                "learning_rate",
+                "gradient_norm",
+                "tokens_per_second",
             }
             normalized[key] = _non_negative_number(value, integer=integer)
         elif key in {"overall_progress", "project_progress"}:
