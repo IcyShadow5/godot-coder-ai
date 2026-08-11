@@ -17,7 +17,7 @@ from .data import TokenStream
 from .model import TinyGPT
 from .project import find_project_root, project_relative, resolve_project_path
 from .runtime import resolve_device
-from .tokenizer import load_tokenizer
+from .tokenizer import load_tokenizer, resolve_tokenizer_for_fingerprint
 from .train import amp_settings
 
 
@@ -47,7 +47,7 @@ def main() -> None:
     data_dir = resolve_project_path(project_root, args.data_dir or train_config.get("data_dir", "data/processed"))
     tokenizer = load_tokenizer(tokenizer_path)
     if payload["tokenizer_fingerprint"] != tokenizer.fingerprint():
-        raise ValueError("checkpoint and tokenizer do not match")
+        tokenizer = resolve_tokenizer_for_fingerprint(tokenizer_path, tokenizer, payload["tokenizer_fingerprint"])
     manifest = json.loads((data_dir / "manifest.json").read_text(encoding="utf-8"))
     if manifest.get("tokenizer_fingerprint") != tokenizer.fingerprint():
         raise ValueError("dataset and tokenizer do not match")

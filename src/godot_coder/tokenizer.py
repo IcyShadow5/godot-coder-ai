@@ -289,3 +289,31 @@ def load_tokenizer(path: str | Path) -> TokenizerLike:
     if tokenizer_format == "godot-coder-bpe-tokenizer":
         return BPETokenizer.load(path)
     raise ValueError(f"unsupported tokenizer format: {tokenizer_format!r}")
+
+
+def resolve_tokenizer_for_fingerprint(
+    path: str | Path,
+    tokenizer: TokenizerLike,
+    expected_fingerprint: str,
+) -> TokenizerLike:
+    """Rebind a loaded tokenizer to the versioned sibling of a checkpoint.
+
+    ``train_bpe`` keeps every build under ``<stem>_<fingerprint>.json`` while
+    ``<stem>.json`` points at the newest one. A checkpoint trained on an older
+    tokenizer records that fingerprint; when the current file no longer matches,
+    the versioned sibling keeps the checkpoint loadable instead of orphaning it.
+    """
+    if tokenizer.fingerprint() == expected_fingerprint:
+        return tokenizer
+    candidate = Path(path).with_name(f"{Path(path).stem}_{expected_fingerprint}.json")
+    if candidate.exists():
+        try:
+            fallback = load_tokenizer(candidate)
+        except (OSError, ValueError, RuntimeError):
+            fallback = None
+        if fallback is not None and fallback.fingerprint() == expected_fingerprint:
+            return fallback
+    raise ValueError(
+        "checkpoint and tokenizer do not match: expected fingerprint "
+        f"{expected_fingerprint}, current file has {tokenizer.fingerprint()}"
+    )

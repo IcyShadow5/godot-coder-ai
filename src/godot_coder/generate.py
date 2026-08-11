@@ -15,7 +15,7 @@ from .project import find_project_root, resolve_project_path
 from .provenance import ContextReport, cli_parts, compose_prompt
 from .runtime import resolve_device
 from .sampling import DEFAULT_REPETITION_PENALTY, DEFAULT_TEMPERATURE, DEFAULT_TOP_K, DEFAULT_TOP_P
-from .tokenizer import load_tokenizer
+from .tokenizer import load_tokenizer, resolve_tokenizer_for_fingerprint
 
 
 def parse_args() -> argparse.Namespace:
@@ -74,7 +74,7 @@ def main() -> None:
     tokenizer_path = resolve_project_path(project_root, args.tokenizer or configured_tokenizer)
     tokenizer = load_tokenizer(tokenizer_path)
     if payload["tokenizer_fingerprint"] != tokenizer.fingerprint():
-        raise ValueError("checkpoint and tokenizer do not match")
+        tokenizer = resolve_tokenizer_for_fingerprint(tokenizer_path, tokenizer, payload["tokenizer_fingerprint"])
 
     config = ModelConfig(**payload["model_config"])
     model = TinyGPT(config).to(device)

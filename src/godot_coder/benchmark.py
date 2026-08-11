@@ -9,7 +9,7 @@ from typing import Iterable
 
 from .checkpoint import load_checkpoint
 from .provenance import PromptPart, compose_prompt
-from .tokenizer import TokenizerLike, load_tokenizer
+from .tokenizer import TokenizerLike, load_tokenizer, resolve_tokenizer_for_fingerprint
 from .ui.services import GenerationService, validate_code
 from .golden_tasks import GOLDEN_TASKS
 
@@ -234,6 +234,8 @@ def _load_checkpoint_context(root: Path, checkpoint: str) -> tuple[dict[str, obj
     if not tokenizer_path.is_absolute():
         tokenizer_path = root / tokenizer_path
     tokenizer = load_tokenizer(tokenizer_path)
+    if payload.get("tokenizer_fingerprint") and tokenizer.fingerprint() != payload["tokenizer_fingerprint"]:
+        tokenizer = resolve_tokenizer_for_fingerprint(tokenizer_path, tokenizer, payload["tokenizer_fingerprint"])
     data_dir = str(train_config.get("data_dir", ""))
     kind = "corpus" if "corpus" in data_dir.lower() else "curriculum"
     return payload, tokenizer, kind

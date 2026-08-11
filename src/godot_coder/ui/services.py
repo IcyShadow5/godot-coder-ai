@@ -29,7 +29,7 @@ from ..provenance import HEAD_PRESERVING, STRICT, chat_parts, compose_prompt
 from ..metrics import MetricEvent, MetricsCollector
 from ..runtime import mps_available, resolve_device, rocm_available
 from ..sampling import DEFAULT_REPETITION_PENALTY, DEFAULT_TEMPERATURE, DEFAULT_TOP_K, DEFAULT_TOP_P
-from ..tokenizer import TokenizerLike, load_tokenizer
+from ..tokenizer import TokenizerLike, load_tokenizer, resolve_tokenizer_for_fingerprint
 from .paths import safe_child
 
 
@@ -777,7 +777,9 @@ class GenerationService:
                     tokenizer_path = self.project_root / tokenizer_path
                 tokenizer = load_tokenizer(tokenizer_path)
                 if payload["tokenizer_fingerprint"] != tokenizer.fingerprint():
-                    raise ValueError("checkpoint and tokenizer do not match")
+                    tokenizer = resolve_tokenizer_for_fingerprint(
+                        tokenizer_path, tokenizer, payload["tokenizer_fingerprint"]
+                    )
                 model_config = ModelConfig(**payload["model_config"])
                 model = TinyGPT(model_config).to(device)
                 model.load_state_dict(payload["model_state"])

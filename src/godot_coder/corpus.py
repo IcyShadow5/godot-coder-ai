@@ -2229,8 +2229,13 @@ def train_bpe(project_root: Path, *, vocab_size: int = 8192, min_frequency: int 
     if len(files) < 10:
         raise FileNotFoundError("Not enough validated training files yet. Run download, scan and validation first.")
     tokenizer = BPETokenizer.train(files, vocab_size=vocab_size, min_frequency=min_frequency)
+    fingerprint = tokenizer.fingerprint()
     output = project_root / "artifacts" / "tokenizer_bpe_godot.json"
     tokenizer.save(output)
+    # Versioned sibling keeps older builds around, so checkpoints trained on a
+    # previous tokenizer stay loadable after the current file is rebuilt.
+    versioned = project_root / "artifacts" / f"tokenizer_bpe_godot_{fingerprint}.json"
+    tokenizer.save(versioned)
     sample = "extends Node\n\nfunc _ready() -> void:\n    print(\"hello\")\n"
     byte_count = len(sample.encode("utf-8"))
     token_count = len(tokenizer.encode(sample))
@@ -2238,7 +2243,8 @@ def train_bpe(project_root: Path, *, vocab_size: int = 8192, min_frequency: int 
         "created_at": time.time(),
         "path": output.relative_to(project_root).as_posix(),
         "vocab_size": tokenizer.vocab_size,
-        "fingerprint": tokenizer.fingerprint(),
+        "fingerprint": fingerprint,
+        "versioned_path": versioned.relative_to(project_root).as_posix(),
         "training_files": len(files),
         "sample_bytes": byte_count,
         "sample_tokens": token_count,
