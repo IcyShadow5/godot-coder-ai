@@ -23,6 +23,7 @@ from . import __version__
 from .godot_cli import build_check_command, build_project_script_command, build_project_validation_command
 from .process_control import run_managed_process
 from .progress_events import serialize_event
+from .checkpoint import scan_checkpoint_tokenizer_drift
 from .tokenizer import BPETokenizer
 
 CORPUS_FORMAT_VERSION = 3
@@ -2239,6 +2240,7 @@ def train_bpe(project_root: Path, *, vocab_size: int = 8192, min_frequency: int 
     sample = "extends Node\n\nfunc _ready() -> void:\n    print(\"hello\")\n"
     byte_count = len(sample.encode("utf-8"))
     token_count = len(tokenizer.encode(sample))
+    drift = scan_checkpoint_tokenizer_drift(project_root, fingerprint)
     report = {
         "created_at": time.time(),
         "path": output.relative_to(project_root).as_posix(),
@@ -2249,7 +2251,21 @@ def train_bpe(project_root: Path, *, vocab_size: int = 8192, min_frequency: int 
         "sample_bytes": byte_count,
         "sample_tokens": token_count,
         "sample_compression": round(byte_count / max(1, token_count), 2),
+        "checkpoint_drift": drift,
     }
+    orphaned = [record for record in drift if not record["loadable"]]
+    preserved = len(drift) - len(orphaned)
+    if preserved:
+        print(f"note: {preserved} checkpoint(s) keep loading via versioned tokenizer files")
+    if orphaned:
+        print(
+            "WARNING: "
+            + "; ".join(
+                f"{record['checkpoint']} (fingerprint {record['tokenizer_fingerprint'][:8]})"
+                for record in orphaned
+            )
+            + " lost its tokenizer - no versioned file left, no longer loadable"
+        )
     _json_write(corpus_root(project_root) / "tokenizer_report.json", report)
     print(json.dumps(report, indent=2))
     return report

@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import torch
+
 from godot_coder.corpus import build_staging, load_registry, save_registry, train_bpe
 
 
@@ -19,6 +21,23 @@ def test_train_bpe_writes_versioned_and_current(tmp_path: Path) -> None:
     assert versioned.exists()
     # Both files describe the same tokenizer.
     assert current.read_text(encoding="utf-8") == versioned.read_text(encoding="utf-8")
+
+
+def test_train_bpe_reports_orphaned_checkpoints(tmp_path: Path) -> None:
+    train_dir = tmp_path / "data" / "corpus" / "audited" / "train"
+    train_dir.mkdir(parents=True)
+    for index in range(12):
+        (train_dir / f"scene_{index}.gd").write_text(
+            f"extends Node\n\nfunc _ready() -> void:\n\tprint(\"hello {index}\")\n",
+            encoding="utf-8",
+        )
+    (tmp_path / "checkpoints").mkdir()
+    torch.save({"tokenizer_fingerprint": "deadbeef"}, tmp_path / "checkpoints" / "old.pt")
+
+    report = train_bpe(tmp_path, vocab_size=1024, min_frequency=2)
+    drift = {record["checkpoint"]: record for record in report["checkpoint_drift"]}
+    assert "checkpoints/old.pt" in drift
+    assert drift["checkpoints/old.pt"]["loadable"] is False
 
 
 def test_official_registry_targets_godot_47_and_excludes_mixed_license_classes(tmp_path: Path) -> None:

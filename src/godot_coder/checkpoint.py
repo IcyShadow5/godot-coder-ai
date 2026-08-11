@@ -204,3 +204,43 @@ def load_checkpoint(path: str | Path, map_location: str | torch.device = "cpu") 
     if payload.get("format_version") != CHECKPOINT_FORMAT_VERSION:
         raise ValueError("unsupported checkpoint version")
     return payload
+
+
+def scan_checkpoint_tokenizer_drift(
+    project_root: str | Path,
+    tokenizer_fingerprint: str,
+) -> list[dict[str, Any]]:
+    """Checkpoints whose stored tokenizer fingerprint no longer matches.
+
+    ``train_bpe`` calls this after a rebuild. Each record says whether a
+    versioned tokenizer file (``artifacts/*_<fingerprint>.json``) still exists
+    - only checkpoints without one are truly orphaned. The scan memory-maps
+    the payloads, so it reads the metadata without pulling in the weights.
+    Checkpoints that cannot be read (legacy format, corrupt) are skipped - a
+    corpus rebuild must not die on one bad file.
+    """
+    root = Path(project_root)
+    artifacts = root / "artifacts"
+    records: list[dict[str, Any]] = []
+    checkpoints_dir = root / "checkpoints"
+    if not checkpoints_dir.exists():
+        return records
+    for checkpoint in sorted(checkpoints_dir.rglob("*.pt")):
+        try:
+            payload = torch.load(checkpoint, map_location="cpu", mmap=True, weights_only=True)
+        except Exception:
+            continue
+        stored = payload.get("tokenizer_fingerprint")
+        # The payload is mmap-backed; drop it explicitly so the file handle
+        # is released before the next checkpoint is opened (Windows locks).
+        del payload
+        if not isinstance(stored, str) or stored == tokenizer_fingerprint:
+            continue
+        records.append(
+            {
+                "checkpoint": checkpoint.relative_to(root).as_posix(),
+                "tokenizer_fingerprint": stored,
+                "loadable": bool(list(artifacts.glob(f"*_{stored}.json"))),
+            }
+        )
+    return records

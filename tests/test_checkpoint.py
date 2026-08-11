@@ -6,7 +6,13 @@ import numpy as np
 import pytest
 import torch
 
-from godot_coder.checkpoint import capture_rng_state, load_checkpoint, restore_rng_state, save_checkpoint
+from godot_coder.checkpoint import (
+    capture_rng_state,
+    load_checkpoint,
+    restore_rng_state,
+    save_checkpoint,
+    scan_checkpoint_tokenizer_drift,
+)
 from godot_coder.config import ModelConfig, TrainConfig
 from godot_coder.model import TinyGPT
 
@@ -235,3 +241,64 @@ def test_restore_rng_state_accepts_legacy_list_torch_state() -> None:
     state["torch"] = state["torch"].tolist()
     restore_rng_state(state)
     torch.randn(1)
+
+
+def test_scan_checkpoint_tokenizer_drift(tmp_path: Path) -> None:
+    checkpoints = tmp_path / "checkpoints"
+    checkpoints.mkdir()
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    # One old fingerprint still has a versioned tokenizer file, the other not.
+    (artifacts / "tokenizer_bpe_godot_kept.json").write_text("{}", encoding="utf-8")
+
+    def save(name: str, fingerprint: str) -> None:
+        torch.save(
+            {
+                "format": "godot-coder-checkpoint",
+                "format_version": 1,
+                "tokenizer_fingerprint": fingerprint,
+            },
+            checkpoints / name,
+        )
+
+    save("old_gone.pt", "gone")
+    save("old_kept.pt", "kept")
+    save("current.pt", "current-fp")
+
+    records = scan_checkpoint_tokenizer_drift(tmp_path, "current-fp")
+    by_name = {record["checkpoint"]: record for record in records}
+    assert set(by_name) == {"checkpoints/old_gone.pt", "checkpoints/old_kept.pt"}
+    assert by_name["checkpoints/old_gone.pt"]["loadable"] is False
+    assert by_name["checkpoints/old_kept.pt"]["loadable"] is True
+
+
+def test_scan_uses_mmap_and_releases_payloads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checkpoints = tmp_path / "checkpoints"
+    checkpoints.mkdir()
+    torch.save(
+        {"format": "godot-coder-checkpoint", "tokenizer_fingerprint": "stale"},
+        checkpoints / "a.pt",
+    )
+
+    real_load = torch.load
+    calls: list = []
+
+    def spy_load(*args: object, **kwargs: object) -> dict:
+        calls.append(kwargs)
+        return real_load(*args, **kwargs)
+
+    monkeypatch.setattr("godot_coder.checkpoint.torch.load", spy_load)
+    records = scan_checkpoint_tokenizer_drift(tmp_path, "current-fp")
+
+    # The whole point of the scanner: metadata only, never full weights.
+    assert calls and all(
+        call.get("mmap") and call.get("weights_only") for call in calls
+    )
+    # Records carry only plain data, so no mmap-backed payload stays referenced.
+    assert all(
+        isinstance(record["tokenizer_fingerprint"], str)
+        and isinstance(record["loadable"], bool)
+        for record in records
+    )
