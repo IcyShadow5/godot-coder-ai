@@ -1,7 +1,5 @@
 # Changelog
 
-Patch notes, so I still know later what I was thinking.
-
 ## v0.10.17 (2026-08-10)
 
 The Triton release. This one adds real `torch.compile` support (the one

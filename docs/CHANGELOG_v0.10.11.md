@@ -1,7 +1,5 @@
 # Changelog
 
-Patch notes, so I still know later what I was thinking.
-
 ## v0.10.11 (2026-08-09)
 
 Chat samples actually get verified now, and the Studio UI stopped being one

@@ -1,7 +1,5 @@
 # Changelog
 
-Patch notes, so I still know later what I was thinking.
-
 ## v0.10.10 (2026-08-09)
 
 Training-start fix - the crash only the passes-driven configs hit.

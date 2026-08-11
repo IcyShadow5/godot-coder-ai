@@ -1,7 +1,5 @@
 # Changelog
 
-Patch notes, so I still know later what I was thinking.
-
 ## v0.10.9 (2026-08-09)
 
 Docs and upgrade tooling - no product code changed (no `.py`/`.js`/config

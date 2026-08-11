@@ -1,7 +1,5 @@
 # Changelog
 
-Patch notes, so I still know later what I was thinking.
-
 ## v0.10.8 (2026-08-09)
 
 AMD GPUs and a clean exit.

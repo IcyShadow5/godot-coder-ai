@@ -1,7 +1,5 @@
 # Changelog
 
-Patch notes, so I still know later what I was thinking.
-
 ## v0.10.21 (2026-08-11)
 
 A test-coverage round that found one real bug: the router refactor from

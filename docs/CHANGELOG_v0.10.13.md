@@ -1,7 +1,5 @@
 # Changelog
 
-Patch notes, so I still know later what I was thinking.
-
 ## v0.10.13 (2026-08-09)
 
 The deep review reached the training core. All the earlier passes were about

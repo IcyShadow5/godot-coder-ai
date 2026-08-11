@@ -1,7 +1,5 @@
 # Changelog
 
-Patch notes, so I still know later what I was thinking.
-
 ## v0.10.16 (2026-08-10)
 
 This one is a maintainability release - no new behavior, but the code

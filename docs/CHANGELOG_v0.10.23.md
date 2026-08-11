@@ -1,7 +1,5 @@
 # Changelog
 
-Patch notes, so I still know later what I was thinking.
-
 ## v0.10.23 (2026-08-11)
 
 The chat finally streams tokens instead of dribbling out one finished

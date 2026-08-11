@@ -1,7 +1,5 @@
 # Changelog
 
-Patch notes, so I still know later what I was thinking.
-
 ## v0.10.22 (2026-08-11)
 
 The chat finally stops looping. The garbage completions were not just an

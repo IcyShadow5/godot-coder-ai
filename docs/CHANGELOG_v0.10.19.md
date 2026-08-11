@@ -1,7 +1,5 @@
 # Changelog
 
-Patch notes, so I still know later what I was thinking.
-
 ## v0.10.19 (2026-08-10)
 
 Small release, mostly polish from the last review round: the system panel's

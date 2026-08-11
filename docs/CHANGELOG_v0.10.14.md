@@ -1,7 +1,5 @@
 # Changelog
 
-Patch notes, so I still know later what I was thinking.
-
 ## v0.10.14 (2026-08-09)
 
 An external reviewer ran a full static + runtime pass over the release zip

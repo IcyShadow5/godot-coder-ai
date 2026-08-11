@@ -1,7 +1,5 @@
 # Changelog
 
-Patch notes, so I still know later what I was thinking.
-
 ## v0.10.20 (2026-08-10)
 
 Follow-up to v0.10.19: the panel's compile cross-check now *prefers* the

@@ -1,7 +1,5 @@
 # Changelog
 
-Patch notes, so I still know later what I was thinking.
-
 ## v0.10.18 (2026-08-10)
 
 The review backlog, paid down. Two user-visible changes - the system panel
