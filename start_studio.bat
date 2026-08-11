@@ -12,6 +12,15 @@ if exist ".venv\Scripts\python.exe" (
   echo [Godot Coder Studio] .venv not found - using system python with PYTHONPATH=src
 )
 
+rem Dependency check: fail with a clear message instead of a traceback.
+"%PYTHON%" -c "import importlib.util, sys; missing=[m for m in ('fastapi','torch') if importlib.util.find_spec(m) is None]; sys.exit('missing packages: '+', '.join(missing)) if missing else None"
+if errorlevel 1 (
+  echo [Godot Coder Studio] Required packages are missing in the selected Python.
+  echo Install them with:  .venv\Scripts\pip install -e ".[dev]"
+  pause
+  exit /b 1
+)
+
 rem Single instance: refuse to start a second Studio on the same port.
 netstat -ano | findstr /R /C:":8765 .*LISTENING" >nul 2>&1
 if not errorlevel 1 (

@@ -9,6 +9,18 @@ if (Test-Path $venvPython) {
     Write-Host "[Godot Coder Studio] .venv not found - using system python with PYTHONPATH=src"
 }
 
+# Dependency check: fail with a clear message instead of a traceback.
+# The Python code is single-quoted on purpose - double quotes inside a -c
+# argument get mangled by Windows PowerShell 5.1 when re-quoting it for
+# the native call.
+$missing = & $python -c "import importlib.util, sys; missing = [m for m in ('fastapi', 'torch') if importlib.util.find_spec(m) is None]; sys.exit('missing packages: ' + ', '.join(missing)) if missing else None" 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "[Godot Coder Studio] Required packages are missing in the selected Python: $missing"
+    Write-Host 'Install them with:  .venv\Scripts\pip install -e ".[dev]"'
+    exit 1
+}
+
 # Single instance: refuse to start a second Studio on the same port.
 $listening = Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction SilentlyContinue
 if ($listening) {
