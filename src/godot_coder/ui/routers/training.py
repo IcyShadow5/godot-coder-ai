@@ -10,7 +10,7 @@ from ...checkpoint import load_checkpoint
 from ...config import load_config
 from ...corpus_audit import build_preflight
 from ..paths import safe_child
-from ..schemas import BenchmarkRequest, PrepareRequest, TrainRequest
+from ..schemas import BenchmarkRequest, PrepareRequest, TrainRequest, VerifyRequest
 from ..services import list_training_reports, read_curriculum_status, relative_posix
 
 
@@ -139,6 +139,42 @@ def build_training_router(app: FastAPI) -> APIRouter:
                 str(root / "artifacts" / "tokenizer.json"),
             ]
             return app.state.jobs.start("curriculum-prepare", args)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @router.post("/api/jobs/verify")
+    async def start_verify(request: VerifyRequest) -> dict[str, Any]:
+        try:
+            # The verifier never writes inside the project tree, so it
+            # gets a system-wide temp dir as its work area.
+            import tempfile
+
+            await asyncio.to_thread(app.state.generation.unload)
+            a = safe_child(root, request.checkpoint_a, must_exist=True)
+            a.relative_to((root / "checkpoints").resolve())
+            if request.checkpoint_b:
+                b = safe_child(root, request.checkpoint_b, must_exist=True)
+                b.relative_to((root / "checkpoints").resolve())
+                b_arg = ["--checkpoint-b", relative_posix(b, root)]
+            else:
+                b_arg = []
+            work_dir = tempfile.mkdtemp(prefix="godot-coder-verify-")
+            args = [
+                "-m",
+                "godot_coder.verify",
+                "--project-root",
+                str(root),
+                "--checkpoint-a",
+                relative_posix(a, root),
+                *b_arg,
+                "--work-dir",
+                work_dir,
+                "--max-new-tokens",
+                str(request.max_new_tokens),
+            ]
+            return app.state.jobs.start("verify", args, max_steps=16)
+        except (ValueError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         except RuntimeError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 

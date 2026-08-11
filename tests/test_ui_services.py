@@ -220,6 +220,41 @@ def test_generate_stream_yields_deltas_then_done(tmp_path: Path, monkeypatch) ->
     assert tokenizer.decoded_ids == [99, 100]
 
 
+def test_generate_stream_metrics_flag_controls_recording(tmp_path: Path, monkeypatch) -> None:
+    """record_metrics=False must skip the metrics file entirely (read-only verify)."""
+    (tmp_path / "checkpoints" / "v06").mkdir(parents=True)
+    (tmp_path / "checkpoints" / "v06" / "best.pt").write_bytes(b"dummy")
+    monkeypatch.setattr("godot_coder.ui.services.load_checkpoint", lambda path, map_location: {
+        "train_config": {"tokenizer_path": "artifacts/tokenizer.json"},
+        "tokenizer_fingerprint": "fp-123",
+        "model_config": {"vocab_size": 269, "max_seq_len": 32, "n_layers": 1, "d_model": 32,
+                         "n_heads": 4, "d_ff": 64, "dropout": 0.0, "rope_base": 10000.0,
+                         "tie_embeddings": True, "gradient_checkpointing": False},
+        "model_state": {},
+    })
+    monkeypatch.setattr("godot_coder.ui.services.load_tokenizer", lambda path: _FakeTokenizer())
+    monkeypatch.setattr("godot_coder.ui.services.TinyGPT", _FakeModel)
+    monkeypatch.setattr("godot_coder.ui.services.resolve_device", lambda name: torch.device("cpu"))
+
+    recorded: list[object] = []
+
+    class SpyMetrics:
+        def __init__(self, path) -> None:
+            pass
+
+        def record(self, event, **kwargs) -> None:
+            recorded.append((event, kwargs))
+
+    monkeypatch.setattr("godot_coder.ui.services.MetricsCollector", SpyMetrics)
+
+    service = GenerationService(tmp_path)
+    list(service.generate_stream("checkpoints/v06/best.pt", "extends Node", max_new_tokens=4, record_metrics=False))
+    assert recorded == []
+    # The Studio default keeps recording as before.
+    list(service.generate_stream("checkpoints/v06/best.pt", "extends Node", max_new_tokens=4))
+    assert recorded
+
+
 def test_generate_accepts_temperature_and_top_k_bounds(tmp_path: Path, monkeypatch) -> None:
     (tmp_path / "checkpoints" / "v06").mkdir(parents=True)
     (tmp_path / "checkpoints" / "v06" / "best.pt").write_bytes(b"dummy")

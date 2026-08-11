@@ -64,6 +64,12 @@ class BenchmarkRequest(BaseModel):
     checkpoint: str
 
 
+class VerifyRequest(BaseModel):
+    checkpoint_a: str
+    checkpoint_b: str | None = None
+    max_new_tokens: int = Field(default=256, ge=1, le=4096)
+
+
 class CorpusSourceRequest(BaseModel):
     sources: list[dict[str, Any]]
 

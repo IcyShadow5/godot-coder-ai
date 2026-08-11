@@ -1443,6 +1443,59 @@ async function benchmarkModel() {
   } catch (error) { toast(error.message, "error"); }
 }
 
+function verifyVerdictLabel(verdict) {
+  return verdict === "FALSIFIED"
+    ? { text: "claim falsified", cls: "failed" }
+    : verdict === "VERIFIED"
+      ? { text: "claim verified", cls: "passed" }
+      : { text: "unresolved", cls: "unknown" };
+}
+
+function renderVerifyBanner(report) {
+  const banner = $("#verify-banner");
+  if (!banner) return;
+  if (!report) { banner.hidden = true; return; }
+  const label = verifyVerdictLabel(report.verdict);
+  const checks = Object.entries(report.checks || {})
+    .map(([name, check]) => `${name}: ${check.verdict}`)
+    .join(" · ");
+  banner.className = `verify-banner ${label.cls}`;
+  banner.innerHTML = `
+    <strong>${report.claim}</strong>
+    <span class="verify-verdict">${label.text}</span>
+    <small>${checks}</small>
+  `;
+  banner.hidden = false;
+}
+
+async function verifyModel() {
+  const checkpoints = state.checkpoints || [];
+  if (checkpoints.length < 1) return toast("No checkpoints to verify.", "error");
+  const a = state.activeCheckpoint || checkpoints[0]?.path;
+  const b = checkpoints.length > 1
+    ? (checkpoints.find((item) => item.path !== a)?.path || checkpoints[1].path)
+    : null;
+  const target = prompt(
+    `Adversarial verify: try to falsify that checkpoint A is better than B.\n\n`
+    + `A = ${a}\n`
+    + (b ? `B = ${b}\n\nLeave empty to compare these.` : "\nNo second checkpoint for a comparison - enter one or press Cancel.")
+    + (b ? `` : `\nEnter checkpoint B path (e.g. checkpoints/v06/latest.pt):`),
+    b || ""
+  );
+  if (target === null) return;
+  const checkpointB = target.trim() || b;
+  try {
+    const job = await api("/api/jobs/verify", {
+      method: "POST",
+      body: JSON.stringify({ checkpoint_a: a, checkpoint_b: checkpointB }),
+    });
+    state.currentJob = job;
+    renderJob(job);
+    setView("training");
+    toast("Adversarial verification started - the run will try to falsify the claim.");
+  } catch (error) { toast(error.message, "error"); }
+}
+
 async function stopJob() {
   try {
     const job = await api("/api/jobs/stop", { method: "POST", body: "{}" });
@@ -1461,6 +1514,7 @@ function renderJob(job) {
   $("#validate-curriculum").disabled = active;
   $("#prepare-curriculum").disabled = active;
   $("#benchmark-model").disabled = active || !state.activeCheckpoint;
+  $("#verify-model").disabled = active;
   $("#stop-job").disabled = !active;
   $("#generate-button").disabled = active || !state.activeCheckpoint;
   if ($("#import-local-sources")) $("#import-local-sources").disabled = active;
@@ -1748,6 +1802,7 @@ function bindEvents() {
   })();
 
   $("#benchmark-model").addEventListener("click", benchmarkModel);
+  $("#verify-model").addEventListener("click", verifyModel);
   $("#stop-job").addEventListener("click", stopJob);
   $("#professional-audit").addEventListener("click", runProfessionalAudit);
   $("#professional-autotune").addEventListener("click", runAutotune);

@@ -729,6 +729,7 @@ class GenerationService:
         device_name: str = "auto",
         task_format: bool = False,
         strict_context: bool = False,
+        record_metrics: bool = True,
     ) -> Iterator[dict[str, Any]]:
         """Yield a context report, then live token deltas, then a done event.
 
@@ -818,9 +819,10 @@ class GenerationService:
                         yield {"token": text[len(prev_text):]}
                     prev_text = text
             raw_text = loaded.tokenizer.decode(accumulated, skip_special_tokens=True)
-            gen_metrics = MetricsCollector(self.project_root / "reports" / "studio_metrics.jsonl")
-            gen_metrics.record(MetricEvent.TOKEN_USAGE, tokens=len(accumulated), context_tokens=context.prompt_tokens)
-            gen_metrics.record(MetricEvent.GENERATION_COMPLETE if raw_text else MetricEvent.GENERATION_ERROR)
+            if record_metrics:
+                gen_metrics = MetricsCollector(self.project_root / "reports" / "studio_metrics.jsonl")
+                gen_metrics.record(MetricEvent.TOKEN_USAGE, tokens=len(accumulated), context_tokens=context.prompt_tokens)
+                gen_metrics.record(MetricEvent.GENERATION_COMPLETE if raw_text else MetricEvent.GENERATION_ERROR)
             yield {"done": True, "text": _clean_completion(raw_text), "tokens": len(accumulated)}
 
     def generate(
@@ -836,6 +838,7 @@ class GenerationService:
         device_name: str = "auto",
         task_format: bool = False,
         strict_context: bool = False,
+        record_metrics: bool = True,
     ) -> str:
         """Generate a full completion; a thin wrapper over the live stream."""
         done_text: str | None = None
@@ -850,6 +853,7 @@ class GenerationService:
             device_name=device_name,
             task_format=task_format,
             strict_context=strict_context,
+            record_metrics=record_metrics,
         ):
             if "done" in event:
                 done_text = event["text"]

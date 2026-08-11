@@ -325,3 +325,54 @@ def test_start_training_resume_surfaces_step(tmp_path: Path, monkeypatch) -> Non
     assert "--resume" in call["args"]
     assert call["initial_progress"]["resume_step"] == 5
     assert call["initial_progress"]["resumed_from"] == "checkpoints/v06/step_00000005.pt"
+
+def test_start_verify_launches_job_with_two_checkpoints(tmp_path: Path, monkeypatch) -> None:
+    app, jobs, gen = _make_app(tmp_path, monkeypatch)
+    (tmp_path / "checkpoints" / "v06_a").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "checkpoints" / "v06_b").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "checkpoints" / "v06_a" / "best.pt").write_bytes(b"a")
+    (tmp_path / "checkpoints" / "v06_b" / "best.pt").write_bytes(b"b")
+    with _client(app) as client:
+        response = client.post(
+            "/api/jobs/verify",
+            json={"checkpoint_a": "checkpoints/v06_a/best.pt", "checkpoint_b": "checkpoints/v06_b/best.pt"},
+        )
+    assert response.status_code == 200, response.text
+    call = jobs.starts[0]
+    assert call["kind"] == "verify"
+    assert call["args"][1] == "godot_coder.verify"
+    assert "--checkpoint-a" in call["args"]
+    assert "--checkpoint-b" in call["args"]
+    assert "--work-dir" in call["args"]
+    work_index = call["args"].index("--work-dir")
+    work_dir = Path(call["args"][work_index + 1])
+    # The work dir must never live inside the project tree.
+    try:
+        work_dir.resolve().relative_to(tmp_path.resolve())
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("verify work dir must be outside the project tree")
+
+
+def test_start_verify_single_checkpoint_omits_b_flag(tmp_path: Path, monkeypatch) -> None:
+    app, jobs, gen = _make_app(tmp_path, monkeypatch)
+    with _client(app) as client:
+        response = client.post(
+            "/api/jobs/verify",
+            json={"checkpoint_a": "checkpoints/best.pt"},
+        )
+    assert response.status_code == 200, response.text
+    call = jobs.starts[0]
+    assert "--checkpoint-b" not in call["args"]
+
+
+def test_start_verify_rejects_checkpoint_outside_vault(tmp_path: Path, monkeypatch) -> None:
+    app, jobs, gen = _make_app(tmp_path, monkeypatch)
+    with _client(app) as client:
+        response = client.post(
+            "/api/jobs/verify",
+            json={"checkpoint_a": "../artifacts/tokenizer.json"},
+        )
+    assert response.status_code == 400
+    assert jobs.starts == []
