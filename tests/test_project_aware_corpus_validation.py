@@ -415,6 +415,32 @@ def test_checker_script_ignores_warning_as_error_projects(tmp_path: Path) -> Non
     assert "path_value: String in paths" in text
     assert "Array[String]" in text
 
+def test_validation_removes_generated_checker_helpers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Regression: _write_project_checker dropped one project_check_<key>.gd
+    # into reports/corpus_validation_helpers per run and nothing ever
+    # removed it, so repeated validations accumulated files in the tree.
+    root, _ = _workspace(tmp_path, {"a.gd": "extends Node\nfunc a() -> void:\n\tpass\n"})
+    monkeypatch.setattr("godot_coder.corpus._find_godot", lambda: "godot.exe")
+    monkeypatch.setattr("godot_coder.corpus._godot_version", lambda executable: "4.7.test")
+
+    def fake_managed(command: list[str], **kwargs):
+        return ManagedProcessResult(
+            command=command, return_code=0, output="Godot Engine v4.7\n[ DONE ]",
+            timed_out=False, duration_seconds=0.1, pid=None, termination_attempted=False,
+        )
+
+    monkeypatch.setattr("godot_coder.corpus.run_managed_process", fake_managed)
+    # Simulate a previous validation run: a stale checker helper is already
+    # lying around. The leak bug left one such file behind per cache key.
+    helper_dir = root / "reports" / "corpus_validation_helpers"
+    helper_dir.mkdir(parents=True)
+    (helper_dir / "project_check_stale000000000000.gd").write_text(
+        "extends SceneTree\n", encoding="utf-8"
+    )
+    validate_and_finalize(root, minimum_accepted=0)
+    assert not helper_dir.exists(), "generated checker helpers must be removed after validation"
+
+
 def test_context_warning_record_is_perfile_verified(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # A record that ends up as a context warning (the checker produced no
     # marker for it) must still get a standalone --check-only parse. A clean
@@ -477,6 +503,54 @@ def test_context_warning_with_real_syntax_error_is_now_rejected(tmp_path: Path, 
     assert report["classifications"]["syntax_error"] == 1
     assert report["context_warnings"] == 1  # good.gd stays a verified warning
     assert report["prepared"] == 1  # only good.gd lands in prepared/
+def test_standalone_record_with_escaping_path_is_kept_not_crashed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Regression: a corrupted manifest with an original_path escaping the
+    # source root ("../escape.gd") made _validate_standalone_records crash
+    # with an unguarded relative_to ValueError, taking the whole validation
+    # down. The record must be kept with a context warning instead.
+    root = tmp_path
+    corpus = root / "data" / "corpus"
+    source_root = corpus / "downloads" / "demo-addon"
+    source_root.mkdir(parents=True)
+    # The file really exists but lives OUTSIDE the source root.
+    (source_root.parent / "escape.gd").write_text(
+        "extends Node\nfunc ok() -> void:\n\tpass\n", encoding="utf-8"
+    )
+    staged = corpus / "staged" / "demo-addon"
+    staged.mkdir(parents=True)
+    (staged / "r0.gd").write_text("extends Node\n", encoding="utf-8")
+    records = [{
+        "record_id": "r0", "source_id": "demo-addon", "source_title": "Demo Addon",
+        "group_id": "demo-addon::root", "kind": "godot_projects",
+        "original_path": "../escape.gd", "staged_path": "demo-addon/r0.gd",
+        "split": "train", "content_sha256": "sha-0", "bytes": 40, "license": "MIT",
+        "attribution": "Test", "source_commit": "abc", "project_root": None,
+        "validation_status": "pending", "validation_error": None,
+    }]
+    (corpus / "corpus_manifest.json").write_text(
+        json.dumps({"format": "godot-coder-licensed-corpus", "format_version": 3,
+                    "records": records, "sources": [], "skipped": []}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr("godot_coder.corpus._find_godot", lambda: "godot.exe")
+    monkeypatch.setattr("godot_coder.corpus._godot_version", lambda executable: "4.7.test")
+
+    def fake_managed(command: list[str], **kwargs):
+        return ManagedProcessResult(
+            command=command, return_code=0, output="Godot Engine v4.7",
+            timed_out=False, duration_seconds=0.1, pid=None, termination_attempted=False,
+        )
+
+    monkeypatch.setattr("godot_coder.corpus.run_managed_process", fake_managed)
+    report = validate_and_finalize(root, minimum_accepted=0)
+    assert report["failed"] == 0
+    assert report["passed"] == 1
+    assert report["context_warnings"] == 1
+    manifest_now = json.loads((corpus / "corpus_manifest.json").read_text(encoding="utf-8"))
+    assert manifest_now["records"][0]["validation_classification"] == "context_warning"
+
+
 def test_user_lessons_record_is_resolved_from_project_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # Regression: chat samples are staged from data/raw/user_lessons, but the
     # standalone validator used to resolve every record against

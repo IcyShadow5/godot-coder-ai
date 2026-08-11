@@ -50,7 +50,17 @@ _FAILURE_MARKERS: list[tuple[FailureKind, list[str]]] = [
         "Parse Error:",
         "Parser Error:",
         "syntax error",
-        "Expected ",
+        # Narrow on the real GDScript parse-error phrasings. The bare
+        # "Expected " prefix was far too broad: harmless runtime output
+        # like "Expected 10 items but the array has 5" was misreported
+        # as PARSE_ERROR instead of RUNTIME_ERROR.
+        "expected end of",
+        "expected an expression",
+        "expected expression",
+        "expected identifier",
+        "expected statement",
+        "expected \"",
+        "expected '",
         "Unexpected token",
     ]),
     (FailureKind.RUNTIME_ERROR, [

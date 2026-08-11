@@ -696,6 +696,20 @@ def _clean_completion(text: str) -> str:
     return _collapse_repeated_blocks(_normalize_blank_lines(text)).rstrip()
 
 
+@dataclass(frozen=True)
+class GenerationResult:
+    """One full generation: the completion text and whether it was cancelled.
+
+    A cancelled stream (unload() moved the model out mid-generation) still
+    returns its partial text so callers can show what was produced, but the
+    flag lets them distinguish an interrupted completion from a finished
+    one instead of silently accepting a truncated answer.
+    """
+
+    text: str
+    cancelled: bool
+
+
 class GenerationService:
     """Caches one checkpoint in memory for responsive local generation."""
 
@@ -703,10 +717,28 @@ class GenerationService:
         self.project_root = project_root
         self._loaded: LoadedModel | None = None
         self._lock = threading.RLock()
+        # Stream cancellation for unload(): each stream takes a generation
+        # number under the lock; unload() marks the current generation so
+        # only the stream active at that moment stops (a stream started
+        # afterwards keeps its own, newer number and runs normally).
+        self._stream_seq = 0
+        self._cancel_seq: int | None = None
 
     def unload(self) -> None:
-        """Release cached model VRAM before training or hardware probes."""
+        """Release cached model VRAM before training or hardware probes.
+
+        An active stream is asked to stop first: the cancel marker is
+        written without the lock (the stream holds it across its yields),
+        so the stream sees it at its next token step and stops instead of
+        running to the end. unload() then waits only for that one step, not
+        for the whole completion - training or a hardware probe starts as
+        soon as the model is safe to move. A stream started between arming
+        the marker and acquiring the lock takes a newer generation number
+        and is intentionally not cancelled (unload() waits for it).
+        """
+        self._cancel_seq = self._stream_seq
         with self._lock:
+            self._cancel_seq = None  # marker consumed; the stream has stopped
             loaded = self._loaded
             self._loaded = None
             if loaded is not None:
@@ -760,7 +792,16 @@ class GenerationService:
             checkpoint.relative_to(checkpoint_root)
         except ValueError as exc:
             raise ValueError("checkpoint must be under checkpoints/") from exc
+        # The lock deliberately covers the whole stream (every yield): a
+        # concurrent unload() must never move the model out from under an
+        # active forward pass. unload() sets a cancel marker for the
+        # current stream generation first, so the stream stops at its next
+        # token step instead of running to completion; unload() waits only
+        # for that step.
         with self._lock:
+            self._stream_seq += 1
+            my_seq = self._stream_seq
+            cancelled = False
             device = resolve_device(device_name)
             modified_ns = checkpoint.stat().st_mtime_ns
             loaded = self._loaded
@@ -812,6 +853,13 @@ class GenerationService:
                     repetition_penalty=repetition_penalty,
                     eos_id=loaded.tokenizer.eos_id,
                 ):
+                    if self._cancel_seq == my_seq:
+                        # unload() asked this stream to stop; release the
+                        # lock at the next opportunity so the model can be
+                        # moved out. The partial text is still delivered in
+                        # the done event below.
+                        cancelled = True
+                        break
                     accumulated.append(int(token.item()))
                     text = loaded.tokenizer.decode(accumulated, skip_special_tokens=True)
                     # Byte-level BPE decode is prefix-stable: only the tail
@@ -824,8 +872,16 @@ class GenerationService:
             if record_metrics:
                 gen_metrics = MetricsCollector(self.project_root / "reports" / "studio_metrics.jsonl")
                 gen_metrics.record(MetricEvent.TOKEN_USAGE, tokens=len(accumulated), context_tokens=context.prompt_tokens)
-                gen_metrics.record(MetricEvent.GENERATION_COMPLETE if raw_text else MetricEvent.GENERATION_ERROR)
-            yield {"done": True, "text": _clean_completion(raw_text), "tokens": len(accumulated)}
+                # A cancelled stream logged no completion event: the text is
+                # partial and the UI shows it as interrupted.
+                if not cancelled:
+                    gen_metrics.record(MetricEvent.GENERATION_COMPLETE if raw_text else MetricEvent.GENERATION_ERROR)
+            yield {
+                "done": True,
+                "text": _clean_completion(raw_text),
+                "tokens": len(accumulated),
+                "cancelled": cancelled,
+            }
 
     def generate(
         self,
@@ -841,9 +897,15 @@ class GenerationService:
         task_format: bool = False,
         strict_context: bool = False,
         record_metrics: bool = True,
-    ) -> str:
-        """Generate a full completion; a thin wrapper over the live stream."""
-        done_text: str | None = None
+    ) -> GenerationResult:
+        """Generate a full completion; a thin wrapper over the live stream.
+
+        Returns the completion text plus whether the stream was cancelled
+        (e.g. by unload() moving the model out mid-generation). The partial
+        text stays available for callers that want it; ``cancelled`` makes
+        the interruption explicit instead of a silent truncation.
+        """
+        done_event: dict[str, Any] | None = None
         for event in self.generate_stream(
             checkpoint_path,
             prompt,
@@ -858,10 +920,13 @@ class GenerationService:
             record_metrics=record_metrics,
         ):
             if "done" in event:
-                done_text = event["text"]
-        if done_text is None:
+                done_event = event
+        if done_event is None:
             raise RuntimeError("generation stream ended without a done event")
-        return done_text
+        return GenerationResult(
+            text=str(done_event["text"]),
+            cancelled=bool(done_event.get("cancelled", False)),
+        )
 
 
 def validate_code(project_root: Path, code: str, project_path: str = "data/raw/seed_project") -> dict[str, Any]:

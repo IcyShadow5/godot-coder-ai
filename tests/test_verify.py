@@ -307,8 +307,9 @@ def test_default_generate_reuses_one_service(monkeypatch) -> None:
         def __init__(self, root) -> None:
             created.append(root)
 
-        def generate(self, checkpoint, prompt, **kwargs) -> str:
-            return "\treturn 42\n"
+        def generate(self, checkpoint, prompt, **kwargs):
+            from godot_coder.ui.services import GenerationResult
+            return GenerationResult(text="\treturn 42\n", cancelled=False)
 
     monkeypatch.setattr("godot_coder.ui.services.GenerationService", FakeService)
     from godot_coder import verify as verify_mod

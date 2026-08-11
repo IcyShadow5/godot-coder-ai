@@ -145,10 +145,10 @@ def build_training_router(app: FastAPI) -> APIRouter:
     @router.post("/api/jobs/verify")
     async def start_verify(request: VerifyRequest) -> dict[str, Any]:
         try:
-            # The verifier never writes inside the project tree, so it
-            # gets a system-wide temp dir as its work area.
-            import tempfile
-
+            # The verifier never writes inside the project tree and creates
+            # its own system-wide temp dir (owned, removed after the run).
+            # Handing a --work-dir over here would leak one temp dir per
+            # Studio verify job - caller-owned dirs are left in place.
             await asyncio.to_thread(app.state.generation.unload)
             a = safe_child(root, request.checkpoint_a, must_exist=True)
             a.relative_to((root / "checkpoints").resolve())
@@ -158,7 +158,6 @@ def build_training_router(app: FastAPI) -> APIRouter:
                 b_arg = ["--checkpoint-b", relative_posix(b, root)]
             else:
                 b_arg = []
-            work_dir = tempfile.mkdtemp(prefix="godot-coder-verify-")
             args = [
                 "-m",
                 "godot_coder.verify",
@@ -167,8 +166,6 @@ def build_training_router(app: FastAPI) -> APIRouter:
                 "--checkpoint-a",
                 relative_posix(a, root),
                 *b_arg,
-                "--work-dir",
-                work_dir,
                 "--max-new-tokens",
                 str(request.max_new_tokens),
             ]

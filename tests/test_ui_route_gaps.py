@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 from godot_coder.ui.server import create_app
+from godot_coder.ui.services import GenerationResult
 
 MINIMAL_YAML = """\
 profile:
@@ -60,7 +61,7 @@ def _scaffold(tmp_path: Path) -> None:
 
 def _fake_generation(app, text: str = "return a + b\n"):
     def fake_generate(checkpoint, prompt, *, max_new_tokens, temperature, top_k, top_p=1.0, repetition_penalty=1.15, device_name="auto", task_format=False, strict_context=False):
-        return text
+        return GenerationResult(text=text, cancelled=False)
 
     def fake_unload():
         pass
@@ -87,6 +88,7 @@ def test_chat_generate_non_stream_success(tmp_path: Path) -> None:
         )
     assert response.status_code == 200
     assert response.json()["text"] == "return a + b\n"
+    assert response.json()["cancelled"] is False
     assert response.json()["checkpoint"] == "checkpoints/v06_balanced/best.pt"
 
 

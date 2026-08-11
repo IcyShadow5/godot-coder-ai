@@ -393,6 +393,8 @@ def _default_generate(root: Path, checkpoint: str, prompt: str, *, max_new_token
     if service is None:
         service = GenerationService(root)
         _generation_services[key] = service
+    # A verify job runs as its own process and never calls unload(), so a
+    # generation cannot be cancelled here; the flag is intentionally dropped.
     return service.generate(
         checkpoint,
         prompt,
@@ -403,7 +405,7 @@ def _default_generate(root: Path, checkpoint: str, prompt: str, *, max_new_token
         repetition_penalty=1.0,
         device_name="auto",
         record_metrics=False,
-    )
+    ).text
 
 
 def _default_validate(root: Path, work_dir: Path, code: str, project_path: str) -> dict[str, object]:

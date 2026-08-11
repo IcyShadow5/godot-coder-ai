@@ -1950,26 +1950,35 @@ def _validate_standalone_records(
             output = result.output.strip()
             if result.startup_error:
                 output = output or f"Godot could not be started: {result.startup_error}"
-            relative = script.resolve().relative_to(source_root.resolve()).as_posix().lower()
-            analysis = _classify_project_output(output)
-            matched = analysis["hard_failures"].get(relative)
-            if matched is None:
-                matches = [
-                    error for path, error in analysis["hard_failures"].items()
-                    if path.endswith("/" + relative) or relative.endswith("/" + path)
-                ]
-                if len(matches) == 1:
-                    matched = matches[0]
-            if matched:
-                status, classification, error = "failed", "syntax_error", matched
-            else:
+            try:
+                relative = script.resolve().relative_to(source_root.resolve()).as_posix().lower()
+            except ValueError:
+                # The script path escapes the source root (should not happen
+                # with manifest-built paths). Nothing can be attributed; keep
+                # the record with a context warning instead of failing the
+                # whole validate - same policy as the per-file path.
                 status, classification = "passed", "context_warning"
-                if result.timed_out:
-                    error = "The per-file check exceeded its time limit; no clear syntax error - keep as a context warning."
-                elif warnings_ := analysis["context_warnings"]:
-                    error = warnings_[0]
+                error = "The script path escapes the source root; keep as a context warning."
+            else:
+                analysis = _classify_project_output(output)
+                matched = analysis["hard_failures"].get(relative)
+                if matched is None:
+                    matches = [
+                        error for path, error in analysis["hard_failures"].items()
+                        if path.endswith("/" + relative) or relative.endswith("/" + path)
+                    ]
+                    if len(matches) == 1:
+                        matched = matches[0]
+                if matched:
+                    status, classification, error = "failed", "syntax_error", matched
                 else:
-                    error = "Checked as an add-on script without project.godot; no clear syntax error detected."
+                    status, classification = "passed", "context_warning"
+                    if result.timed_out:
+                        error = "The per-file check exceeded its time limit; no clear syntax error - keep as a context warning."
+                    elif warnings_ := analysis["context_warnings"]:
+                        error = warnings_[0]
+                    else:
+                        error = "Checked as an add-on script without project.godot; no clear syntax error detected."
         item["validation_status"] = status
         item["validation_error"] = error
         item["validation_classification"] = classification
@@ -2100,6 +2109,14 @@ def validate_and_finalize(project_root: Path, *, include_docs: bool = True, mini
                 f"{len(group_records)} scripts · Status {project_result.get('status')}"
             ),
         }))
+
+    # The generated per-file checker scripts are transient build artifacts
+    # of one validation run; nothing references them afterwards. Remove the
+    # whole helper directory so repeated runs do not accumulate files in
+    # the project tree.
+    helper_dir = project_root / "reports" / "corpus_validation_helpers"
+    if helper_dir.exists():
+        shutil.rmtree(helper_dir, ignore_errors=True)
 
     staged = corpus_root(project_root) / "staged"
     prepared = corpus_root(project_root) / "prepared"

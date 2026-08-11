@@ -343,16 +343,10 @@ def test_start_verify_launches_job_with_two_checkpoints(tmp_path: Path, monkeypa
     assert call["args"][1] == "godot_coder.verify"
     assert "--checkpoint-a" in call["args"]
     assert "--checkpoint-b" in call["args"]
-    assert "--work-dir" in call["args"]
-    work_index = call["args"].index("--work-dir")
-    work_dir = Path(call["args"][work_index + 1])
-    # The work dir must never live inside the project tree.
-    try:
-        work_dir.resolve().relative_to(tmp_path.resolve())
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("verify work dir must be outside the project tree")
+    # The router hands over no --work-dir: verify.py creates its own
+    # system-wide temp dir (owned) and removes it after the run. A dir
+    # created here would leak one system temp dir per Studio verify job.
+    assert "--work-dir" not in call["args"]
 
 
 def test_start_verify_single_checkpoint_omits_b_flag(tmp_path: Path, monkeypatch) -> None:

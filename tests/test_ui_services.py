@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import json
+import threading
+import time
 
 import torch
 
@@ -178,15 +180,37 @@ def test_generate_returns_only_completion_not_prompt(tmp_path: Path, monkeypatch
     monkeypatch.setattr("godot_coder.ui.services.resolve_device", lambda name: torch.device("cpu"))
 
     service = GenerationService(tmp_path)
-    text = service.generate(
+    result = service.generate(
         "checkpoints/v06/best.pt",
         "extends Node",
         max_new_tokens=16,
         temperature=0.8,
         top_k=40,
     )
-    assert text.startswith("extends Node")  # decode result from the fake tokenizer
+    assert result.text.startswith("extends Node")  # decode result from the fake tokenizer
+    assert result.cancelled is False
     assert tokenizer.decoded_ids == [99, 100], "the prompt prefix must be stripped from the completion"
+
+
+def test_generate_surfaces_cancelled_flag(tmp_path: Path, monkeypatch) -> None:
+    """generate() must surface a cancelled stream, not silently return partial text."""
+    service = GenerationService(tmp_path)
+
+    def fake_stream(self, checkpoint_path, prompt, **kwargs):
+        yield {"done": True, "text": "partial", "tokens": 1, "cancelled": True}
+
+    monkeypatch.setattr(GenerationService, "generate_stream", fake_stream)
+    result = service.generate("checkpoints/v06/best.pt", "extends Node", max_new_tokens=4)
+    assert result.text == "partial"
+    assert result.cancelled is True
+
+    def fake_stream_finished(self, checkpoint_path, prompt, **kwargs):
+        yield {"done": True, "text": "complete", "tokens": 2, "cancelled": False}
+
+    monkeypatch.setattr(GenerationService, "generate_stream", fake_stream_finished)
+    finished = service.generate("checkpoints/v06/best.pt", "extends Node", max_new_tokens=4)
+    assert finished.text == "complete"
+    assert finished.cancelled is False
 
 
 def test_generate_stream_yields_deltas_then_done(tmp_path: Path, monkeypatch) -> None:
@@ -401,3 +425,107 @@ def test_system_status_stale_probe_falls_back_to_static(tmp_path, monkeypatch) -
     status = _quiet_system_status(tmp_path, (True, "3.7.1"), monkeypatch)
     assert status["compile_available"] is True
     assert status["compile_disabled_reason"] is None
+
+
+def _unload_setup(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "checkpoints" / "v06").mkdir(parents=True)
+    (tmp_path / "checkpoints" / "v06" / "best.pt").write_bytes(b"dummy")
+    monkeypatch.setattr("godot_coder.ui.services.load_checkpoint", lambda path, map_location: {
+        "train_config": {"tokenizer_path": "artifacts/tokenizer.json"},
+        "tokenizer_fingerprint": "fp-123",
+        "model_config": {"vocab_size": 269, "max_seq_len": 32, "n_layers": 1, "d_model": 32,
+                         "n_heads": 4, "d_ff": 64, "dropout": 0.0, "rope_base": 10000.0,
+                         "tie_embeddings": True, "gradient_checkpointing": False},
+        "model_state": {},
+    })
+    tokenizer = _FakeTokenizer()
+    monkeypatch.setattr("godot_coder.ui.services.load_tokenizer", lambda path: tokenizer)
+    monkeypatch.setattr("godot_coder.ui.services.resolve_device", lambda name: torch.device("cpu"))
+    # The fake checkpoint payload carries an empty model_state; without a
+    # TinyGPT mock the real model would reject it on load.
+    monkeypatch.setattr("godot_coder.ui.services.TinyGPT", _FakeModel)
+
+
+def test_unload_requests_cancel_and_stream_stops_early(tmp_path: Path, monkeypatch) -> None:
+    """unload() must never move the model under a running stream's forward.
+
+    Instead of blocking until the stream ends, unload() marks the current
+    stream generation; the stream sees the marker at its next token step,
+    stops early, and delivers a done event flagged ``cancelled``. The lock
+    is then released so unload() can swap the model out - the wait is one
+    token step, not the whole completion.
+    """
+    _unload_setup(tmp_path, monkeypatch)
+
+    release = threading.Event()
+
+    class _BlockingModel(_FakeModel):
+        def generate_stream(self, input_ids, **kwargs):
+            yield torch.tensor([[99]])
+            release.wait(2.0)  # pause inside the stream, lock still held
+            yield torch.tensor([[100]])
+
+    monkeypatch.setattr("godot_coder.ui.services.TinyGPT", _BlockingModel)
+
+    service = GenerationService(tmp_path)
+    events = service.generate_stream("checkpoints/v06/best.pt", "extends Node", max_new_tokens=4)
+    first = next(events)
+    assert "context" in first
+    second = next(events)
+    assert "token" in second  # model is now paused in the forward pass
+
+    unload_done = threading.Event()
+
+    def _unload() -> None:
+        service.unload()
+        unload_done.set()
+
+    unloader = threading.Thread(target=_unload, daemon=True)
+    unloader.start()
+    # Poll until the marker is armed (unload set it before blocking on the
+    # lock); only then the stream is guaranteed to stop at its next step.
+    deadline = time.time() + 1.0
+    while service._cancel_seq is None and time.time() < deadline:
+        time.sleep(0.01)
+    assert service._cancel_seq == service._stream_seq, "cancel marker was not armed"
+    assert not unload_done.is_set(), "unload() must still wait for the in-flight token step"
+
+    release.set()  # let the paused forward finish; the stream must stop here
+    done = None
+    for event in events:
+        if "done" in event:
+            done = event
+            break
+    assert done is not None, "a cancelled stream must still end with a done event"
+    assert done["cancelled"] is True
+    assert done["tokens"] == 1  # the second token was never accumulated
+
+    # The done event is terminal; a streaming consumer stops here, so close
+    # the generator to release the lock before unload() can proceed.
+    events.close()
+    unloader.join(timeout=2.0)
+    assert unload_done.is_set(), "unload() must complete after the stream stops"
+
+
+def test_unload_without_active_stream_does_not_cancel_next_stream(tmp_path: Path, monkeypatch) -> None:
+    """The cancel marker is scoped to the stream generation, not sticky.
+
+    unload() called while no stream runs must not poison a stream that
+    starts afterwards: it takes its own, newer generation number and runs
+    to completion with ``cancelled`` False.
+    """
+    _unload_setup(tmp_path, monkeypatch)
+
+    service = GenerationService(tmp_path)
+    service.unload()  # no stream active - the marker must not stick
+
+    events = service.generate_stream("checkpoints/v06/best.pt", "extends Node", max_new_tokens=4)
+    done = None
+    for event in events:
+        if "done" in event:
+            done = event
+            break
+    assert done is not None
+    assert done["cancelled"] is False
+    assert done["tokens"] == 2  # both fake-model tokens were accumulated
+    events.close()

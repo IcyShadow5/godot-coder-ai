@@ -298,7 +298,7 @@ def run_benchmark(
             overall_index += 1
             case_max_tokens = min(max_new_tokens, int(case.get("reference_tokens", max_new_tokens)))
             prompt_text = str(case.get("prompt", case.get("scaffold", "")))
-            generated = generator.generate(
+            generation = generator.generate(
                 checkpoint,
                 prompt_text,
                 max_new_tokens=case_max_tokens,
@@ -308,6 +308,8 @@ def run_benchmark(
                 repetition_penalty=repetition_penalty,
                 device_name="auto",
             )
+            generated = generation.text
+            generated_cancelled = generation.cancelled
             case_project = str(case.get("validation_project", validation_project))
             # generate() returns only the completion (the chat flow strips the
             # prompt), so re-attach the scaffold before validating - a bare
@@ -321,6 +323,7 @@ def run_benchmark(
                 "tier": tier_name,
                 "generated": generated,
                 "generated_suffix": suffix,
+                "generated_cancelled": generated_cancelled,
                 "parser_passed": validation["passed"],
                 "parser_output": validation["output"],
                 "first_error": _first_error(validation["output"]),

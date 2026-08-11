@@ -22,12 +22,14 @@ from godot_coder.local_sources import (
     ProjectValidationResult,
 )
 from godot_coder.process_control import (
+    FailureKind,
     ManagedProcessResult,
     _terminate_windows_process_tree,
     _windows_job_assign,
     _windows_job_close,
     _windows_job_create,
     _windows_job_terminate,
+    classify_failure,
     run_managed_process,
 )
 from godot_coder.progress_events import ProgressEmitter, parse_event_line
@@ -701,3 +703,60 @@ def test_windows_tree_termination_forces_and_waits_for_exact_process(
     assert commands == [["taskkill", "/PID", "4242", "/T", "/F"]]
     assert waited == [(4242, 8.0, (kernel32, handle))]
     assert kernel32.closed == [handle]
+
+
+def test_classify_failure_runtime_expected_text_is_not_parse_error() -> None:
+    """'Expected ...' in plain runtime text must not be reported as a parse error.
+
+    The old bare "Expected " marker misread harmless runtime output (e.g.
+    'Expected 10 items but the array has 5') as PARSE_ERROR. Only the real
+    GDScript parse phrasings may classify as PARSE_ERROR now.
+    """
+    result = ManagedProcessResult(
+        command=[],
+        return_code=0,
+        output="Expected 10 items but the array has 5",
+        timed_out=False,
+        duration_seconds=1.0,
+        pid=None,
+        termination_attempted=False,
+    )
+    assert classify_failure(result) == FailureKind.NONE
+
+
+def test_classify_failure_gdscript_parse_phrasings_still_detected() -> None:
+    """The real GDScript parse-error phrasings keep classifying as PARSE_ERROR."""
+    phrasings = [
+        "Parse Error: Expected end of expression after operator.",
+        "Expected an expression after '='.",
+        "Expected identifier after '.'.",
+        "Expected statement, found '}' instead.",
+        "Expected ')' after expression.",
+        'Expected ":" after statement.',
+        "Unexpected token",
+    ]
+    for text in phrasings:
+        result = ManagedProcessResult(
+            command=[],
+            return_code=0,
+            output=text,
+            timed_out=False,
+            duration_seconds=1.0,
+            pid=None,
+            termination_attempted=False,
+        )
+        assert classify_failure(result) == FailureKind.PARSE_ERROR, text
+
+
+def test_classify_failure_runtime_error_still_win_over_narrow_parse_markers() -> None:
+    """Runtime lines keep their category; parse markers only win on parse text."""
+    result = ManagedProcessResult(
+        command=[],
+        return_code=1,
+        output="ERROR: Invalid call. Nonexistent function 'foo' in base Node",
+        timed_out=False,
+        duration_seconds=1.0,
+        pid=None,
+        termination_attempted=False,
+    )
+    assert classify_failure(result) == FailureKind.RUNTIME_ERROR

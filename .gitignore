@@ -76,3 +76,8 @@ tools/upgrade/payload/
 
 # MkDocs build output (GitHub Pages)
 site/
+
+# Live sync tooling: local working-copy helper, not part of the shipped product
+# (the live Studio install is this repo itself; sync is a no-op here).
+tools/sync_live.py
+tests/test_sync_live.py

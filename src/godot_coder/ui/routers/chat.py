@@ -54,7 +54,7 @@ def build_chat_router(app: FastAPI) -> APIRouter:
         if current and current["status"] in {"starting", "running", "stopping"}:
             raise HTTPException(status_code=409, detail="Stop the active training/data job before generating.")
         try:
-            text = await asyncio.to_thread(
+            result = await asyncio.to_thread(
                 app.state.generation.generate,
                 request.checkpoint,
                 request.prompt,
@@ -67,7 +67,13 @@ def build_chat_router(app: FastAPI) -> APIRouter:
                 task_format=request.task_format,
                 strict_context=request.strict_context,
             )
-            return {"text": text, "checkpoint": request.checkpoint}
+            # cancelled distinguishes an interrupted (partial) completion
+            # from a finished one; the partial text is still returned.
+            return {
+                "text": result.text,
+                "cancelled": result.cancelled,
+                "checkpoint": request.checkpoint,
+            }
         except (ValueError, FileNotFoundError, RuntimeError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

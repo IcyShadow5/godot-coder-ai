@@ -105,6 +105,30 @@ def test_generate_stream_matches_generate_on_both_paths() -> None:
         assert torch.equal(streamed, expected), f"kv_cache={use_kv_cache}"
 
 
+def test_generate_stream_restores_previous_training_mode() -> None:
+    """Streaming must not leak eval() into a train-mode caller."""
+    model = _loop_model()
+    model.train()
+    x = torch.tensor([[1, 2, 3]])
+    list(model.generate_stream(x, max_new_tokens=4, temperature=0.0))
+    assert model.training is True, "generate_stream must restore training mode"
+
+    model.eval()
+    list(model.generate_stream(x, max_new_tokens=4, temperature=0.0))
+    assert model.training is False, "eval mode must stay eval"
+
+
+def test_generate_stream_early_close_restores_training_mode() -> None:
+    """An early consumer close (GeneratorExit) must also restore the mode."""
+    model = _loop_model()
+    model.train()
+    x = torch.tensor([[1, 2, 3]])
+    stream = model.generate_stream(x, max_new_tokens=8, temperature=0.0)
+    next(stream)
+    stream.close()
+    assert model.training is True, "early close must restore training mode"
+
+
 def test_generate_stream_yields_each_token_then_stops_at_eos() -> None:
     model = _loop_model()
     x = torch.tensor([[1, 2, 3]])

@@ -57,7 +57,8 @@ def test_run_benchmark_validates_prompt_plus_completion(monkeypatch, tmp_path) -
 
     def fake_generate(self, _checkpoint, _prompt, **_kwargs):
         # chat-flow contract: completion only, no prompt echo
-        return completion
+        from godot_coder.ui.services import GenerationResult
+        return GenerationResult(text=completion, cancelled=False)
 
     class FakeGS:
         def __init__(self, _root):
@@ -89,7 +90,8 @@ def test_run_benchmark_reports_context_provenance(monkeypatch, tmp_path) -> None
         return ({"kind": "golden", "model_config": {"max_seq_len": 256}}, ByteTokenizer(), "golden")
 
     def fake_generate(self, _checkpoint, _prompt, **_kwargs):
-        return "\treturn 42\n"
+        from godot_coder.ui.services import GenerationResult
+        return GenerationResult(text="\treturn 42\n", cancelled=False)
 
     class FakeGS:
         def __init__(self, _root):

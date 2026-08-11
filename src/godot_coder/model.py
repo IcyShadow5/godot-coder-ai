@@ -283,15 +283,38 @@ class TinyGPT(nn.Module):
             raise ValueError("top_p must be in (0, 1]")
         if repetition_penalty <= 0:
             raise ValueError("repetition_penalty must be positive")
+        # Decoding runs with dropout off, but the mode flip must not leak
+        # into the caller: the training loop may call generate_stream on a
+        # train-mode model, and a permanent eval() would silently disable
+        # dropout for every later step. Restore the previous mode on exit -
+        # also when the consumer closes the stream early (finally still runs).
+        was_training = self.training
         self.eval()
-        # Only the freshly generated ids are penalized, never the prompt.
-        generated: list[torch.Tensor] = []
-        with torch.no_grad():
-            if not use_kv_cache or input_ids.shape[1] + max_new_tokens > self.config.max_seq_len:
+        try:
+            # Only the freshly generated ids are penalized, never the prompt.
+            generated: list[torch.Tensor] = []
+            with torch.no_grad():
+                if not use_kv_cache or input_ids.shape[1] + max_new_tokens > self.config.max_seq_len:
+                    for _ in range(max_new_tokens):
+                        context = input_ids[:, -self.config.max_seq_len:]
+                        next_id = self._sample(
+                            self(context).logits[:, -1, :],
+                            temperature,
+                            top_k,
+                            top_p=top_p,
+                            repetition_penalty=repetition_penalty,
+                            past_ids=torch.cat(generated, dim=1) if generated else None,
+                        )
+                        generated.append(next_id)
+                        input_ids = torch.cat((input_ids, next_id), dim=1)
+                        yield next_id
+                        if eos_id is not None and torch.all(next_id == eos_id):
+                            return
+                    return
+                logits, cache = self.forward_cached(input_ids)
                 for _ in range(max_new_tokens):
-                    context = input_ids[:, -self.config.max_seq_len:]
                     next_id = self._sample(
-                        self(context).logits[:, -1, :],
+                        logits[:, -1, :],
                         temperature,
                         top_k,
                         top_p=top_p,
@@ -303,23 +326,10 @@ class TinyGPT(nn.Module):
                     yield next_id
                     if eos_id is not None and torch.all(next_id == eos_id):
                         return
-                return
-            logits, cache = self.forward_cached(input_ids)
-            for _ in range(max_new_tokens):
-                next_id = self._sample(
-                    logits[:, -1, :],
-                    temperature,
-                    top_k,
-                    top_p=top_p,
-                    repetition_penalty=repetition_penalty,
-                    past_ids=torch.cat(generated, dim=1) if generated else None,
-                )
-                generated.append(next_id)
-                input_ids = torch.cat((input_ids, next_id), dim=1)
-                yield next_id
-                if eos_id is not None and torch.all(next_id == eos_id):
-                    return
-                logits, cache = self.forward_cached(next_id, cache)
+                    logits, cache = self.forward_cached(next_id, cache)
+        finally:
+            if was_training:
+                self.train()
 
     @torch.no_grad()
     def generate(
