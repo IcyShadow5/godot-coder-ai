@@ -1079,6 +1079,20 @@ function addMessage(role, content, options = {}) {
   return article;
 }
 
+function markMessageCancelled(msg) {
+  // The model was moved out mid-stream (unload()): the completion is
+  // partial, and the UI must say so instead of showing a truncated
+  // answer as if it were complete.
+  msg.classList.add("cancelled");
+  const meta = msg.querySelector(".message-meta");
+  if (meta && !meta.querySelector(".session-cancelled")) {
+    const badge = document.createElement("span");
+    badge.className = "session-cancelled";
+    badge.textContent = "\u2715 generation stopped";
+    meta.appendChild(badge);
+  }
+}
+
 function renderContextPanel(msg, report) {
   // Context provenance: where the prompt came from and what fit into the
   // model window. The server sends this as the first SSE event.
@@ -1109,6 +1123,32 @@ function renderContextPanel(msg, report) {
   body.appendChild(details);
 }
 
+async function stopGeneration() {
+  // The chat Stop button: POST /api/chat/stop, which calls the generation
+  // service's unload(). unload() writes the cancel marker first, so the
+  // active stream stops at its next token step and its done event carries
+  // cancelled:true - the same flag the frontend renders as the
+  // "generation stopped" badge. The button stays disabled while the
+  // request is in flight so a double click cannot fire a second unload.
+  const button = $("#stop-button");
+  button.disabled = true;
+  try {
+    const response = await fetch("/api/chat/stop", {
+      method: "POST",
+      credentials: "same-origin",
+    });
+    if (!response.ok) {
+      const err = await response.text();
+      let detail = err;
+      try { detail = JSON.parse(err)?.detail || err; } catch {}
+      throw new Error(detail);
+    }
+  } catch (error) {
+    toast(`Stop failed: ${error.message}`, "error", 7000);
+    button.disabled = false;
+  }
+}
+
 async function generate() {
   const prompt = $("#chat-input").value;
   if (!prompt.trim()) return toast("Enter a prompt first.", "error");
@@ -1116,6 +1156,10 @@ async function generate() {
   addMessage("user", prompt, { code: true });
   const loading = addMessage("assistant", "", { loading: true });
   $("#generate-button").disabled = true;
+  $("#stop-button").hidden = false;
+  // Disabled until the stream is live: while the model loads, unload()
+  // would be a silent no-op (the stream has no generation number yet).
+  $("#stop-button").disabled = true;
   try {
     // Use streaming SSE endpoint. The server owns the prompt composition
     // (context provenance: tokens per source, truncation policy), so only
@@ -1158,6 +1202,9 @@ async function generate() {
       );
       buffer = rest;
       for (const parsed of events) {
+        // The stream is live now - enable Stop. Before the first event
+        // the model may still be loading.
+        if ($("#stop-button").disabled) $("#stop-button").disabled = false;
         if (parsed.context) renderContextPanel(msg, parsed.context);
         if (parsed.token) pre.textContent += parsed.token;
         if (parsed.done) {
@@ -1165,6 +1212,9 @@ async function generate() {
           // completion (repetition loops collapsed) from the backend.
           if (parsed.text) pre.textContent = parsed.text;
           pre.classList.remove("streaming");
+          // unload() can interrupt the stream: a cancelled answer is
+          // partial and must be marked, not shown as a complete one.
+          if (parsed.cancelled) markMessageCancelled(msg);
         }
         if (parsed.error) { pre.textContent += `\n[Error: ${parsed.error}]`; pre.classList.remove("streaming"); break; }
       }
@@ -1172,9 +1222,11 @@ async function generate() {
     }
     pre.classList.remove("streaming");
     let result = pre.textContent;
-    if (!result.trim()) {
+    if (!result.trim() && !msg.classList.contains("cancelled")) {
       // The model hit its end-of-sequence token immediately. Show a hint
       // instead of an empty code block so the chat does not look broken.
+      // A cancelled stream must keep its "generation stopped" state - the
+      // undertrained hint would be misleading next to the badge.
       result = "# The model returned an empty completion.\n# This usually means the checkpoint is undertrained for this kind of prompt.\n# Try a smaller task, rephrase it, or continue training first.";
       pre.textContent = result;
     }
@@ -1189,6 +1241,8 @@ async function generate() {
     toast(`Generation failed: ${error.message}`, "error", 7000);
   } finally {
     $("#generate-button").disabled = !state.activeCheckpoint;
+    $("#stop-button").hidden = true;
+    $("#stop-button").disabled = false;
     $("#chat-input").value = "";
     $("#chat-input").focus();
   }
@@ -1332,6 +1386,7 @@ function renderStoredMessages(messages) {
           meta.appendChild(badge);
         }
       }
+      if (record.cancelled) markMessageCancelled(msg);
     }
   }
   // The global Check-with-Godot / Save buttons act on the newest completion,
@@ -1755,6 +1810,7 @@ function bindEvents() {
   $("#chat-checkpoint").addEventListener("change", (event) => setActiveCheckpoint(event.target.value));
   $("#training-config").addEventListener("change", updateConfigMetrics);
   $("#generate-button").addEventListener("click", generate);
+  $("#stop-button").addEventListener("click", stopGeneration);
   $("#chat-input").addEventListener("keydown", (event) => {
     if (event.ctrlKey && event.key === "Enter") { event.preventDefault(); generate(); }
   });

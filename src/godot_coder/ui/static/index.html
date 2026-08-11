@@ -117,9 +117,12 @@
               <textarea id="chat-input" rows="5" spellcheck="false" placeholder="Enter a GDScript prompt or task …"></textarea>
               <div class="composer-footer">
                 <div class="composer-hint"><span>Ctrl</span> + <span>Enter</span> to generate</div>
-                <button class="primary-button" id="generate-button">
-                  <span>Generate</span><span class="button-arrow">→</span>
-                </button>
+                <div class="composer-actions">
+                  <button class="danger-button" id="stop-button" hidden>■ Stop</button>
+                  <button class="primary-button" id="generate-button">
+                    <span>Generate</span><span class="button-arrow">→</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>

@@ -58,6 +58,7 @@ class ChatStore:
         sampling: dict[str, object] | None = None,
         context: dict[str, object] | None = None,
         validation: dict[str, object] | None = None,
+        cancelled: bool | None = None,
     ) -> dict[str, object]:
         """Append one message to the session, creating the file on first use.
 
@@ -77,6 +78,8 @@ class ChatStore:
             record["context"] = context
         if validation:
             record["validation"] = validation
+        if cancelled:
+            record["cancelled"] = True
         path = self._path(session_id)
         with self._lock:
             with path.open("a", encoding="utf-8") as handle:

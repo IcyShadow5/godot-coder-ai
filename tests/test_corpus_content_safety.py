@@ -81,6 +81,8 @@ def test_mask_secrets_covers_all_patterns() -> None:
         ("AKIA1234567890ABCDEF",),
         ('api_key = "my-secret-key-here"',),
         ("-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----",),
+        ("-----BEGIN RSA PRIVATE KEY-----",),
+        ("token=abcDEFghijklm123456",),
     ]
 
     for (original,) in test_cases:

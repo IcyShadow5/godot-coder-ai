@@ -109,6 +109,7 @@ def build_chat_router(app: FastAPI) -> APIRouter:
                 collected: list[str] = []
                 context_report: dict[str, object] | None = None
                 done_text: str | None = None
+                done_cancelled = False
                 try:
                     for event in app.state.generation.generate_stream(
                         request.checkpoint,
@@ -131,8 +132,14 @@ def build_chat_router(app: FastAPI) -> APIRouter:
                             context_report = event["context"]
                         if event.get("token"):
                             collected.append(str(event["token"]))
-                        if event.get("done") and event.get("text"):
-                            done_text = str(event["text"])
+                        # The cancelled flag must be tracked even when the
+                        # done event has no text: a stream cancelled before
+                        # any token yields text="" and would otherwise be
+                        # persisted as a normal empty turn.
+                        if event.get("done"):
+                            done_cancelled = bool(event.get("cancelled"))
+                            if event.get("text"):
+                                done_text = str(event["text"])
                         events.put(event)
                 except Exception as exc:
                     events.put({"error": str(exc)})
@@ -150,6 +157,7 @@ def build_chat_router(app: FastAPI) -> APIRouter:
                                 checkpoint=request.checkpoint,
                                 sampling=_sampling_payload(request),
                                 context=context_report,
+                                cancelled=done_cancelled,
                             )
                         except Exception:
                             pass  # history must never break the stream
@@ -177,6 +185,18 @@ def build_chat_router(app: FastAPI) -> APIRouter:
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
         })
+
+    @router.post("/api/chat/stop")
+    async def stop_generation() -> dict[str, Any]:
+        """Cancel the active stream by unloading the cached model.
+
+        unload() writes the cancel marker first (without the lock), so
+        the active stream sees it at its next token step and its done
+        event carries cancelled=True - the frontend marks the message
+        as stopped instead of showing a silently truncated completion.
+        """
+        await asyncio.to_thread(app.state.generation.unload)
+        return {"stopped": True}
 
     @router.post("/api/chat/validate")
     async def validate(request: ValidateRequest) -> dict[str, Any]:

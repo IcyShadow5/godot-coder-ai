@@ -21,6 +21,7 @@ from .routers import (
     build_system_router,
     build_training_router,
 )
+from ..autotune import normalize_autotuned_config
 from .services import GenerationService
 
 
@@ -108,6 +109,9 @@ class _SecureRemoteMiddleware:
 
 def create_app(project_root: Path) -> FastAPI:
     root = project_root.resolve()
+    # Repair stale autotune metadata once at startup instead of on every
+    # config listing - a read endpoint must not write into the project tree.
+    normalize_autotuned_config(root)
     static_dir = Path(__file__).resolve().parent / "static"
 
     @asynccontextmanager

@@ -19,7 +19,6 @@ import torch
 import yaml
 
 from .. import __version__
-from ..autotune import normalize_autotuned_config
 from ..checkpoint import load_checkpoint
 from ..config import ModelConfig
 from ..godot_cli import build_check_command
@@ -53,7 +52,9 @@ def _analytical_parameter_count(model: dict[str, Any], vocab_size: int) -> int:
 
 
 def list_configs(project_root: Path) -> list[dict[str, Any]]:
-    normalize_autotuned_config(project_root)
+    # Autotune metadata repair runs once at server startup (create_app),
+    # not on every listing - a read endpoint must not write into the
+    # project tree.
     result: list[dict[str, Any]] = []
     for path in sorted((project_root / "configs").glob("*.yaml")):
         try:
@@ -216,7 +217,14 @@ def read_manifest(project_root: Path) -> dict[str, Any] | None:
 
 
 def _resolve_document_path(project_root: Path, relative_path: str) -> Path | None:
-    relative = Path(*Path(relative_path.replace("\\", "/")).parts)
+    # Confine manifest paths to the data tree: a corrupt or hand-edited
+    # manifest with ".." segments (or an absolute path) must neither
+    # escape data/ nor crash the catalog with a relative_to ValueError
+    # on deeper escapes.
+    clean = Path(relative_path.replace("\\", "/"))
+    if clean.is_absolute():
+        return None
+    relative = Path(*[part for part in clean.parts if part not in (".", "..")])
     candidates = (
         project_root / "data" / "corpus" / "audited" / relative,
         project_root / "data" / "corpus" / "prepared" / relative,

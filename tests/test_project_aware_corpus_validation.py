@@ -503,6 +503,46 @@ def test_context_warning_with_real_syntax_error_is_now_rejected(tmp_path: Path, 
     assert report["classifications"]["syntax_error"] == 1
     assert report["context_warnings"] == 1  # good.gd stays a verified warning
     assert report["prepared"] == 1  # only good.gd lands in prepared/
+def test_validation_removes_helpers_when_project_check_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Regression: the helper cleanup used to run only after the project loop
+    # completed. A project check raising mid-loop propagated the exception
+    # and left the generated checker files behind - the leak again, just on
+    # the failure path. The cleanup must run in a finally.
+    root, _ = _workspace(tmp_path, {"a.gd": "extends Node\nfunc a() -> void:\n\tpass\n"})
+    monkeypatch.setattr("godot_coder.corpus._find_godot", lambda: "godot.exe")
+    monkeypatch.setattr("godot_coder.corpus._godot_version", lambda executable: "4.7.test")
+
+    def exploding_project_check(*args, **kwargs):
+        raise RuntimeError("project check exploded")
+
+    monkeypatch.setattr("godot_coder.corpus._validate_project_group", exploding_project_check)
+    # A stale helper from a previous run is present before validation starts.
+    helper_dir = root / "reports" / "corpus_validation_helpers"
+    helper_dir.mkdir(parents=True)
+    (helper_dir / "project_check_stale000000000000.gd").write_text(
+        "extends SceneTree\n", encoding="utf-8"
+    )
+    with pytest.raises(RuntimeError, match="project check exploded"):
+        validate_and_finalize(root, minimum_accepted=0)
+    assert not helper_dir.exists(), "helpers must be removed even when a project check raises"
+
+
+def test_validation_removes_stale_helpers_when_godot_is_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Regression: a run that fails BEFORE the project loop (Godot not found)
+    # used to leave stale checker helpers from a prior aborted run behind.
+    # The cleanup must also run up front, not only in the loop's finally.
+    root, _ = _workspace(tmp_path, {"a.gd": "extends Node\nfunc a() -> void:\n\tpass\n"})
+    monkeypatch.setattr("godot_coder.corpus._find_godot", lambda: None)
+    helper_dir = root / "reports" / "corpus_validation_helpers"
+    helper_dir.mkdir(parents=True)
+    (helper_dir / "project_check_stale000000000000.gd").write_text(
+        "extends SceneTree\n", encoding="utf-8"
+    )
+    with pytest.raises(FileNotFoundError, match="Godot was not found"):
+        validate_and_finalize(root, minimum_accepted=0)
+    assert not helper_dir.exists(), "stale helpers must be removed even when Godot is missing"
+
+
 def test_standalone_record_with_escaping_path_is_kept_not_crashed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # Regression: a corrupted manifest with an original_path escaping the
     # source root ("../escape.gd") made _validate_standalone_records crash

@@ -162,6 +162,18 @@ h1 { margin: 4px 0 0; font-size: 25px; letter-spacing: -.035em; }
 }
 .session-validation.passed { color: #6fcf97; background: rgba(111,207,151,.12); }
 .session-validation.failed { color: #ff6b6b; background: rgba(255,107,107,.12); }
+.session-cancelled {
+  margin-left: 8px;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: #ffb86b;
+  background: rgba(255,184,107,.12);
+}
+/* A cancelled (interrupted) answer: the completion is partial, show it as
+   such instead of letting it look like a complete response. */
+.message.cancelled .message-body { border-color: rgba(255,184,107,.35); }
+.message.cancelled .message-code { border-color: rgba(255,184,107,.4); border-style: dashed; }
 
 /* ── Chat ───────────────────────────────────────────────── */
 .chat-main { min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; padding: 18px; }
@@ -210,6 +222,8 @@ h1 { margin: 4px 0 0; font-size: 25px; letter-spacing: -.035em; }
 .composer-footer { display: flex; justify-content: space-between; align-items: center; padding: 8px 9px 9px 15px; }
 .composer-hint { font-size: 10px; color: var(--muted-2); }
 .composer-hint span { padding: 2px 4px; border: 1px solid rgba(126,181,205,.16); border-radius: 4px; }
+.composer-actions { display: flex; gap: 8px; align-items: center; }
+#stop-button[hidden] { display: none; }
 .control-stack { min-height: 0; overflow-y: auto; display: grid; align-content: start; gap: 13px; }
 .control-card { padding: 16px; }
 .field-select, .text-input, .search-input { width: 100%; color: var(--text); background: rgba(2,13,25,.72); border: 1px solid var(--line); border-radius: 11px; outline: none; padding: 10px 11px; }

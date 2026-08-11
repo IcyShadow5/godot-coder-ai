@@ -52,8 +52,12 @@ _SECRET_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9_-]{12,}"),
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----.*?-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----", re.DOTALL),
+    # The full-block pattern above needs BEGIN and END in one string;
+    # output lines are masked one at a time, so a bare BEGIN header
+    # (its own line) must be redacted on its own as well.
+    re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
     re.compile(
-        r"(?i)(\b(?:api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token|password)\b\s*[:=]\s*)"
+        r"(?i)(\b(?:api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token|token|password)\b\s*[:=]\s*)"
         r"([\"']?)[^\s,;\"']{8,}\2"
     ),
     re.compile(r"(?i)(authorization\s*:\s*bearer\s+)[A-Za-z0-9._~+\-/=]{8,}"),

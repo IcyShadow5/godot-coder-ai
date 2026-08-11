@@ -104,6 +104,16 @@ def test_attach_validation_enriches_last_assistant_message(tmp_path: Path) -> No
     assert "validation" not in messages[2]
 
 
+def test_append_persists_cancelled_flag(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    store.append("c" * 12, "assistant", "partial text", cancelled=True)
+    loaded = store.load("c" * 12)
+    assert loaded[0]["cancelled"] is True
+    # The flag is optional: a normal completion has no cancelled key.
+    store.append("c" * 12, "assistant", "full text")
+    assert "cancelled" not in store.load("c" * 12)[1]
+
+
 def test_attach_validation_unknown_session_is_noop(tmp_path: Path) -> None:
     store = _store(tmp_path)
     store.attach_validation("k" * 12, {"passed": True})

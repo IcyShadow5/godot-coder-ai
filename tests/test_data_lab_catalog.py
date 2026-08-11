@@ -65,6 +65,48 @@ def test_data_catalog_hot_revision_detects_external_raw_file(tmp_path: Path) -> 
 
 
 
+def test_catalog_ignores_traversal_document_paths(tmp_path: Path) -> None:
+    # A corrupt/hand-edited manifest with ".." segments must neither
+    # escape the data tree nor crash the catalog with a relative_to
+    # ValueError on deeper escapes.
+    audited = tmp_path / "data" / "corpus" / "audited"
+    (audited / "source").mkdir(parents=True)
+    (audited / "source" / "safe.gd").write_text("extends Node\n", encoding="utf-8")
+    (tmp_path / "escape.gd").write_text("extends Node\n", encoding="utf-8")
+    processed = tmp_path / "data" / "processed"
+    processed.mkdir(parents=True)
+    manifest = {
+        "format": "godot-coder-token-stream",
+        "dataset_fingerprint": "fp",
+        "splits": {
+            "train": {
+                "tokens": 15,
+                "documents": [
+                    {"path": "source/safe.gd", "tokens": 5},
+                    {"path": "../../escape.gd", "tokens": 5},
+                    {"path": "../../../../deep.gd", "tokens": 5},
+                ],
+            }
+        },
+    }
+    (processed / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    catalog = build_data_catalog(tmp_path)
+    training = [item for item in catalog["entries"] if item["kind"] == "training"]
+    # The traversal documents stay listed (they are in the manifest) but
+    # must not resolve to a storage path - neither inside the data tree
+    # under a mangled name nor outside it.
+    assert [item["storage_path"] for item in training if item["storage_path"]] == [
+        "data/corpus/audited/source/safe.gd"
+    ]
+    assert [item["path"] for item in training] == [
+        "training/train/source/safe.gd",
+        "training/train/../../escape.gd",
+        "training/train/../../../../deep.gd",
+    ]
+    assert [item["status"] for item in training] == ["active", "active", "active"]
+    assert training[0]["storage_path"] == "data/corpus/audited/source/safe.gd"
+
+
 def test_data_catalog_shows_new_audited_documents_before_retokenization(tmp_path: Path) -> None:
     _prepare_corpus(tmp_path)
     new_doc = tmp_path / "data" / "corpus" / "audited" / "train" / "new-source" / "new_system.gd"

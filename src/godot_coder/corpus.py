@@ -1620,6 +1620,20 @@ def _write_project_checker(project_root: Path, cache_key: str, relative_paths: l
     return helper
 
 
+def _remove_validation_helpers(project_root: Path) -> None:
+    """Remove the transient per-file checker scripts of one validation run.
+
+    The generated project_check_<key>.gd files are build artifacts that
+    nothing references afterwards. Called before the project loop (so a
+    failure before it cannot leave stale files from an earlier aborted run)
+    and in the loop's finally (so the current run's files are always
+    removed, also when a project check raises).
+    """
+    helper_dir = project_root / "reports" / "corpus_validation_helpers"
+    if helper_dir.exists():
+        shutil.rmtree(helper_dir, ignore_errors=True)
+
+
 def _checker_results(output: str) -> tuple[set[str], set[str]]:
     passed: set[str] = set()
     null: set[str] = set()
@@ -1993,6 +2007,10 @@ def _validate_standalone_records(
 
 
 def validate_and_finalize(project_root: Path, *, include_docs: bool = True, minimum_accepted: int = 10) -> dict[str, Any]:
+    # Clean up stale checker helpers from an earlier aborted run before any
+    # early-raise path (missing manifest, Godot not found, ...) can leave
+    # them behind. The loop's finally removes the current run's files.
+    _remove_validation_helpers(project_root)
     manifest_path = corpus_root(project_root) / "corpus_manifest.json"
     if not manifest_path.exists():
         raise FileNotFoundError("The corpus has not been scanned yet.")
@@ -2065,58 +2083,53 @@ def validate_and_finalize(project_root: Path, *, include_docs: bool = True, mini
         }))
 
     total_projects = len(project_groups)
-    for project_index, (project_value, group_records) in enumerate(project_groups.items(), start=1):
-        project = Path(project_value)
-        result_map, project_result, from_cache = _validate_project_group(
-            project_root, project, group_records, str(godot), godot_version, cache_entries,
-        )
-        cache_hits += int(from_cache)
-        project_result["source_id"] = group_records[0].get("source_id")
-        project_result["project_index"] = project_index
-        project_result["project_total"] = total_projects
-        project_result["cache_hit"] = from_cache
-        project_results.append(project_result)
-        for record in group_records:
-            result = result_map[record["record_id"]]
-            record["validation_status"] = result["status"]
-            record["validation_error"] = result.get("error")
-            record["validation_classification"] = result.get("classification")
-            record["validation_engine"] = "project-aware-v4"
-            processed += 1
-        passed_now = sum(item.get("validation_status") == "passed" for item in records)
-        failed_now = sum(item.get("validation_status") == "failed" for item in records)
-        warnings_now = sum(item.get("validation_classification") == "context_warning" for item in records)
-        accepted_now = passed_now + (sum(item.get("validation_status") == "not_required" for item in records) if include_docs else 0)
-        print(serialize_event({
-            "event": "corpus_validation_progress",
-            "level": "warning" if project_result.get("hard_failures") else "info",
-            "phase": "corpus_validation",
-            "phase_label": "Project-based corpus validation",
-            "phase_status": "running",
-            "project_index": project_index,
-            "project_total": total_projects,
-            "project_name": project.name or str(project),
-            "source_name": group_records[0].get("source_id"),
-            "file_index": processed,
-            "file_total": len(records),
-            "passed": passed_now,
-            "failed": failed_now,
-            "warnings": warnings_now,
-            "accepted": accepted_now,
-            "overall_progress": processed / max(1, len(records)),
-            "message": (
-                f"Checked project {project_index}/{total_projects} · "
-                f"{len(group_records)} scripts · Status {project_result.get('status')}"
-            ),
-        }))
-
-    # The generated per-file checker scripts are transient build artifacts
-    # of one validation run; nothing references them afterwards. Remove the
-    # whole helper directory so repeated runs do not accumulate files in
-    # the project tree.
-    helper_dir = project_root / "reports" / "corpus_validation_helpers"
-    if helper_dir.exists():
-        shutil.rmtree(helper_dir, ignore_errors=True)
+    try:
+        for project_index, (project_value, group_records) in enumerate(project_groups.items(), start=1):
+            project = Path(project_value)
+            result_map, project_result, from_cache = _validate_project_group(
+                project_root, project, group_records, str(godot), godot_version, cache_entries,
+            )
+            cache_hits += int(from_cache)
+            project_result["source_id"] = group_records[0].get("source_id")
+            project_result["project_index"] = project_index
+            project_result["project_total"] = total_projects
+            project_result["cache_hit"] = from_cache
+            project_results.append(project_result)
+            for record in group_records:
+                result = result_map[record["record_id"]]
+                record["validation_status"] = result["status"]
+                record["validation_error"] = result.get("error")
+                record["validation_classification"] = result.get("classification")
+                record["validation_engine"] = "project-aware-v4"
+                processed += 1
+            passed_now = sum(item.get("validation_status") == "passed" for item in records)
+            failed_now = sum(item.get("validation_status") == "failed" for item in records)
+            warnings_now = sum(item.get("validation_classification") == "context_warning" for item in records)
+            accepted_now = passed_now + (sum(item.get("validation_status") == "not_required" for item in records) if include_docs else 0)
+            print(serialize_event({
+                "event": "corpus_validation_progress",
+                "level": "warning" if project_result.get("hard_failures") else "info",
+                "phase": "corpus_validation",
+                "phase_label": "Project-based corpus validation",
+                "phase_status": "running",
+                "project_index": project_index,
+                "project_total": total_projects,
+                "project_name": project.name or str(project),
+                "source_name": group_records[0].get("source_id"),
+                "file_index": processed,
+                "file_total": len(records),
+                "passed": passed_now,
+                "failed": failed_now,
+                "warnings": warnings_now,
+                "accepted": accepted_now,
+                "overall_progress": processed / max(1, len(records)),
+                "message": (
+                    f"Checked project {project_index}/{total_projects} · "
+                    f"{len(group_records)} scripts · Status {project_result.get('status')}"
+                ),
+            }))
+    finally:
+        _remove_validation_helpers(project_root)
 
     staged = corpus_root(project_root) / "staged"
     prepared = corpus_root(project_root) / "prepared"

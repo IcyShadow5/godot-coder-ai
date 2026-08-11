@@ -96,6 +96,55 @@ def test_generate_stream_persists_user_and_assistant_turns(tmp_path: Path) -> No
     assert messages[1]["sampling"]["max_new_tokens"] == 8
 
 
+def test_generate_stream_persists_cancelled_turn(tmp_path: Path) -> None:
+    app = _make_app(tmp_path)
+    _fake_generation(
+        app,
+        [
+            {"token": "partial"},
+            {"done": True, "text": "partial", "tokens": 1, "cancelled": True},
+        ],
+    )
+    with TestClient(app) as client:
+        client.post(
+            "/api/chat/generate-stream",
+            json={
+                "checkpoint": "checkpoints/x.pt",
+                "prompt": "extends Node",
+                "max_new_tokens": 4,
+                "session_id": "c" * 12,
+            },
+        )
+    messages = client.get(f"/api/chat/sessions/{'c' * 12}").json()["messages"]
+    assert messages[1]["content"] == "partial"
+    assert messages[1]["cancelled"] is True
+
+
+def test_generate_stream_persists_cancelled_flag_even_without_text(tmp_path: Path) -> None:
+    # A stream cancelled before any token emits done with text="" - the
+    # cancelled flag must still be persisted, not swallowed by the empty
+    # text. Otherwise history shows a plain empty assistant turn.
+    app = _make_app(tmp_path)
+    _fake_generation(
+        app,
+        [
+            {"done": True, "text": "", "tokens": 0, "cancelled": True},
+        ],
+    )
+    with TestClient(app) as client:
+        client.post(
+            "/api/chat/generate-stream",
+            json={
+                "checkpoint": "checkpoints/x.pt",
+                "prompt": "extends Node",
+                "max_new_tokens": 4,
+                "session_id": "d" * 12,
+            },
+        )
+    messages = client.get(f"/api/chat/sessions/{'d' * 12}").json()["messages"]
+    assert messages[1]["cancelled"] is True
+
+
 def test_generate_stream_persists_partial_turn_on_error(tmp_path: Path) -> None:
     app = _make_app(tmp_path)
     _fake_generation(
@@ -129,6 +178,22 @@ def test_generate_stream_without_session_id_does_not_persist(tmp_path: Path) -> 
             json={"checkpoint": "checkpoints/x.pt", "prompt": "extends Node", "max_new_tokens": 4},
         )
     assert client.get("/api/chat/sessions").json()["sessions"] == []
+
+
+def test_stop_endpoint_calls_unload(tmp_path: Path) -> None:
+    app = _make_app(tmp_path)
+    calls: list[str] = []
+
+    def record_unload() -> None:
+        calls.append("unload")
+
+    _fake_generation(app, [])
+    app.state.generation.unload = record_unload  # type: ignore[attr-defined]
+    client = TestClient(app)
+    resp = client.post("/api/chat/stop")
+    assert resp.status_code == 200
+    assert resp.json() == {"stopped": True}
+    assert calls == ["unload"]
 
 
 def test_validate_attaches_result_to_last_assistant(tmp_path: Path, monkeypatch) -> None:

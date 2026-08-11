@@ -59,9 +59,9 @@ def _scaffold(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text("[project]\nname='test'\n", encoding="utf-8")
 
 
-def _fake_generation(app, text: str = "return a + b\n"):
+def _fake_generation(app, text: str = "return a + b\n", cancelled: bool = False):
     def fake_generate(checkpoint, prompt, *, max_new_tokens, temperature, top_k, top_p=1.0, repetition_penalty=1.15, device_name="auto", task_format=False, strict_context=False):
-        return GenerationResult(text=text, cancelled=False)
+        return GenerationResult(text=text, cancelled=cancelled)
 
     def fake_unload():
         pass
@@ -89,6 +89,29 @@ def test_chat_generate_non_stream_success(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert response.json()["text"] == "return a + b\n"
     assert response.json()["cancelled"] is False
+    assert response.json()["checkpoint"] == "checkpoints/v06_balanced/best.pt"
+
+
+def test_chat_generate_non_stream_returns_cancelled_true(tmp_path: Path) -> None:
+    _scaffold(tmp_path)
+    app = create_app(tmp_path)
+    # A stream interrupted by unload() returns its partial text with the
+    # cancelled flag - the non-stream endpoint must pass both through so
+    # callers can distinguish an interrupted completion from a finished one
+    # instead of silently accepting a truncated answer.
+    _fake_generation(app, text="return partial\n", cancelled=True)
+    with _client(app) as client:
+        response = client.post(
+            "/api/chat/generate",
+            json={
+                "checkpoint": "checkpoints/v06_balanced/best.pt",
+                "prompt": "func add(a: int, b: int) -> int:\n",
+                "max_new_tokens": 8,
+            },
+        )
+    assert response.status_code == 200
+    assert response.json()["text"] == "return partial\n"
+    assert response.json()["cancelled"] is True
     assert response.json()["checkpoint"] == "checkpoints/v06_balanced/best.pt"
 
 

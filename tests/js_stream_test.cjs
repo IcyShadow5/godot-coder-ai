@@ -35,4 +35,13 @@ assert.equal(trailing.events.length, 1);
 assert.equal(trailing.events[0].token, "x");
 assert.equal(trailing.rest, 'data: {"to');
 
+// The cancelled flag of an interrupted stream survives the parsing, so the
+// UI can mark the message instead of showing a truncated answer.
+const interrupted = stream.consumeStreamChunk(
+  "",
+  'data: {"token": "par"}\ndata: {"done": true, "text": "par", "tokens": 1, "cancelled": true}\n',
+);
+assert.equal(interrupted.events[1].done, true);
+assert.equal(interrupted.events[1].cancelled, true);
+
 console.log("js stream tests passed");

@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from godot_coder.autotune import normalize_autotuned_config
 from godot_coder.profile_probe import _worker_result
 from godot_coder.ui.services import list_configs
 
@@ -105,10 +106,44 @@ train:
 """.strip(),
         encoding="utf-8",
     )
+    # Metadata repair now happens at server startup, not on every listing.
+    normalize_autotuned_config(tmp_path)
     [item] = list_configs(tmp_path)
     assert item["profile_id"] == "autotuned-night"
     assert item["profile_method"] == "Hardware-Autotuner"
     assert item["profile_generated"] is True
     migrated = (configs / "autotuned_night.yaml").read_text(encoding="utf-8")
+    assert "generated: true" in migrated
+    assert "batch_size: 6" in migrated
+
+
+def test_list_configs_does_not_write_autotune_config(tmp_path: Path) -> None:
+    # A listing must not write into the project tree: autotune metadata
+    # repair runs once at startup, not on every GET.
+    configs = tmp_path / "configs"
+    configs.mkdir()
+    (configs / "autotuned_night.yaml").write_text(
+        "profile:\n  id: a91-1024\n  title: A91-1024\nmodel:\n  max_seq_len: 1024\n",
+        encoding="utf-8",
+    )
+    before = (configs / "autotuned_night.yaml").read_text(encoding="utf-8")
+    list_configs(tmp_path)
+    assert (configs / "autotuned_night.yaml").read_text(encoding="utf-8") == before
+
+
+def test_create_app_normalizes_autotune_config_at_startup(tmp_path: Path) -> None:
+    from godot_coder.ui.server import create_app
+
+    (tmp_path / "configs").mkdir()
+    (tmp_path / "data" / "raw").mkdir(parents=True)
+    (tmp_path / "checkpoints").mkdir()
+    (tmp_path / "artifacts").mkdir()
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='test'\n", encoding="utf-8")
+    (tmp_path / "configs" / "autotuned_night.yaml").write_text(
+        "profile:\n  id: a91-1024\n  title: A91-1024\nmodel:\n  max_seq_len: 1024\n  n_layers: 12\n  d_model: 768\n  n_heads: 12\n  d_ff: 2048\n  tie_embeddings: true\ntrain:\n  tokenizer_path: artifacts/missing.json\n  data_dir: data/processed/corpus_v06\n  output_dir: checkpoints/autotuned\n  batch_size: 6\n  gradient_accumulation_steps: 2\n",
+        encoding="utf-8",
+    )
+    create_app(tmp_path)
+    migrated = (tmp_path / "configs" / "autotuned_night.yaml").read_text(encoding="utf-8")
     assert "generated: true" in migrated
     assert "batch_size: 6" in migrated
