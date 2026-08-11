@@ -33,6 +33,15 @@ const state = {
   advancedSourcesVisible: localStorage.getItem("godot-coder-advanced-sources") !== "hidden",
 };
 
+/* ── CSRF header for raw fetches ─────────────────────────────── */
+// The remote-access middleware requires the session CSRF token on every
+// non-GET request when reached through Tailscale. The api() helper adds
+// it automatically; the raw fetches below (streaming SSE + stop) must do
+// the same or they are denied with a 403 before reaching the router.
+function csrfHeaders() {
+  return state.remoteCsrf ? { "X-Godot-Coder-CSRF": state.remoteCsrf } : {};
+}
+
 const viewOrder = ["chat", "training", "corpus", "data", "models", "remote", "system"];
 
 
@@ -1136,6 +1145,7 @@ async function stopGeneration() {
     const response = await fetch("/api/chat/stop", {
       method: "POST",
       credentials: "same-origin",
+      headers: csrfHeaders(),
     });
     if (!response.ok) {
       const err = await response.text();
@@ -1168,7 +1178,7 @@ async function generate() {
     const response = await fetch("/api/chat/generate-stream", {
       method: "POST",
       credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...csrfHeaders() },
       body: JSON.stringify({
         checkpoint: state.activeCheckpoint,
         prompt,
@@ -1333,8 +1343,12 @@ async function loadChatHistory() {
     renderStoredMessages(detail.messages || []);
     renderChatSessions();
   } catch (error) {
-    // History is best-effort: without it the chat still works.
+    // History is best-effort: without it the chat still works, but the
+    // conversations toggle must still render - otherwise the feature looks
+    // missing until the first message creates a session.
     state.chatSessionId = newChatSessionId();
+    state.chatSessions = [];
+    renderChatSessions();
   }
 }
 
@@ -1363,6 +1377,13 @@ async function deleteChatSession(id) {
     if (state.chatSessionId === id) {
       state.chatSessionId = newChatSessionId();
       $$("#chat-feed .message:not(.intro-message)").forEach((item) => item.remove());
+      // Same reset as clearChat(): the buttons must not keep pointing at
+      // the deleted conversation's last completion.
+      state.lastGenerated = "";
+      state.lastPrompt = "";
+      $("#validate-last").disabled = true;
+      $("#save-last").disabled = true;
+      setValidationState(null);
     }
     await refreshChatSessions();
   } catch (error) { toast(error.message, "error"); }
