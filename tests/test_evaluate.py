@@ -126,3 +126,39 @@ def test_test_split_allowed(monkeypatch, tmp_path, capsys):
     _run_main(monkeypatch, ["--checkpoint", str(checkpoint), "--split", "test", "--batches", "1"])
     payload = json.loads(capsys.readouterr().out)
     assert payload["split"] == "test"
+
+
+def test_rejects_checkpoint_tokenizer_mismatch(monkeypatch, tmp_path):
+    checkpoint, _ = _install_fakes(monkeypatch, tmp_path)
+
+    class _WrongTokenizer:
+        def fingerprint(self):
+            return "DIFFERENT"
+
+    monkeypatch.setattr(evaluate, "load_tokenizer", lambda path: _WrongTokenizer())
+    with pytest.raises(ValueError, match="do not match"):
+        _run_main(monkeypatch, ["--checkpoint", str(checkpoint), "--batches", "1"])
+
+
+def test_rejects_dataset_manifest_mismatch(monkeypatch, tmp_path):
+    checkpoint, data_dir = _install_fakes(monkeypatch, tmp_path)
+    manifest = json.loads((data_dir / "manifest.json").read_text(encoding="utf-8"))
+    manifest["tokenizer_fingerprint"] = "OTHER"
+    (data_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(ValueError, match="dataset and tokenizer do not match"):
+        _run_main(monkeypatch, ["--checkpoint", str(checkpoint), "--batches", "1"])
+
+
+def test_rejects_non_positive_batch_size_from_checkpoint(monkeypatch, tmp_path):
+    checkpoint, _ = _install_fakes(monkeypatch, tmp_path)
+    original_loader = evaluate.load_checkpoint  # the fake installed by _install_fakes
+
+    def zero_batch_loader(path, map_location):
+        payload = dict(original_loader(path, map_location))
+        payload["train_config"] = dict(payload["train_config"])
+        payload["train_config"]["batch_size"] = 0
+        return payload
+
+    monkeypatch.setattr(evaluate, "load_checkpoint", zero_batch_loader)
+    with pytest.raises(ValueError, match="batch_size must be positive"):
+        _run_main(monkeypatch, ["--checkpoint", str(checkpoint), "--batches", "1"])

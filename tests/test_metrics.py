@@ -1,6 +1,7 @@
 """Tests for the metrics collector — JSONL persistence, summaries, event enum, end to end."""
 
 import json
+import time
 from pathlib import Path
 
 from godot_coder.metrics import MetricEvent, MetricRecord, MetricsCollector
@@ -84,3 +85,25 @@ def test_record_uses_lowercase_event_name() -> None:
     collector = MetricsCollector()
     record = collector.record(MetricEvent.GENERATION_COMPLETE)
     assert record.event == "generation_complete"
+
+
+def test_to_dict_keeps_zero_tokens() -> None:
+    record = MetricRecord(event="token_usage", tokens=0)
+    assert record.to_dict()["tokens"] == 0
+
+
+def test_record_details_persisted_to_jsonl(tmp_path: Path) -> None:
+    path = tmp_path / "metrics.jsonl"
+    collector = MetricsCollector(path)
+    collector.record(MetricEvent.PARSE_ERROR, error="boom", details={"file": "a.gd", "line": 3})
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["error"] == "boom"
+    assert payload["details"] == {"file": "a.gd", "line": 3}
+
+
+def test_record_defaults_to_current_timestamp() -> None:
+    collector = MetricsCollector()
+    before = time.time()
+    record = collector.record(MetricEvent.RETRY, attempt=1)
+    after = time.time()
+    assert before <= record.timestamp <= after

@@ -178,3 +178,15 @@ def test_main_uses_prompt_file_content(monkeypatch, tmp_path):
     _run_main(monkeypatch, ["--checkpoint", str(checkpoint), "--prompt-file", str(prompt_file)])
     # The tokenizer received the file content, not the default prompt.
     assert captured["tokenizer"].last_encoded == "extends Node2D\n"
+
+
+def test_main_falls_back_to_cwd_when_no_project_root(monkeypatch, tmp_path, capsys):
+    checkpoint = _install_fakes(monkeypatch, tmp_path)
+    _install_tokenizer(monkeypatch)
+
+    def no_root(start):
+        raise FileNotFoundError("no project root")
+
+    monkeypatch.setattr(generate, "find_project_root", no_root)
+    _run_main(monkeypatch, ["--checkpoint", str(checkpoint), "--max-new-tokens", "3"])
+    assert "PROMPT_AND_GENERATED" in capsys.readouterr().out
