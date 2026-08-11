@@ -301,10 +301,21 @@ def check_repetition(a_results: list[dict[str, object]], b_results: list[dict[st
 # Model / Godot plumbing (injectable for tests)
 # ---------------------------------------------------------------------------
 
+_generation_services: dict[str, object] = {}
+
+
 def _default_generate(root: Path, checkpoint: str, prompt: str, *, max_new_tokens: int, temperature: float) -> str:
     from .ui.services import GenerationService
 
-    service = GenerationService(root)
+    # Reuse one service per project root: a fresh instance would reload the
+    # model weights for every single generation, which makes a full verify
+    # run (hundreds of generations) impractically slow. The service itself
+    # reloads only when the checkpoint actually changes.
+    key = str(root)
+    service = _generation_services.get(key)
+    if service is None:
+        service = GenerationService(root)
+        _generation_services[key] = service
     return service.generate(
         checkpoint,
         prompt,
@@ -393,14 +404,17 @@ def _with_reference_scores(tokenizer, results: list[dict[str, object]]) -> None:
 
 def _load_tokenizer(root: Path, checkpoint: str):
     from .checkpoint import load_checkpoint
-    from .tokenizer import load_tokenizer
+    from .tokenizer import load_tokenizer, resolve_tokenizer_for_fingerprint
 
     payload = load_checkpoint((root / checkpoint).resolve(), map_location="cpu")
     train_config = payload.get("train_config", {})
     tokenizer_path = Path(str(train_config.get("tokenizer_path", "artifacts/tokenizer.json")))
     if not tokenizer_path.is_absolute():
         tokenizer_path = root / tokenizer_path
-    return payload, load_tokenizer(tokenizer_path)
+    tokenizer = load_tokenizer(tokenizer_path)
+    if payload.get("tokenizer_fingerprint") and tokenizer.fingerprint() != payload["tokenizer_fingerprint"]:
+        tokenizer = resolve_tokenizer_for_fingerprint(tokenizer_path, tokenizer, payload["tokenizer_fingerprint"])
+    return payload, tokenizer
 
 
 def _collect_corpus_texts(root: Path, limit: int = 500) -> list[str]:
@@ -497,26 +511,56 @@ def run_verification(
             for index, variant in enumerate(mutation_variants(prompt)):
                 variant_tasks.append((f"{task_id}__mut{index}", variant))
 
-        cold_a = _evaluate_checkpoint(root, work_dir, checkpoint_a, max_new_tokens=max_new_tokens, temperature=0.0,
-                                      validation_project=validation_project, generate=generate_fn, validate=validate_fn,
-                                      prompts=tasks)
-        cold_b = _evaluate_checkpoint(root, work_dir, checkpoint_b, max_new_tokens=max_new_tokens, temperature=0.0,
-                                      validation_project=validation_project, generate=generate_fn, validate=validate_fn,
-                                      prompts=tasks) if checkpoint_b else []
+        def evaluate(checkpoint: str, *, prompts: list[tuple[str, str]], temperature: float) -> tuple[list[dict[str, object]], str | None]:
+            """Run one checkpoint; failures (tokenizer mismatch etc.) are reported,
+            never raised - the claim simply cannot be assessed then."""
+            try:
+                return _evaluate_checkpoint(root, work_dir, checkpoint, max_new_tokens=max_new_tokens,
+                                            temperature=temperature, validation_project=validation_project,
+                                            generate=generate_fn, validate=validate_fn, prompts=prompts), None
+            except Exception as exc:
+                return [], f"{checkpoint}: {exc}"
+
+        def unresolved(errors: dict[str, str]) -> dict[str, object]:
+            return {
+                "format": "godot-coder-verify",
+                "format_version": 1,
+                "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "claim": f"checkpoint A ({checkpoint_a}) is better than B ({checkpoint_b})" if checkpoint_b
+                         else f"checkpoint {checkpoint_a} reaches at least {expected_pass_rate:.0%} pass rate",
+                "verdict": VERDICT_UNRESOLVED,
+                "reason": "the claim cannot be assessed: " + "; ".join(
+                    f"{key} {value}" for key, value in errors.items()
+                ),
+                "checks": {},
+                "summary": {
+                    "a_pass_rate": pass_rate(cold_a) if not errors.get("checkpoint_a") else None,
+                    "b_pass_rate": pass_rate(cold_b) if not errors.get("checkpoint_b") else None,
+                },
+                "errors": errors,
+            }
+
+        cold_a, a_error = evaluate(checkpoint_a, prompts=tasks, temperature=0.0)
+        cold_b, b_error = evaluate(checkpoint_b, prompts=tasks, temperature=0.0) if checkpoint_b else ([], None)
+        errors: dict[str, str] = {}
+        if a_error:
+            errors["checkpoint_a"] = a_error
+        if b_error:
+            errors["checkpoint_b"] = b_error
+        if errors:
+            return unresolved(errors)
 
         if checkpoint_b:
-            mut_a = _evaluate_checkpoint(root, work_dir, checkpoint_a, max_new_tokens=max_new_tokens, temperature=0.0,
-                                         validation_project=validation_project, generate=generate_fn, validate=validate_fn,
-                                         prompts=variant_tasks)
-            mut_b = _evaluate_checkpoint(root, work_dir, checkpoint_b, max_new_tokens=max_new_tokens, temperature=0.0,
-                                         validation_project=validation_project, generate=generate_fn, validate=validate_fn,
-                                         prompts=variant_tasks)
-            warm_a = _evaluate_checkpoint(root, work_dir, checkpoint_a, max_new_tokens=max_new_tokens, temperature=0.7,
-                                          validation_project=validation_project, generate=generate_fn, validate=validate_fn,
-                                          prompts=tasks)
-            warm_b = _evaluate_checkpoint(root, work_dir, checkpoint_b, max_new_tokens=max_new_tokens, temperature=0.7,
-                                          validation_project=validation_project, generate=generate_fn, validate=validate_fn,
-                                          prompts=tasks)
+            mut_a, mut_a_error = evaluate(checkpoint_a, prompts=variant_tasks, temperature=0.0)
+            mut_b, mut_b_error = evaluate(checkpoint_b, prompts=variant_tasks, temperature=0.0)
+            warm_a, warm_a_error = evaluate(checkpoint_a, prompts=tasks, temperature=0.7)
+            warm_b, warm_b_error = evaluate(checkpoint_b, prompts=tasks, temperature=0.7)
+            for key, error in (("mutation_a", mut_a_error), ("mutation_b", mut_b_error),
+                               ("warm_a", warm_a_error), ("warm_b", warm_b_error)):
+                if error:
+                    errors[key] = error
+            if errors:
+                return unresolved(errors)
         else:
             mut_a = mut_b = warm_a = warm_b = []
 
@@ -581,7 +625,24 @@ def run_verification(
         return report
     finally:
         if work_dir is not None:
-            shutil.rmtree(work_dir, ignore_errors=True)
+            _remove_work_dir(work_dir)
+
+
+def _remove_work_dir(work_dir: Path) -> None:
+    """Best-effort removal with a short retry.
+
+    On Windows a Godot child can still hold a handle on the temp scripts the
+    moment the run finishes; one retry a moment later succeeds. Leftover empty
+    dirs in the system temp are harmless but untidy.
+    """
+    for attempt in range(3):
+        try:
+            shutil.rmtree(work_dir)
+            return
+        except OSError:
+            if attempt == 2:
+                return
+            time.sleep(0.5)
 
 
 def _assert_outside_project(work_dir: Path, root: Path) -> None:

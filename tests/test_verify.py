@@ -238,6 +238,75 @@ def _results_with_rate(passed_count: int, total: int) -> list[dict[str, object]]
     ]
 
 
+def test_run_verification_unresolved_when_checkpoint_fails(tmp_path: Path) -> None:
+    """A checkpoint that cannot be loaded (e.g. old tokenizer) must not crash."""
+    root = _scaffold_project(tmp_path / "proj")
+    work = tmp_path / "outside"
+    work.mkdir()
+
+    def broken(root, checkpoint, prompt, **kwargs):
+        raise ValueError("checkpoint and tokenizer do not match")
+
+    validate = _make_fake_validate(work)
+    report = run_verification(
+        root,
+        "A",
+        None,
+        work_dir=work,
+        validation_project="data/raw/seed_project",
+        max_new_tokens=8,
+        generate=broken,
+        validate=validate,
+    )
+    assert report["verdict"] == VERDICT_UNRESOLVED
+    assert "tokenizer" in report["errors"]["checkpoint_a"]
+    assert report["summary"]["a_pass_rate"] is None
+
+
+def test_remove_work_dir_retries_on_transient_lock(tmp_path: Path, monkeypatch) -> None:
+    """A briefly-locked work dir is retried, not silently left behind."""
+    import shutil as shutil_module
+    from godot_coder import verify as verify_mod
+
+    target = tmp_path / "work"
+    target.mkdir()
+    calls = {"n": 0}
+    real_rmtree = shutil_module.rmtree
+
+    def flaky(path):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError("locked")
+        real_rmtree(path)
+
+    monkeypatch.setattr("godot_coder.verify.shutil.rmtree", flaky)
+    verify_mod._remove_work_dir(target)
+    assert calls["n"] == 2
+    assert not target.exists()
+
+
+def test_default_generate_reuses_one_service(monkeypatch) -> None:
+    """A cached service means the model is loaded once per project root."""
+    created: list[object] = []
+
+    class FakeService:
+        def __init__(self, root) -> None:
+            created.append(root)
+
+        def generate(self, checkpoint, prompt, **kwargs) -> str:
+            return "\treturn 42\n"
+
+    monkeypatch.setattr("godot_coder.ui.services.GenerationService", FakeService)
+    from godot_coder import verify as verify_mod
+
+    verify_mod._generation_services.clear()
+    first = verify_mod._default_generate(Path("root"), "ckpt", "prompt", max_new_tokens=8, temperature=0.0)
+    second = verify_mod._default_generate(Path("root"), "ckpt", "prompt", max_new_tokens=8, temperature=0.0)
+    assert first == second == "\treturn 42\n"
+    assert len(created) == 1
+    verify_mod._generation_services.clear()
+
+
 def test_check_trivial_pass_absolute_only_for_single_mode() -> None:
     # A beats B relatively (0.4 vs 0.3) but both sit below the 0.5 claim:
     # the comparison claim must survive, only a single-mode claim may fail.
@@ -293,15 +362,16 @@ def test_run_verification_cleanup_even_on_error(tmp_path: Path) -> None:
         raise RuntimeError("model exploded")
 
     validate = _make_fake_validate(work)
-    with pytest.raises(RuntimeError, match="model exploded"):
-        run_verification(
-            root,
-            "A",
-            None,
-            work_dir=work,
-            validation_project="data/raw/seed_project",
-            max_new_tokens=8,
-            generate=exploding,
-            validate=validate,
-        )
+    report = run_verification(
+        root,
+        "A",
+        None,
+        work_dir=work,
+        validation_project="data/raw/seed_project",
+        max_new_tokens=8,
+        generate=exploding,
+        validate=validate,
+    )
+    # The failure is reported, never raised, and the work dir is cleaned up.
+    assert report["verdict"] == VERDICT_UNRESOLVED
     assert not work.exists()
