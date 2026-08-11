@@ -11,6 +11,7 @@ from godot_coder.checkpoint import (
     capture_rng_state,
     checkpoint_drift_status,
     load_checkpoint,
+    prune_numbered_checkpoints,
     restore_rng_state,
     save_checkpoint,
     scan_checkpoint_tokenizer_drift,
@@ -341,3 +342,15 @@ def test_checkpoint_drift_status_tolerates_non_dict_report(tmp_path: Path) -> No
     (corpus / "tokenizer_report.json").write_text("[]", encoding="utf-8")
 
     assert checkpoint_drift_status(tmp_path) == {"fingerprint": None, "records": []}
+
+
+def test_prune_numbered_checkpoints_sorts_numerically_not_lexicographically(tmp_path: Path) -> None:
+    # f"{step:08d}" grows past 8 digits at 100M steps; string-sorting would
+    # then delete the newest checkpoint, numerical sorting keeps it.
+    for step in (1, 99_999_999, 100_000_000):
+        (tmp_path / f"step_{step:08d}.pt").touch()
+    (tmp_path / "step_foreign.pt").touch()
+    removed = prune_numbered_checkpoints(tmp_path, keep_last=1)
+    assert removed == [tmp_path / "step_00000001.pt", tmp_path / "step_99999999.pt"]
+    assert (tmp_path / "step_100000000.pt").exists()
+    assert (tmp_path / "step_foreign.pt").exists()

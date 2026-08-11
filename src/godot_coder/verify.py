@@ -112,6 +112,61 @@ def leak_index(prompt: str, corpus_texts: list[str], n: int = 16, rare_limit: in
     return len(present) / len(distinctive)
 
 
+def _matching_close_paren(text: str, open_index: int) -> int:
+    """Index of the ')' matching the '(' at open_index, or -1 if unbalanced."""
+    depth = 0
+    for index in range(open_index, len(text)):
+        if text[index] == "(":
+            depth += 1
+        elif text[index] == ")":
+            depth -= 1
+            if depth == 0:
+                return index
+    return -1
+
+
+def _mask_triple_quoted_lines(text: str) -> str:
+    """Blank out GDScript triple-quoted string spans.
+
+    A docstring can contain a line that reads exactly like a function
+    definition, and the def scan must not see it. The mask is
+    character for character and keeps newlines, so offsets in the
+    masked text map one to one onto the original scaffold. A marker
+    inside a comment would open an unclosed span and mask the rest -
+    safe (no broken variant), but such scaffolds lose the rename.
+    """
+    masked: list[str] = []
+    marker: str | None = None
+    for line in text.splitlines(keepends=True):
+        core = line.rstrip("\r\n")
+        newline = line[len(core):]
+        if marker is not None:
+            end = line.find(marker)
+            if end == -1:
+                masked.append(" " * len(core) + newline)
+                continue
+            masked.append(" " * (end + 3) + line[end + 3:])
+            marker = None
+            continue
+        opening: tuple[str, int] | None = None
+        for candidate in ('"""', "'''"):
+            position = line.find(candidate)
+            if position != -1:
+                opening = (candidate, position)
+                break
+        if opening is None:
+            masked.append(line)
+            continue
+        candidate, position = opening
+        closer = line.find(candidate, position + 3)
+        if closer != -1:
+            masked.append(line[:position] + " " * (closer + 3 - position) + line[closer + 3:])
+        else:
+            masked.append(line[:position] + " " * (len(core) - position) + newline)
+            marker = candidate
+    return "".join(masked)
+
+
 def mutation_variants(scaffold: str) -> list[str]:
     """Syntactically valid perturbations of a scaffold.
 
@@ -123,17 +178,32 @@ def mutation_variants(scaffold: str) -> list[str]:
     # 1) A leading comment changes the token stream without changing the task.
     variants.append("# verify: rephrased prompt\n" + scaffold)
     # 2) Rename the last declared function (identifier case/shape change).
-    match = list(re.finditer(r"func\s+([A-Za-z_]\w*)", scaffold))
+    # Anchored to a real definition line, and triple-quoted spans are
+    # masked out, so a comment or docstring that merely mentions
+    # "func foo" cannot hijack the rename.
+    masked = _mask_triple_quoted_lines(scaffold)
+    match = list(re.finditer(r"^\s*func\s+([A-Za-z_]\w*)", masked, re.MULTILINE))
     if match:
-        name = match[-1].group(1)
+        last = match[-1]
+        name = last.group(1)
+        name_start, name_end = last.span(1)
         parts = name.split("_")
         camel = parts[0] + "".join(part[:1].upper() + part[1:] for part in parts[1:])
         renamed = camel + "Impl"
-        variants.append(scaffold.replace(name, renamed, 1) if name in scaffold else scaffold)
-        # 3) An extra parameter that is not used by the body.
-        if ")" in scaffold:
-            last_paren = scaffold.rfind(")")
-            variants.append(scaffold[:last_paren] + ", _unused: int = 0" + scaffold[last_paren:])
+        # Rename the definition itself, not the first textual occurrence:
+        # the name can appear earlier in comments or call sites.
+        variants.append(scaffold[:name_start] + renamed + scaffold[name_end:])
+        # 3) An extra parameter that is not used by the body, inserted into
+        #    this function's signature - the last ')' in the scaffold may
+        #    belong to a call after the definition, and an empty parameter
+        #    list must not get a leading comma (that would be a syntax error).
+        open_paren = scaffold.find("(", name_end)
+        close_paren = _matching_close_paren(scaffold, open_paren) if open_paren != -1 else -1
+        if close_paren != -1:
+            params = scaffold[open_paren + 1:close_paren].strip()
+            extra = "_unused: int = 0"
+            insertion = ", " + extra if params else extra
+            variants.append(scaffold[:close_paren] + insertion + scaffold[close_paren:])
     return variants
 
 
@@ -209,8 +279,15 @@ def check_leak(a_results: list[dict[str, object]], b_results: list[dict[str, obj
     if not corpus_texts:
         return {"verdict": VERDICT_UNRESOLVED, "reason": "No corpus text available to scan for leaks.", "evidence": {}}
     leaking: list[dict[str, object]] = []
+    seen_prompts: set[str] = set()
     for item in a_results + b_results:
         prompt = str(item.get("prompt") or item.get("scaffold") or "")
+        # In comparison mode a and b hold the same golden tasks, so
+        # the same prompt appears twice; count each prompt once or
+        # the leak tally doubles.
+        if not prompt or prompt in seen_prompts:
+            continue
+        seen_prompts.add(prompt)
         index = leak_index(prompt, corpus_texts)
         if index >= 0.6:
             leaking.append({"id": item.get("id"), "leak_index": round(index, 3)})
@@ -482,7 +559,6 @@ def run_verification(
     work_dir: str | Path | None = None,
     validation_project: str = "data/raw/seed_project",
     max_new_tokens: int = 256,
-    seed: int = 0,
     expected_pass_rate: float = 0.5,
     generate=None,
     validate=None,
@@ -491,6 +567,10 @@ def run_verification(
     if not 0.0 <= expected_pass_rate <= 1.0:
         raise ValueError("expected_pass_rate must be between 0 and 1")
     root = Path(project_root).resolve()
+    # Only the temp dir this function creates itself gets removed
+    # afterwards; a caller-supplied work dir is theirs to manage and
+    # must survive the run.
+    owned_work_dir = work_dir is None
     if work_dir is None:
         work_dir = Path(tempfile.mkdtemp(prefix="godot-coder-verify-"))
     else:
@@ -624,7 +704,7 @@ def run_verification(
         }
         return report
     finally:
-        if work_dir is not None:
+        if owned_work_dir:
             _remove_work_dir(work_dir)
 
 
@@ -674,7 +754,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--project-root", default=".")
     parser.add_argument("--validation-project", default="data/raw/seed_project")
     parser.add_argument("--max-new-tokens", type=int, default=256)
-    parser.add_argument("--work-dir", default=None, help="External temp dir; defaults to a fresh system temp")
+    parser.add_argument("--work-dir", default=None,
+                        help="External temp dir, left in place; defaults to a fresh system temp that is removed afterwards")
     return parser.parse_args()
 
 

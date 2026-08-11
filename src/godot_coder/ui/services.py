@@ -572,7 +572,7 @@ def _autotune_compile_signal(project_root: Path) -> tuple[bool | None, str | Non
             age = datetime.now(timezone.utc) - datetime.fromisoformat(created)
             if age.days > _AUTOTUNE_PROBE_MAX_AGE_DAYS:
                 return None, None
-        except ValueError:
+        except (ValueError, TypeError):
             return None, None
     reason = data.get("compile_disabled_reason")
     return data["compile_available"], (reason if isinstance(reason, str) and reason else None)

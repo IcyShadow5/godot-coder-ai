@@ -127,12 +127,23 @@ def _replace_alias(target: Path, alias: Path) -> str:
     return strategy
 
 
+def _step_number(path: Path) -> int | None:
+    """Numerical step from a step_*.pt name, or None if the name is not
+    part of the numbered series (files the checkpoint writer did not
+    create are never touched by pruning)."""
+    try:
+        return int(path.stem.split("_", 1)[1])
+    except (ValueError, IndexError):
+        return None
+
+
 def prune_numbered_checkpoints(output_dir: str | Path, keep_last: int) -> list[Path]:
     """Delete old immutable step files while preserving latest/best aliases."""
     if keep_last <= 0:
         return []
     directory = Path(output_dir)
-    numbered = sorted(directory.glob("step_*.pt"), key=lambda path: path.name)
+    numbered = [path for path in directory.glob("step_*.pt") if _step_number(path) is not None]
+    numbered.sort(key=_step_number)
     stale = numbered[:-keep_last]
     removed: list[Path] = []
     for path in stale:

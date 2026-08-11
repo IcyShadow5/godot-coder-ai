@@ -161,13 +161,20 @@ def evaluate(
             losses.append(float(output.loss.detach().cpu()))
     elif config.evaluation_mode == "sliding":
         stride = config.evaluation_stride or model_config.max_seq_len
-        remaining = config.eval_batches
+        # Same window budget as fixed mode (eval_batches batches of
+        # batch_size), so the two modes measure the same amount of data.
+        budget = config.eval_batches * config.batch_size
+        consumed_total = 0
         window_buffer: list[list[int]] = []
         for shard_index, shard in enumerate(stream.shards):
-            for start in range(0, max(1, len(shard) - model_config.max_seq_len - 1), stride):
+            if len(shard) <= model_config.max_seq_len + 1:
+                continue
+            for start in range(0, len(shard) - model_config.max_seq_len - 1, stride):
                 window_buffer.append([shard_index, start])
-                if len(window_buffer) >= config.batch_size or len(window_buffer) >= remaining:
-                    consumed = min(config.batch_size, len(window_buffer))
+                if len(window_buffer) >= config.batch_size or consumed_total + len(window_buffer) >= budget:
+                    consumed = min(config.batch_size, len(window_buffer), budget - consumed_total)
+                    if consumed <= 0:
+                        break
                     batch = np.asarray(window_buffer[:consumed], dtype=np.int64)
                     x, y = stream.batch_at(batch, model_config.max_seq_len, device)
                     with autocast_context():
@@ -175,11 +182,20 @@ def evaluate(
                     batch_loss = float(output.loss.detach().cpu())
                     losses.extend([batch_loss] * consumed)
                     window_buffer = window_buffer[consumed:]
-                    remaining -= consumed
-                if remaining <= 0:
+                    consumed_total += consumed
+                if consumed_total >= budget:
                     break
-            if remaining <= 0:
+            if consumed_total >= budget:
                 break
+        # A corpus shorter than the budget still gets its tail evaluated;
+        # dropping it used to empty `losses` and crash small validation runs.
+        if window_buffer and consumed_total < budget:
+            tail = np.asarray(window_buffer[:budget - consumed_total], dtype=np.int64)
+            x, y = stream.batch_at(tail, model_config.max_seq_len, device)
+            with autocast_context():
+                output = model(x, y)
+            batch_loss = float(output.loss.detach().cpu())
+            losses.extend([batch_loss] * len(tail))
     else:
         for _ in range(config.eval_batches):
             x, y = stream.sample_batch(config.batch_size, model_config.max_seq_len, device, rng)
@@ -192,24 +208,82 @@ def evaluate(
     return sum(losses) / len(losses)
 
 
+def _snapshot_with_fallback(
+    state_getter: Callable[[], dict[str, Any]], fallback_state: dict[str, Any]
+) -> dict[str, Any]:
+    """Snapshot the training RNG for checkpoints.
+
+    Prefetch owns the RNG in normal runs; if it never started (its
+    construction failed before the loop) the raw generator is
+    untouched and is the correct fallback. A prefetch failure must
+    never cost an emergency save, so the common failure modes fall
+    back to the raw generator too.
+    """
+    try:
+        return state_getter()
+    except (NameError, AttributeError, RuntimeError):
+        return fallback_state
+
+
 class BatchPrefetcher:
-    """One-worker CPU sampler. CUDA transfer remains on the training thread."""
+    """One-worker CPU sampler. CUDA transfer remains on the training thread.
+
+    The worker samples from the same training RNG as the rest of the run,
+    guarded by a lock: numpy Generators are not thread-safe, and the main
+    thread reads the RNG state when saving checkpoints. The lock keeps those
+    reads consistent, and because it is the one and only RNG, a resume
+    continues the exact batch sequence instead of replaying data.
+    """
     def __init__(self, stream: TokenStream, batch_size: int, seq_len: int, rng: np.random.Generator, enabled: bool) -> None:
         self.stream, self.batch_size, self.seq_len, self.rng = stream, batch_size, seq_len, rng
+        self._rng_lock = threading.Lock() if enabled else None
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="batch-prefetch") if enabled else None
         self.future: Future[tuple[torch.Tensor, torch.Tensor]] | None = None
+        # RNG position when the last batch was handed over. With prefetch
+        # the live state runs one draw ahead of what the model consumed,
+        # so checkpoints must use this snapshot, not the live generator.
+        self._saved_rng_state: dict[str, object] | None = None
         if self.executor:
             self.future = self.executor.submit(self._prefetch_sample)
 
+    def _sample(self) -> tuple[torch.Tensor, torch.Tensor]:
+        if self._rng_lock is None:
+            return self.stream.sample_batch(self.batch_size, self.seq_len, torch.device("cpu"), self.rng)
+        with self._rng_lock:
+            return self.stream.sample_batch(self.batch_size, self.seq_len, torch.device("cpu"), self.rng)
+
     def _prefetch_sample(self) -> tuple[torch.Tensor, torch.Tensor]:
-        x, y = self.stream.sample_batch(self.batch_size, self.seq_len, torch.device("cpu"), self.rng)
-        # Pin on the worker thread so the main thread only does the async transfer.
-        return x.pin_memory(), y.pin_memory()
+        x, y = self._sample()
+        # Pin on the worker thread so the main thread only does the async
+        # transfer. Pinning needs CUDA, so a CPU-only machine skips it.
+        if torch.cuda.is_available():
+            return x.pin_memory(), y.pin_memory()
+        return x, y
+
+    def rng_state(self) -> dict[str, object]:
+        """Training RNG position as of the last batch the caller consumed.
+
+        With prefetch the worker draws one batch ahead, so the live state
+        is ambiguous mid-step; the snapshot taken at hand-over time lines
+        up exactly with the checkpoint's step count, and a resume
+        continues the very next draw instead of replaying or skipping data.
+        """
+        if self._saved_rng_state is not None:
+            return self._saved_rng_state
+        if self._rng_lock is None:
+            return self.rng.bit_generator.state
+        with self._rng_lock:
+            return self.rng.bit_generator.state
 
     def next(self, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
         if self.executor is None or self.future is None:
             return self.stream.sample_batch(self.batch_size, self.seq_len, device, self.rng)
         x, y = self.future.result()
+        # No draw is in flight right after result(): the worker released
+        # the lock and sits idle until the resubmit below. Snap the RNG
+        # here so checkpoints record exactly the position of the batch
+        # being returned.
+        self._saved_rng_state = self.rng.bit_generator.state
         self.future = self.executor.submit(self._prefetch_sample)
         if device.type == "cuda":
             return x.to(device, non_blocking=True), y.to(device, non_blocking=True)
@@ -411,6 +485,13 @@ def main() -> None:
     install_interrupt_handlers()
     stop_file = os.environ.get("GODOT_CODER_STOP_FILE")
 
+    def _train_rng_state() -> dict[str, Any]:
+        """Checkpoint RNG snapshot; falls back to the raw generator when
+        prefetch never started (its construction failed before the loop)."""
+        return _snapshot_with_fallback(
+            lambda: prefetcher.rng_state(), train_rng.bit_generator.state
+        )
+
     def save_interrupt_checkpoint(save_step: int) -> Path:
         """Save the current state so a stopped run can resume from here.
 
@@ -429,7 +510,7 @@ def main() -> None:
             tokenizer_fingerprint=tokenizer.fingerprint(),
             best_val_loss=best_val_loss,
             best_step=best_step,
-            data_rng_state={"train": train_rng.bit_generator.state, "eval": eval_rng.bit_generator.state},
+            data_rng_state={"train": _train_rng_state(), "eval": eval_rng.bit_generator.state},
             is_best=False,
             keep_last=0,
         )
@@ -437,7 +518,6 @@ def main() -> None:
         return saved
 
     model.train()
-    prefetcher = BatchPrefetcher(train_stream, train_config.batch_size, model_config.max_seq_len, train_rng, train_config.prefetch_batches > 0)
     run_started = time.perf_counter()
     interval_started = time.perf_counter()
     total_training_seconds = total_validation_seconds = total_checkpoint_seconds = 0.0
@@ -449,7 +529,15 @@ def main() -> None:
     error_message = None
     run_peak_allocated_gib = run_peak_reserved_gib = 0.0
     no_improvement = 0
+    # Bound before the try so the finally below can guard the cleanup
+    # even when prefetch construction itself fails.
+    prefetcher: BatchPrefetcher | None = None
     try:
+        # Constructed inside the try so a setup failure (e.g. a
+        # corrupt shard) lands in the emergency-save path below
+        # instead of escaping as a bare exception with no report
+        # and no checkpoint.
+        prefetcher = BatchPrefetcher(train_stream, train_config.batch_size, model_config.max_seq_len, train_rng, train_config.prefetch_batches > 0)
         for step in range(start_step, max_steps):
             step_started = time.perf_counter()
             optimizer.zero_grad(set_to_none=True)
@@ -541,7 +629,7 @@ def main() -> None:
             should_save = improved or (periodic_save and not train_config.save_best_only)
             if should_save:
                 started = time.perf_counter()
-                saved = save_checkpoint(output_dir, step=step + 1, model=raw_model, optimizer=optimizer, scaler=scaler, model_config=model_config.to_dict(), train_config=train_config.to_dict(), tokenizer_fingerprint=tokenizer.fingerprint(), best_val_loss=best_val_loss, best_step=best_step, data_rng_state={"train": train_rng.bit_generator.state, "eval": eval_rng.bit_generator.state}, is_best=improved, keep_last=train_config.keep_last_checkpoints)
+                saved = save_checkpoint(output_dir, step=step + 1, model=raw_model, optimizer=optimizer, scaler=scaler, model_config=model_config.to_dict(), train_config=train_config.to_dict(), tokenizer_fingerprint=tokenizer.fingerprint(), best_val_loss=best_val_loss, best_step=best_step, data_rng_state={"train": _train_rng_state(), "eval": eval_rng.bit_generator.state}, is_best=improved, keep_last=train_config.keep_last_checkpoints)
                 duration = time.perf_counter() - started
                 total_checkpoint_seconds += duration
                 _append_jsonl(metrics_path, {"event": "checkpoint", "time": time.time(), "step": step + 1, "path": project_relative(saved, project_root), "is_best": improved, "duration_seconds": duration})
@@ -575,7 +663,7 @@ def main() -> None:
                 tokenizer_fingerprint=tokenizer.fingerprint(),
                 best_val_loss=best_val_loss,
                 best_step=best_step,
-                data_rng_state={"train": train_rng.bit_generator.state, "eval": eval_rng.bit_generator.state},
+                data_rng_state={"train": _train_rng_state(), "eval": eval_rng.bit_generator.state},
                 is_best=False,
                 keep_last=0,
             )
@@ -585,7 +673,8 @@ def main() -> None:
             pass  # Don't let a failed emergency save mask the original error
         raise
     finally:
-        prefetcher.close()
+        if prefetcher is not None:
+            prefetcher.close()
         wall_seconds = time.perf_counter() - run_started
         if device.type == "cuda":
             try:

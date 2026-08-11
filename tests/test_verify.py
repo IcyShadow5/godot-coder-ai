@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -130,6 +131,18 @@ def test_check_leak_unresolved_without_corpus() -> None:
     assert report["verdict"] == VERDICT_UNRESOLVED
 
 
+def test_check_leak_counts_duplicate_prompts_once() -> None:
+    # In comparison mode the same golden task runs through both
+    # checkpoints, so a and b carry identical prompts; the tally must
+    # count each prompt once.
+    prompt = "extends Node\n\nfunc clamp_value(value: float, minimum: float) -> float:\n"
+    a = [{"id": "same_task", "prompt": prompt, "parser_passed": True}]
+    b = [{"id": "same_task", "prompt": prompt, "parser_passed": True}]
+    report = check_leak(a, b, [prompt])
+    assert report["verdict"] == VERDICT_FALSIFIED
+    assert report["evidence"]["leaking_count"] == 1
+
+
 def test_check_mutation_falsifies_phrasing_dependence() -> None:
     report = check_mutation(
         {"a_rate": 0.9, "b_rate": 0.4},   # original: A clearly better
@@ -206,8 +219,9 @@ def test_run_verification_comparison_end_to_end(tmp_path: Path) -> None:
     assert report["verdict"] in (VERDICT_VERIFIED, VERDICT_FALSIFIED, VERDICT_UNRESOLVED)
     assert report["claim"]
     assert set(report["checks"]) >= {"trivial_pass", "leak", "repetition", "mutation", "temperature"}
-    # The work dir was removed again (read-only footprint).
-    assert not (tmp_path / "outside").exists()
+    # A caller-owned work dir survives the run (read-only footprint:
+    # only self-created temp dirs get removed).
+    assert (tmp_path / "outside").exists()
 
 
 def test_run_verification_single_checkpoint_skips_comparison_checks(tmp_path: Path) -> None:
@@ -372,6 +386,110 @@ def test_run_verification_cleanup_even_on_error(tmp_path: Path) -> None:
         generate=exploding,
         validate=validate,
     )
-    # The failure is reported, never raised, and the work dir is cleaned up.
+    # The failure is reported, never raised. A caller-owned work dir
+    # must survive the run; only self-created temp dirs get removed.
     assert report["verdict"] == VERDICT_UNRESOLVED
-    assert not work.exists()
+    assert work.exists()
+
+def test_run_verification_cleans_up_own_temp_dir(tmp_path: Path, monkeypatch) -> None:
+    root = _scaffold_project(tmp_path / "proj")
+    created: list[str] = []
+    real_mkdtemp = tempfile.mkdtemp
+
+    def tracking_mkdtemp(*args, **kwargs):
+        path = real_mkdtemp(*args, **kwargs)
+        created.append(path)
+        return path
+
+    monkeypatch.setattr(tempfile, "mkdtemp", tracking_mkdtemp)
+
+    def exploding(root, checkpoint, prompt, **kwargs):
+        raise RuntimeError("model exploded")
+
+    # generate explodes before any validation runs, so the default
+    # validate is never reached and needs no fake.
+    report = run_verification(
+        root,
+        "A",
+        None,
+        validation_project="data/raw/seed_project",
+        max_new_tokens=8,
+        generate=exploding,
+    )
+    assert report["verdict"] == VERDICT_UNRESOLVED
+    assert created, "expected run_verification to create its own temp dir"
+    assert not Path(created[0]).exists()
+
+
+def test_mutation_variants_rename_targets_definition_not_first_occurrence() -> None:
+    # The name appears in a comment before the definition; the rename must
+    # hit the definition, not the first textual occurrence.
+    scaffold = "# clamp_value rounds a value\nfunc clamp_value(value: float) -> float:\n\treturn value\n"
+    variants = mutation_variants(scaffold)
+    renamed = [variant for variant in variants if "Impl" in variant]
+    assert renamed, "expected a rename variant"
+    assert "clampValueImpl(value: float)" in renamed[0]
+    assert renamed[0].startswith("# clamp_value rounds a value")
+
+
+def test_mutation_variants_extra_param_goes_into_signature_not_trailing_call() -> None:
+    # The scaffold ends with a call, not a signature - the extra parameter
+    # must land in the function definition, never inside the call.
+    scaffold = "func round_up(value: float) -> float:\n\treturn ceil(value)\n\nprint(round_up(1.2))\n"
+    variants = mutation_variants(scaffold)
+    param = [variant for variant in variants if "_unused: int = 0" in variant]
+    assert param, "expected an extra-parameter variant"
+    assert "round_up(value: float, _unused: int = 0)" in param[0]
+    assert "print(round_up(1.2), _unused" not in param[0]
+
+
+def test_mutation_variants_extra_param_handles_empty_signature() -> None:
+    # An empty parameter list must not get a leading comma - `func f(, x)`
+    # is a syntax error and would break the mutation for every checkpoint.
+    scaffold = "func announce() -> void:\n\tprint(\"hi\")\n\nannounce()\n"
+    variants = mutation_variants(scaffold)
+    param = [variant for variant in variants if "_unused: int = 0" in variant]
+    assert param
+    assert "func announce(_unused: int = 0)" in param[0]
+    assert "announce(, _unused" not in param[0]
+
+
+def test_mutation_variants_ignores_func_inside_triple_quoted_docstring() -> None:
+    # A docstring that contains a "func helper():" line must not hijack
+    # the rename: the real definition is the target, and the docstring
+    # text stays untouched.
+    scaffold = (
+        "extends Node\n"
+        "\n"
+        '"""\n'
+        "func helper():\n"
+        "\tpass\n"
+        '"""\n'
+        "\n"
+        "func clamp_value(value: float) -> float:\n"
+        "\treturn value\n"
+    )
+    variants = mutation_variants(scaffold)
+    renamed = [variant for variant in variants if "Impl" in variant]
+    assert renamed, "expected a rename variant"
+    assert "clampValueImpl(value: float)" in renamed[0]
+    assert "func helper():" in renamed[0]
+
+
+def test_mask_triple_quoted_lines_handles_inline_and_single_quote_spans() -> None:
+    # Same-line open+close and triple-single spans must be masked too,
+    # so the rename still targets the real definition.
+    scaffold = (
+        "var doc = '''\n"
+        "func fake():\n"
+        "\tpass\n"
+        "'''\n"
+        'var s = """x"""\n'
+        "func real():\n"
+        "\tpass\n"
+    )
+    variants = mutation_variants(scaffold)
+    renamed = [variant for variant in variants if "Impl" in variant]
+    assert renamed, "expected a rename variant"
+    assert "realImpl()" in renamed[0]
+    assert "func fake():" in renamed[0]

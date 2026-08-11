@@ -293,3 +293,202 @@ def test_interrupt_flag_set_by_signal_handler() -> None:
     train._interrupt_flag.set()
     assert train._interrupt_requested(None) is True
     train._interrupt_flag.clear()
+
+def test_evaluate_sliding_mode_flushes_tail_on_short_corpus() -> None:
+    # Corpus too small to fill the eval budget: the tail windows used to be
+    # dropped, which could leave `losses` empty and crash the evaluation.
+    model = TinyGPT(_model_config())
+    stream = _fake_batch_stream(np.arange(20, dtype=np.int64))
+    config = TrainConfig(
+        eval_batches=3, batch_size=4, evaluation_mode="sliding",
+        evaluation_stride=2, dtype="float32",
+    )
+    loss = train.evaluate(
+        model, stream, config, _model_config(),
+        torch.device("cpu"), np.random.default_rng(0),
+        lambda: torch.no_grad(),
+    )
+    assert loss > 0
+
+
+def test_evaluate_sliding_mode_respects_window_budget() -> None:
+    # Sliding must consume eval_batches * batch_size windows like fixed mode,
+    # not just eval_batches windows.
+    seen: dict[str, int] = {"n": 0}
+
+    class CountingStream:
+        shards = [np.arange(512, dtype=np.int64)]
+        dataset_fingerprint = "stream"
+
+        def batch_at(self, windows, seq_len, device):
+            rows = [self.shards[int(s)][int(st):int(st) + seq_len] for s, st in np.asarray(windows, dtype=np.int64)]
+            x = torch.from_numpy(np.stack(rows)).to(device)
+            seen["n"] += len(rows)
+            return x, x.roll(-1, dims=1)
+
+    model = TinyGPT(_model_config())
+    config = TrainConfig(
+        eval_batches=3, batch_size=2, evaluation_mode="sliding",
+        evaluation_stride=8, dtype="float32",
+    )
+    train.evaluate(
+        model, CountingStream(), config, _model_config(),
+        torch.device("cpu"), np.random.default_rng(0),
+        lambda: torch.no_grad(),
+    )
+    assert seen["n"] == 3 * 2
+
+
+def _prefetch_stream():
+    class _Stream:
+        shards = [np.arange(64, dtype=np.int64)]
+        dataset_fingerprint = "stream"
+
+        def sample_batch(self, batch_size, seq_len, device, generator):
+            starts = generator.integers(0, 64 - seq_len, size=batch_size)
+            xs = [self.shards[0][start:start + seq_len] for start in starts]
+            x = torch.from_numpy(np.stack(xs)).to(device)
+            return x, x.roll(-1, dims=1)
+
+    return _Stream()
+
+
+def test_prefetch_matches_non_prefetch_sequence() -> None:
+    # Prefetch must not change what the model sees: the worker draws from the
+    # same training RNG as the sync path, so the batch sequence is identical
+    # either way, and a resume continues the stream instead of replaying it.
+    def batches(enabled: bool) -> list[list[int]]:
+        rng = np.random.default_rng(42)
+        prefetcher = train.BatchPrefetcher(_prefetch_stream(), 2, 8, rng, enabled=enabled)
+        try:
+            return [prefetcher.next(torch.device("cpu"))[0].tolist() for _ in range(3)]
+        finally:
+            prefetcher.close()
+
+    assert batches(True) == batches(False)
+
+
+def test_prefetch_first_batch_matches_sync_draw_and_advances_shared_rng() -> None:
+    # The first batch comes from the shared training RNG, so it is the very
+    # first sync draw: the checkpoint state a resume relies on tracks the
+    # stream position instead of standing still while prefetch runs.
+    rng = np.random.default_rng(11)
+    initial = np.asarray(rng.bit_generator.state["state"]["state"]).copy()
+    prefetcher = train.BatchPrefetcher(_prefetch_stream(), 2, 8, rng, enabled=True)
+    try:
+        first = prefetcher.next(torch.device("cpu"))[0].tolist()
+        moved = np.asarray(rng.bit_generator.state["state"]["state"])
+        assert not np.array_equal(initial, moved)
+    finally:
+        prefetcher.close()
+
+    sync_rng = np.random.default_rng(11)
+    prefetcher = train.BatchPrefetcher(_prefetch_stream(), 2, 8, sync_rng, enabled=False)
+    try:
+        sync_first = prefetcher.next(torch.device("cpu"))[0].tolist()
+    finally:
+        prefetcher.close()
+    assert first == sync_first
+
+
+def test_prefetch_rng_state_matches_sync_position() -> None:
+    # The checkpoint snapshot must sit at the same stream position as a
+    # sync run after the same number of batches: rng_state() is taken when
+    # the batch is handed over, so a resume continues the same sequence.
+    def prefetched_state() -> tuple[dict[str, object], list[list[int]]]:
+        rng = np.random.default_rng(23)
+        prefetcher = train.BatchPrefetcher(_prefetch_stream(), 2, 8, rng, enabled=True)
+        try:
+            batches = [prefetcher.next(torch.device("cpu"))[0].tolist() for _ in range(3)]
+            return prefetcher.rng_state(), batches
+        finally:
+            prefetcher.close()
+
+    def sync_state() -> tuple[dict[str, object], list[list[int]]]:
+        rng = np.random.default_rng(23)
+        prefetcher = train.BatchPrefetcher(_prefetch_stream(), 2, 8, rng, enabled=False)
+        try:
+            batches = [prefetcher.next(torch.device("cpu"))[0].tolist() for _ in range(3)]
+            return rng.bit_generator.state, batches
+        finally:
+            prefetcher.close()
+
+    prefetched, p_batches = prefetched_state()
+    plain, s_batches = sync_state()
+    assert p_batches == s_batches
+    # default_rng() is PCG64, whose position is the 64-bit counter in
+    # 'state' plus 'inc' -- no MT19937-style 'pos'. Same consumption
+    # pattern, so all three must line up between the two paths.
+    assert int(prefetched["state"]["inc"]) == int(plain["state"]["inc"])
+    assert np.array_equal(
+        np.asarray(prefetched["state"]["state"]),
+        np.asarray(plain["state"]["state"]),
+    )
+
+
+def test_prefetch_sequence_is_deterministic_per_seed() -> None:
+    def first_batches() -> list[list[int]]:
+        rng = np.random.default_rng(7)
+        prefetcher = train.BatchPrefetcher(_prefetch_stream(), 2, 8, rng, enabled=True)
+        try:
+            return [prefetcher.next(torch.device("cpu"))[0].tolist() for _ in range(3)]
+        finally:
+            prefetcher.close()
+
+    assert first_batches() == first_batches()
+
+
+def test_prefetch_sequence_depends_on_seed() -> None:
+    # Two prefetchers from the same seed draw the same stream; a different
+    # seed diverges. The sequence comes from the RNG, not from shared state.
+    def batches(seed: int) -> list[list[int]]:
+        rng = np.random.default_rng(seed)
+        prefetcher = train.BatchPrefetcher(_prefetch_stream(), 2, 8, rng, enabled=True)
+        try:
+            return [prefetcher.next(torch.device("cpu"))[0].tolist() for _ in range(2)]
+        finally:
+            prefetcher.close()
+
+    assert batches(3) == batches(3)
+    assert batches(3) != batches(4)
+
+
+def test_snapshot_with_fallback_prefers_prefetcher_state() -> None:
+    prefetched = {"source": "prefetcher"}
+    fallback = {"source": "fallback"}
+    assert train._snapshot_with_fallback(lambda: prefetched, fallback) is prefetched
+
+
+def test_snapshot_with_fallback_uses_raw_rng_when_prefetcher_missing() -> None:
+    rng = np.random.default_rng(5)
+    rng.integers(0, 100)
+    fallback = rng.bit_generator.state
+
+    def missing_prefetcher() -> dict[str, object]:
+        raise NameError("name 'prefetcher' is not defined")
+
+    state = train._snapshot_with_fallback(missing_prefetcher, fallback)
+    assert state is fallback
+
+
+def test_snapshot_with_fallback_survives_prefetcher_errors() -> None:
+    def broken() -> dict[str, object]:
+        raise RuntimeError("worker hung")
+
+    fallback = {"ok": True}
+    assert train._snapshot_with_fallback(broken, fallback) is fallback
+
+
+def test_snapshot_with_fallback_handles_none_prefetcher() -> None:
+    # The finally guard binds prefetcher to None before the try, so a
+    # construction failure surfaces as AttributeError (None.rng_state),
+    # not the NameError of a truly unbound name.
+    rng = np.random.default_rng(9)
+    rng.integers(0, 100)
+    fallback = rng.bit_generator.state
+
+    def none_prefetcher() -> dict[str, object]:
+        return None.rng_state()
+
+    state = train._snapshot_with_fallback(none_prefetcher, fallback)
+    assert state is fallback

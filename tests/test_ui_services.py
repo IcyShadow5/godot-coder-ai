@@ -356,6 +356,28 @@ def test_system_status_malformed_autotune_does_not_crash(tmp_path, monkeypatch) 
     assert status["compile_disabled_reason"] is None
 
 
+def test_system_status_autotune_naive_iso_timestamp_does_not_crash(tmp_path, monkeypatch) -> None:
+    """A naive ISO created_at used to raise TypeError (offset-naive
+    minus offset-aware datetime) and take down system_status."""
+    report = tmp_path / "reports" / "hardware" / "autotune_latest.json"
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text(
+        json.dumps(
+            {
+                "compile_available": False,
+                "compile_disabled_reason": "kernel build failed",
+                "created_at": "2026-08-01T10:00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    status = _quiet_system_status(tmp_path, (True, "3.7.1"), monkeypatch)
+    # The naive timestamp is unreadable, so the probe verdict is
+    # ignored and the static signal decides.
+    assert status["compile_available"] is True
+    assert status["compile_disabled_reason"] is None
+
+
 def test_system_status_autotune_true_with_static_true_stays_true(tmp_path, monkeypatch) -> None:
     """Both signals agree: probe proved it and triton imports now."""
     _autotune_report(tmp_path, True)
