@@ -14,6 +14,7 @@ from typing import Any
 
 import yaml
 
+from .checkpoint import scan_checkpoint_tokenizer_drift
 from .config import load_config
 from .corpus import ALLOWED_LICENSES, corpus_root
 
@@ -611,6 +612,17 @@ def build_preflight(project_root: Path, *, config_path: Path | None = None, mode
     elif data is not None and data.get("tokenizer_fingerprint") and tokenizer_report.get("fingerprint") and data.get("tokenizer_fingerprint") != tokenizer_report.get("fingerprint"):
         blockers.append("Tokenizer fingerprint and token stream do not match")
 
+    drifted: list[dict[str, Any]] = []
+    if isinstance(tokenizer_report, dict) and isinstance(tokenizer_report.get("fingerprint"), str):
+        drifted = scan_checkpoint_tokenizer_drift(project_root, tokenizer_report["fingerprint"])
+        orphaned = [record for record in drifted if not record["loadable"]]
+        if orphaned:
+            warnings.append(
+                f"{len(orphaned)} checkpoint(s) lost their tokenizer (no versioned file left) and can no longer be loaded: "
+                + ", ".join(record["checkpoint"] for record in orphaned[:4])
+                + (" and more" if len(orphaned) > 4 else "")
+            )
+
     if hardware is None:
         warnings.append("Hardware autotuning missing")
 
@@ -669,6 +681,7 @@ def build_preflight(project_root: Path, *, config_path: Path | None = None, mode
         "hardware_recommendation": (hardware or {}).get("recommendation"),
         "training_plan": plan,
         "checkpoint_status": checkpoint_status,
+        "checkpoint_drift": drifted,
         "config": str(config_path.relative_to(project_root)) if config_path else None,
     }
     _atomic_json(project_root / "reports" / "audit" / f"preflight_{mode}_latest.json", report)

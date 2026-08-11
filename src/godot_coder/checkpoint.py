@@ -1,6 +1,7 @@
 from __future__ import annotations
 """Checkpoint save/load with atomic writes, hard-link aliases, and RNG state capture."""
 
+import json
 import os
 import pickle
 import random
@@ -244,3 +245,29 @@ def scan_checkpoint_tokenizer_drift(
             }
         )
     return records
+
+
+def checkpoint_drift_status(project_root: str | Path) -> dict[str, Any]:
+    """Tokenizer-drift summary for the dashboard.
+
+    The current fingerprint comes from the train_bpe report - reading that
+    JSON is far cheaper than loading the tokenizer on every overview refresh.
+    Without a report nothing has been trained yet, so there is nothing an
+    old checkpoint could have drifted away from.
+    """
+    root = Path(project_root)
+    report = root / "data" / "corpus" / "tokenizer_report.json"
+    fingerprint: str | None = None
+    if report.is_file():
+        try:
+            payload = json.loads(report.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            payload = None
+        if isinstance(payload, dict) and isinstance(payload.get("fingerprint"), str):
+            fingerprint = payload["fingerprint"]
+    if not isinstance(fingerprint, str):
+        return {"fingerprint": None, "records": []}
+    return {
+        "fingerprint": fingerprint,
+        "records": scan_checkpoint_tokenizer_drift(root, fingerprint),
+    }

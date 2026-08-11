@@ -1,4 +1,5 @@
 import collections
+import json
 import pickle
 from pathlib import Path
 
@@ -8,6 +9,7 @@ import torch
 
 from godot_coder.checkpoint import (
     capture_rng_state,
+    checkpoint_drift_status,
     load_checkpoint,
     restore_rng_state,
     save_checkpoint,
@@ -302,3 +304,40 @@ def test_scan_uses_mmap_and_releases_payloads(
         and isinstance(record["loadable"], bool)
         for record in records
     )
+
+
+def test_checkpoint_drift_status_without_report(tmp_path: Path) -> None:
+    assert checkpoint_drift_status(tmp_path) == {"fingerprint": None, "records": []}
+
+
+def test_checkpoint_drift_status_reads_report_fingerprint(tmp_path: Path) -> None:
+    corpus = tmp_path / "data" / "corpus"
+    corpus.mkdir(parents=True)
+    (corpus / "tokenizer_report.json").write_text(
+        json.dumps({"fingerprint": "current-fp"}), encoding="utf-8"
+    )
+    checkpoints = tmp_path / "checkpoints"
+    checkpoints.mkdir()
+    torch.save({"tokenizer_fingerprint": "stale"}, checkpoints / "old.pt")
+
+    status = checkpoint_drift_status(tmp_path)
+    assert status["fingerprint"] == "current-fp"
+    assert status["records"] == [
+        {"checkpoint": "checkpoints/old.pt", "tokenizer_fingerprint": "stale", "loadable": False}
+    ]
+
+
+def test_checkpoint_drift_status_tolerates_corrupt_report(tmp_path: Path) -> None:
+    corpus = tmp_path / "data" / "corpus"
+    corpus.mkdir(parents=True)
+    (corpus / "tokenizer_report.json").write_text("not json", encoding="utf-8")
+
+    assert checkpoint_drift_status(tmp_path) == {"fingerprint": None, "records": []}
+
+
+def test_checkpoint_drift_status_tolerates_non_dict_report(tmp_path: Path) -> None:
+    corpus = tmp_path / "data" / "corpus"
+    corpus.mkdir(parents=True)
+    (corpus / "tokenizer_report.json").write_text("[]", encoding="utf-8")
+
+    assert checkpoint_drift_status(tmp_path) == {"fingerprint": None, "records": []}

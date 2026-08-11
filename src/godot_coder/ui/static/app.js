@@ -1,5 +1,6 @@
 const state = {
   overview: null,
+  checkpointDrift: { fingerprint: null, records: [] },
   checkpoints: [],
   configs: [],
   files: [],
@@ -68,6 +69,7 @@ async function refreshAll(showToast = false) {
       api("/api/hardware/autotune"),
     ]);
     state.overview = overview;
+    state.checkpointDrift = overview.checkpoint_drift || { fingerprint: null, records: [] };
     state.checkpoints = overview.checkpoints || [];
     state.configs = overview.configs || [];
     state.hardwareProbe = overview.vram_probe || null;
@@ -126,26 +128,53 @@ function bestDefaultCheckpoint() {
   return best.path;
 }
 
+function orphanedCheckpointSet() {
+  return new Set(
+    (state.checkpointDrift?.records || [])
+      .filter((record) => !record.loadable)
+      .map((record) => record.checkpoint)
+  );
+}
+
+function renderCheckpointDrift() {
+  const banner = $("#checkpoint-drift-banner");
+  if (!banner) return;
+  const records = state.checkpointDrift?.records || [];
+  const orphaned = records.filter((record) => !record.loadable);
+  const preserved = records.length - orphaned.length;
+  banner.hidden = !orphaned.length;
+  if (orphaned.length) {
+    const names = orphaned.slice(0, 3).map((record) => record.checkpoint);
+    const more = orphaned.length > 3 ? `, +${orphaned.length - 3} more` : "";
+    const kept = preserved ? ` ${preserved} older checkpoint(s) still load via versioned tokenizer files.` : "";
+    banner.textContent = `${orphaned.length} checkpoint(s) lost their tokenizer (${names.join(", ")}${more}).${kept}`;
+  }
+}
+
 function renderCheckpointSelects() {
   state.activeCheckpoint = bestDefaultCheckpoint();
   if (state.activeCheckpoint) localStorage.setItem("godot-coder-active-checkpoint", state.activeCheckpoint);
   const chatSelect = $("#chat-checkpoint");
   const resumeSelect = $("#training-resume");
+  const orphaned = orphanedCheckpointSet();
   const options = state.checkpoints.map((item) => {
-    const label = `${item.run} · ${item.name}${item.step ? ` · step ${item.step}` : ""}`;
+    const flag = orphaned.has(item.path) ? "⚠ " : "";
+    const label = `${flag}${item.run} · ${item.name}${item.step ? ` · step ${item.step}` : ""}`;
     return `<option value="${escapeHtml(item.path)}">${escapeHtml(label)}</option>`;
   }).join("");
   chatSelect.innerHTML = options || '<option value="">No checkpoint available</option>';
   chatSelect.value = state.activeCheckpoint;
   resumeSelect.innerHTML = '<option value="">Start from random weights</option>' + options;
   updateActiveModelSummary();
+  renderCheckpointDrift();
   $("#generate-button").disabled = !state.activeCheckpoint;
 }
 
 function updateActiveModelSummary() {
   const item = state.checkpoints.find((checkpoint) => checkpoint.path === state.activeCheckpoint);
+  const lost = item && orphanedCheckpointSet().has(item.path);
   $("#active-model-summary").textContent = item
-    ? `${item.run} · ${item.kind.toUpperCase()} · ${item.size_mb} MB · ${formatDate(item.modified_at)}`
+    ? `${item.run} · ${item.kind.toUpperCase()} · ${item.size_mb} MB · ${formatDate(item.modified_at)}${lost ? " · ⚠ tokenizer lost" : ""}`
     : "Train a model first or copy your checkpoints into checkpoints/.";
 }
 

@@ -12,6 +12,7 @@ from fastapi import APIRouter, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from ...config import ModelConfig, TrainConfig
+from ...checkpoint import checkpoint_drift_status
 from ..paths import safe_child
 from ..schemas import FileWriteRequest
 from ..services import (
@@ -41,6 +42,7 @@ def build_system_router(app: FastAPI) -> APIRouter:
         base["checkpoints"] = await asyncio.to_thread(list_checkpoints, root)
         base["configs"] = await asyncio.to_thread(list_configs, root)
         base["latest_training_reports"] = await asyncio.to_thread(list_training_reports, root)
+        base["checkpoint_drift"] = await asyncio.to_thread(checkpoint_drift_status, root)
         return base
 
     @router.get("/api/configs")

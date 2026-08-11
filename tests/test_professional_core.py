@@ -158,6 +158,19 @@ def test_preflight_reports_yellow_without_hardware_result(tmp_path: Path) -> Non
     assert not report["blockers"]
 
 
+def test_preflight_warns_about_orphaned_checkpoints(tmp_path: Path) -> None:
+    root = _make_preflight_workspace(tmp_path)
+    checkpoints = root / "checkpoints"
+    checkpoints.mkdir()
+    torch.save({"tokenizer_fingerprint": "deadbeef"}, checkpoints / "old.pt")
+
+    report = build_preflight(root, config_path=root / "configs" / "night.yaml")
+    assert any("lost their tokenizer" in warning for warning in report["warnings"])
+    assert report["checkpoint_drift"] == [
+        {"checkpoint": "checkpoints/old.pt", "tokenizer_fingerprint": "deadbeef", "loadable": False}
+    ]
+
+
 def test_preflight_accepts_current_project_aware_validator(tmp_path: Path) -> None:
     """The v0.10.4+ pipeline writes project-aware-v4 reports; the preflight must
     accept every project-aware revision instead of pinning the old v2 string."""

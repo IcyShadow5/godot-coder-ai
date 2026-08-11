@@ -199,6 +199,7 @@ h1 { margin: 4px 0 0; font-size: 25px; letter-spacing: -.035em; }
 .context-bar i { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, #1e90c8, #6fd6ff); }
 .context-tokens { flex: 0 0 90px; text-align: right; color: var(--muted); }
 .context-warning { margin-top: 7px; padding: 6px 8px; border-radius: 8px; background: rgba(255,193,7,.08); border: 1px solid rgba(255,193,7,.25); color: #ffd57a; }
+.context-warning[hidden] { display: none; }
 .context-note { margin-top: 6px; color: var(--muted); }
 .resume-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: rgba(255,193,7,.07); border: 1px solid rgba(255,193,7,.25); }
 .resume-banner[hidden] { display: none; }

@@ -96,6 +96,23 @@ def test_studio_brand_version_is_runtime_driven(tmp_path: Path) -> None:
     assert overview.json()["app_version"] == __version__
 
 
+def test_overview_exposes_checkpoint_drift(tmp_path: Path) -> None:
+    (tmp_path / "configs").mkdir()
+    (tmp_path / "src").mkdir()
+    (tmp_path / "data" / "raw").mkdir(parents=True)
+    (tmp_path / "checkpoints").mkdir()
+    (tmp_path / "artifacts").mkdir()
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='test'\n", encoding="utf-8")
+    (tmp_path / "data" / "corpus").mkdir(parents=True)
+    (tmp_path / "data" / "corpus" / "tokenizer_report.json").write_text(
+        '{"fingerprint": "abc"}', encoding="utf-8"
+    )
+
+    with TestClient(create_app(tmp_path)) as client:
+        overview = client.get("/api/overview").json()
+    assert overview["checkpoint_drift"] == {"fingerprint": "abc", "records": []}
+
+
 def test_professional_training_core_uses_visual_workflow(tmp_path: Path) -> None:
     (tmp_path / "configs").mkdir()
     (tmp_path / "data" / "raw").mkdir(parents=True)
