@@ -255,6 +255,8 @@ def run_benchmark(
     max_new_tokens: int = 256,
     temperature: float = 0.0,
     top_k: int = 0,
+    top_p: float = 1.0,
+    repetition_penalty: float = 1.0,
     mode: str = "auto",
 ) -> dict[str, object]:
     root = Path(project_root).resolve()
@@ -295,6 +297,8 @@ def run_benchmark(
                 max_new_tokens=case_max_tokens,
                 temperature=temperature,
                 top_k=top_k,
+                top_p=top_p,
+                repetition_penalty=repetition_penalty,
                 device_name="auto",
             )
             case_project = str(case.get("validation_project", validation_project))
@@ -348,6 +352,8 @@ def run_benchmark(
             "max_new_tokens": max_new_tokens,
             "temperature": temperature,
             "top_k": top_k,
+            "top_p": top_p,
+            "repetition_penalty": repetition_penalty,
             "deterministic": temperature == 0.0,
         },
         "tiers": tier_reports,
@@ -380,6 +386,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-new-tokens", type=int, default=256)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--top-k", type=int, default=0)
+    parser.add_argument("--top-p", type=float, default=None)
+    parser.add_argument("--repetition-penalty", type=float, default=1.0)
     parser.add_argument("--mode", choices=("auto", "corpus", "curriculum", "golden", "task"), default="auto")
     return parser.parse_args()
 
@@ -393,6 +401,8 @@ def main() -> None:
         max_new_tokens=args.max_new_tokens,
         temperature=args.temperature,
         top_k=args.top_k,
+        top_p=args.top_p if args.top_p is not None else 1.0,
+        repetition_penalty=args.repetition_penalty,
         mode=args.mode,
     )
 

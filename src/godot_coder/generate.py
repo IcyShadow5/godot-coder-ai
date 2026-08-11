@@ -24,6 +24,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-new-tokens", type=int, default=300)
     parser.add_argument("--temperature", type=float, default=0.8)
     parser.add_argument("--top-k", type=int, default=40)
+    parser.add_argument("--top-p", type=float, default=None)
+    parser.add_argument("--repetition-penalty", type=float, default=1.15)
     parser.add_argument("--output", default=None)
     parser.add_argument("--suffix-only", action="store_true", help="Print/write only tokens generated after the prompt")
     parser.add_argument("--device", default="auto")
@@ -66,6 +68,8 @@ def main() -> None:
         max_new_tokens=args.max_new_tokens,
         temperature=args.temperature,
         top_k=args.top_k,
+        top_p=args.top_p,
+        repetition_penalty=args.repetition_penalty,
         eos_id=tokenizer.eos_id,
     )
     all_ids = generated[0].tolist()

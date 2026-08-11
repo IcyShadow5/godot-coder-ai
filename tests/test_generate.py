@@ -43,7 +43,7 @@ class _FakeModel:
     def eval(self) -> None:
         self.evaluated = True
 
-    def generate(self, input_ids, *, max_new_tokens, temperature, top_k, eos_id):
+    def generate(self, input_ids, *, max_new_tokens, temperature, top_k, top_p=None, repetition_penalty=1.0, eos_id=None):
         prompt = input_ids[0].tolist()
         return torch.tensor([prompt + list(range(100, 100 + max_new_tokens))])
 
@@ -126,6 +126,13 @@ def test_parse_args_override(monkeypatch):
 def test_main_rejects_invalid_args(monkeypatch, flag, value, message):
     with pytest.raises(ValueError, match=message):
         _run_main(monkeypatch, [flag, value])
+
+
+def test_parse_args_sampling_flags(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["generate", "--top-p", "0.9", "--repetition-penalty", "1.2"])
+    args = generate.parse_args()
+    assert args.top_p == 0.9
+    assert args.repetition_penalty == 1.2
 
 
 def test_main_generates_and_prints(monkeypatch, tmp_path, capsys):

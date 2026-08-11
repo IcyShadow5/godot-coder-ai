@@ -138,6 +138,8 @@
               <input id="temperature" type="range" min="0.05" max="1.5" step="0.05" value="0.4">
               <label class="field-label">Top-K <output id="top-k-output">10</output></label>
               <input id="top-k" type="range" min="0" max="100" step="1" value="10">
+              <label class="field-label">Repetition penalty <output id="rep-penalty-output">1.15</output></label>
+              <input id="rep-penalty" type="range" min="1.0" max="2.0" step="0.05" value="1.15">
               <label class="field-label toggle-label" title="Wraps the prompt in the same task-header format the model was trained on - small models continue much more sensibly in-distribution."><input type="checkbox" id="task-format" checked> Training task format</label>
             </div>
 

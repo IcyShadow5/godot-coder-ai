@@ -22,7 +22,7 @@ def test_chat_generate_stream_emits_sse_tokens_then_done(tmp_path: Path) -> None
     _scaffold(tmp_path)
     app = create_app(tmp_path)
 
-    def fake_generate(checkpoint, prompt, *, max_new_tokens, temperature, top_k, device_name="auto"):
+    def fake_generate(checkpoint, prompt, *, max_new_tokens, temperature, top_k, top_p=1.0, repetition_penalty=1.15, device_name="auto"):
         return "return a + b\n"
 
     def fake_unload():

@@ -59,7 +59,7 @@ def _scaffold(tmp_path: Path) -> None:
 
 
 def _fake_generation(app, text: str = "return a + b\n"):
-    def fake_generate(checkpoint, prompt, *, max_new_tokens, temperature, top_k, device_name="auto"):
+    def fake_generate(checkpoint, prompt, *, max_new_tokens, temperature, top_k, top_p=1.0, repetition_penalty=1.15, device_name="auto"):
         return text
 
     def fake_unload():
@@ -111,7 +111,7 @@ def test_chat_generate_400_on_generation_error(tmp_path: Path) -> None:
     _scaffold(tmp_path)
     app = create_app(tmp_path)
 
-    def failing_generate(checkpoint, prompt, *, max_new_tokens, temperature, top_k, device_name="auto"):
+    def failing_generate(checkpoint, prompt, *, max_new_tokens, temperature, top_k, top_p=1.0, repetition_penalty=1.15, device_name="auto"):
         raise ValueError("checkpoint not found")
 
     def fake_unload():

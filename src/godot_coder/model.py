@@ -205,13 +205,54 @@ class TinyGPT(nn.Module):
         return self.lm_head(self.final_norm(x)), next_cache
 
     @staticmethod
-    def _sample(logits: torch.Tensor, temperature: float, top_k: int | None) -> torch.Tensor:
+    def _apply_repetition_penalty(
+        logits: torch.Tensor,
+        past_ids: torch.Tensor | None,
+        penalty: float,
+    ) -> torch.Tensor:
+        """HF-style repetition penalty on the tokens generated so far.
+
+        Logits of tokens that already appeared in the current completion are
+        divided by the penalty (multiplied when negative), nudging the model
+        toward novel tokens. A penalty of 1.0 is a no-op.
+        """
+        if penalty <= 0 or penalty == 1.0 or past_ids is None or past_ids.numel() == 0:
+            return logits
+        gathered = logits.gather(1, past_ids)
+        adjusted = torch.where(gathered > 0, gathered / penalty, gathered * penalty)
+        return logits.scatter(1, past_ids, adjusted)
+
+    @staticmethod
+    def _apply_top_p(logits: torch.Tensor, top_p: float) -> torch.Tensor:
+        """Nucleus masking: keep the smallest token set whose cumulative
+        probability exceeds top_p and mask the rest to -inf."""
+        sorted_logits, sorted_indices = torch.sort(logits, dim=-1, descending=True)
+        probs = F.softmax(sorted_logits, dim=-1)
+        cumulative = torch.cumsum(probs, dim=-1)
+        keep = cumulative - probs <= top_p
+        sorted_logits = sorted_logits.masked_fill(~keep, float("-inf"))
+        return sorted_logits.scatter(-1, sorted_indices, sorted_logits)
+
+    @staticmethod
+    def _sample(
+        logits: torch.Tensor,
+        temperature: float,
+        top_k: int | None,
+        *,
+        top_p: float | None = None,
+        repetition_penalty: float = 1.0,
+        past_ids: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        if repetition_penalty != 1.0:
+            logits = TinyGPT._apply_repetition_penalty(logits, past_ids, repetition_penalty)
         if temperature <= 0:
             return torch.argmax(logits, dim=-1, keepdim=True)
         logits = logits / temperature
         if top_k is not None and 0 < top_k < logits.size(-1):
             threshold = torch.topk(logits, top_k).values[:, -1].unsqueeze(-1)
             logits = logits.masked_fill(logits < threshold, float("-inf"))
+        if top_p is not None and 0.0 < top_p < 1.0:
+            logits = TinyGPT._apply_top_p(logits, top_p)
         return torch.multinomial(F.softmax(logits, dim=-1), num_samples=1)
 
     @torch.no_grad()
@@ -222,6 +263,8 @@ class TinyGPT(nn.Module):
         max_new_tokens: int,
         temperature: float = 0.8,
         top_k: int | None = 40,
+        top_p: float | None = None,
+        repetition_penalty: float = 1.0,
         eos_id: int | None = None,
         use_kv_cache: bool = True,
     ) -> torch.Tensor:
@@ -231,18 +274,40 @@ class TinyGPT(nn.Module):
             raise ValueError("temperature must be finite and non-negative")
         if top_k is not None and top_k < 0:
             raise ValueError("top_k cannot be negative")
+        if top_p is not None and not 0.0 < top_p <= 1.0:
+            raise ValueError("top_p must be in (0, 1]")
+        if repetition_penalty <= 0:
+            raise ValueError("repetition_penalty must be positive")
         self.eval()
+        # Only the freshly generated ids are penalized, never the prompt.
+        generated: list[torch.Tensor] = []
         if not use_kv_cache or input_ids.shape[1] + max_new_tokens > self.config.max_seq_len:
             for _ in range(max_new_tokens):
                 context = input_ids[:, -self.config.max_seq_len:]
-                next_id = self._sample(self(context).logits[:, -1, :], temperature, top_k)
+                next_id = self._sample(
+                    self(context).logits[:, -1, :],
+                    temperature,
+                    top_k,
+                    top_p=top_p,
+                    repetition_penalty=repetition_penalty,
+                    past_ids=torch.cat(generated, dim=1) if generated else None,
+                )
+                generated.append(next_id)
                 input_ids = torch.cat((input_ids, next_id), dim=1)
                 if eos_id is not None and torch.all(next_id == eos_id):
                     break
             return input_ids
         logits, cache = self.forward_cached(input_ids)
         for _ in range(max_new_tokens):
-            next_id = self._sample(logits[:, -1, :], temperature, top_k)
+            next_id = self._sample(
+                logits[:, -1, :],
+                temperature,
+                top_k,
+                top_p=top_p,
+                repetition_penalty=repetition_penalty,
+                past_ids=torch.cat(generated, dim=1) if generated else None,
+            )
+            generated.append(next_id)
             input_ids = torch.cat((input_ids, next_id), dim=1)
             if eos_id is not None and torch.all(next_id == eos_id):
                 break

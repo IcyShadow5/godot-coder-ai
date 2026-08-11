@@ -643,6 +643,57 @@ class LoadedModel:
     device: torch.device
 
 
+def _normalize_blank_lines(text: str) -> str:
+    lines = text.splitlines()
+    out: list[str] = []
+    blank = False
+    for line in lines:
+        if not line.strip():
+            if not blank:
+                out.append("")
+            blank = True
+        else:
+            out.append(line)
+            blank = False
+    return "\n".join(out)
+
+
+def _collapse_repeated_blocks(text: str) -> str:
+    """Cut the completion at the first repeated block.
+
+    Undertrained models fall into repetition loops; keeping only the first
+    occurrence of the loop body makes the chat output far more usable.
+    Multi-line blocks match exactly; single lines collapse only when clearly
+    looping (comments at two repeats, code lines at three) so a legitimate
+    identical pair survives.
+    """
+    lines = text.splitlines()
+    n = len(lines)
+    max_size = min(n // 2, 64)
+    for size in range(max_size, 1, -1):
+        for start in range(0, n - size + 1):
+            block = lines[start:start + size]
+            if lines[start + size:start + 2 * size] == block:
+                return "\n".join(lines[:start + size])
+    i = 0
+    while i < n:
+        j = i
+        while j < n and lines[j] == lines[i]:
+            j += 1
+        run = j - i
+        line = lines[i]
+        if line.strip() and run >= (2 if line.startswith("#") else 3):
+            return "\n".join(lines[:i + 1])
+        i = j
+    return text
+
+
+def _clean_completion(text: str) -> str:
+    """Display-level polish for chat completions before they hit the UI:
+    collapse blank-line runs and repetition loops, trim trailing whitespace."""
+    return _collapse_repeated_blocks(_normalize_blank_lines(text)).rstrip()
+
+
 class GenerationService:
     """Caches one checkpoint in memory for responsive local generation."""
 
@@ -671,6 +722,8 @@ class GenerationService:
         max_new_tokens: int,
         temperature: float,
         top_k: int,
+        top_p: float = 1.0,
+        repetition_penalty: float = 1.15,
         device_name: str = "auto",
     ) -> str:
         if not prompt:
@@ -681,6 +734,10 @@ class GenerationService:
             raise ValueError("temperature must be between 0.0 and 5.0")
         if not 0 <= top_k <= 1000:
             raise ValueError("top_k must be between 0 and 1000")
+        if not 0.0 < top_p <= 1.0:
+            raise ValueError("top_p must be in (0, 1]")
+        if repetition_penalty < 1.0:
+            raise ValueError("repetition_penalty must be >= 1.0")
 
         checkpoint = safe_child(self.project_root, checkpoint_path, must_exist=True)
         checkpoint_root = (self.project_root / "checkpoints").resolve()
@@ -721,6 +778,8 @@ class GenerationService:
                     max_new_tokens=max_new_tokens,
                     temperature=temperature,
                     top_k=top_k,
+                    top_p=top_p,
+                    repetition_penalty=repetition_penalty,
                     eos_id=loaded.tokenizer.eos_id,
                 )
             # The chat panel already shows the user's prompt; return only the
@@ -730,7 +789,7 @@ class GenerationService:
             gen_metrics = MetricsCollector(self.project_root / "reports" / "studio_metrics.jsonl")
             gen_metrics.record(MetricEvent.TOKEN_USAGE, tokens=len(output_ids))
             gen_metrics.record(MetricEvent.GENERATION_COMPLETE if output_ids else MetricEvent.GENERATION_ERROR)
-            return loaded.tokenizer.decode(output_ids, skip_special_tokens=True)
+            return _clean_completion(loaded.tokenizer.decode(output_ids, skip_special_tokens=True))
 
 
 def validate_code(project_root: Path, code: str, project_path: str = "data/raw/seed_project") -> dict[str, Any]:

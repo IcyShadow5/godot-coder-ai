@@ -28,6 +28,8 @@ def build_chat_router(app: FastAPI) -> APIRouter:
                 max_new_tokens=request.max_new_tokens,
                 temperature=request.temperature,
                 top_k=request.top_k,
+                top_p=request.top_p,
+                repetition_penalty=request.repetition_penalty,
                 device_name=request.device,
             )
             return {"text": text, "checkpoint": request.checkpoint}
@@ -50,6 +52,8 @@ def build_chat_router(app: FastAPI) -> APIRouter:
                     max_new_tokens=request.max_new_tokens,
                     temperature=request.temperature,
                     top_k=request.top_k,
+                    top_p=request.top_p,
+                    repetition_penalty=request.repetition_penalty,
                     device_name=request.device,
                 )
                 # Split into token-sized chunks for streaming display

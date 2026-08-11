@@ -1045,6 +1045,7 @@ async function generate() {
         max_new_tokens: Number($("#max-tokens").value),
         temperature: Number($("#temperature").value),
         top_k: Number($("#top-k").value),
+        repetition_penalty: Number($("#rep-penalty")?.value || 1.15),
       }),
     });
     if (!response.ok) {
@@ -1590,6 +1591,7 @@ function bindEvents() {
     ["#max-tokens", "#tokens-output", (v) => v],
     ["#temperature", "#temperature-output", (v) => Number(v).toFixed(2)],
     ["#top-k", "#top-k-output", (v) => v],
+    ["#rep-penalty", "#rep-penalty-output", (v) => Number(v).toFixed(2)],
   ].forEach(([inputSelector, outputSelector, formatter]) => {
     $(inputSelector).addEventListener("input", (event) => { $(outputSelector).textContent = formatter(event.target.value); });
   });

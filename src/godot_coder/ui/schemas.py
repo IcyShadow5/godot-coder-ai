@@ -15,6 +15,8 @@ class GenerateRequest(BaseModel):
     max_new_tokens: int = Field(default=300, ge=1, le=4096)
     temperature: float = Field(default=0.4, ge=0.0, le=5.0)
     top_k: int = Field(default=10, ge=0, le=1000)
+    top_p: float = Field(default=1.0, gt=0.0, le=1.0)
+    repetition_penalty: float = Field(default=1.15, ge=1.0, le=2.0)
     device: str = "auto"
 
 
