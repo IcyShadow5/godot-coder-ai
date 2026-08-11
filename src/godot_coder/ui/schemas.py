@@ -22,6 +22,12 @@ class GenerateRequest(BaseModel):
     top_p: float = Field(default=DEFAULT_TOP_P, gt=0.0, le=1.0)
     repetition_penalty: float = Field(default=DEFAULT_REPETITION_PENALTY, ge=1.0, le=2.0)
     device: str = "auto"
+    # The server composes the prompt from named parts; task_format wraps
+    # the request in the training header format (older clients already
+    # wrap client-side, so the default stays off).
+    task_format: bool = False
+    # Refuse calls whose context would exceed the window instead of trimming.
+    strict_context: bool = False
 
 
 class ValidateRequest(BaseModel):

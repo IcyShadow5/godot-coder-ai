@@ -22,7 +22,7 @@ def test_chat_generate_stream_emits_sse_tokens_then_done(tmp_path: Path) -> None
     _scaffold(tmp_path)
     app = create_app(tmp_path)
 
-    def fake_generate_stream(checkpoint, prompt, *, max_new_tokens, temperature, top_k, top_p=1.0, repetition_penalty=1.15, device_name="auto"):
+    def fake_generate_stream(checkpoint, prompt, *, max_new_tokens, temperature, top_k, top_p=1.0, repetition_penalty=1.15, device_name="auto", task_format=False, strict_context=False):
         # Real token streaming: the service yields live deltas, then the
         # cleaned completion in a done event.
         yield {"token": "return "}
@@ -126,3 +126,35 @@ def test_overview_reports_compile_unavailable_without_triton(tmp_path: Path, mon
         payload = client.get("/api/overview").json()
     assert payload["compile_available"] is False
     assert payload["triton"] is None
+
+
+def test_chat_generate_stream_passes_context_and_flags(tmp_path: Path) -> None:
+    """The context report travels as the first SSE event and the task-format
+    flags reach the service."""
+    _scaffold(tmp_path)
+    app = create_app(tmp_path)
+    received: dict = {}
+
+    def fake_generate_stream(checkpoint, prompt, **kwargs):
+        received.update(kwargs)
+        yield {"context": {"prompt_tokens": 12, "parts": []}}
+        yield {"token": "x"}
+        yield {"done": True, "text": "x", "tokens": 1}
+
+    app.state.generation = SimpleNamespace(generate_stream=fake_generate_stream, unload=lambda: None)
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/chat/generate-stream",
+            json={
+                "checkpoint": "checkpoints/v06/best.pt",
+                "prompt": "func f():\n",
+                "max_new_tokens": 4,
+                "task_format": True,
+                "strict_context": True,
+            },
+        )
+    assert response.status_code == 200
+    assert '"context"' in response.text
+    assert '"prompt_tokens": 12' in response.text
+    assert received.get("task_format") is True
+    assert received.get("strict_context") is True

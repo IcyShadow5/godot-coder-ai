@@ -53,7 +53,7 @@ def test_run_benchmark_validates_prompt_plus_completion(monkeypatch, tmp_path) -
     completion = chr(9) + "return 42" + chr(10)
 
     def fake_load(_root, _checkpoint):
-        return ({"kind": "golden"}, ByteTokenizer(), "golden")
+        return ({"kind": "golden", "model_config": {"max_seq_len": 256}}, ByteTokenizer(), "golden")
 
     def fake_generate(self, _checkpoint, _prompt, **_kwargs):
         # chat-flow contract: completion only, no prompt echo
@@ -80,3 +80,31 @@ def test_run_benchmark_validates_prompt_plus_completion(monkeypatch, tmp_path) -
     assert all(len(code) > len(completion) for code in validated)
     assert all(code.startswith("extends") for code in validated)
 
+
+def test_run_benchmark_reports_context_provenance(monkeypatch, tmp_path) -> None:
+    from godot_coder.benchmark import GOLDEN_TASKS, run_benchmark
+    from godot_coder.tokenizer import ByteTokenizer
+
+    def fake_load(_root, _checkpoint):
+        return ({"kind": "golden", "model_config": {"max_seq_len": 256}}, ByteTokenizer(), "golden")
+
+    def fake_generate(self, _checkpoint, _prompt, **_kwargs):
+        return "\treturn 42\n"
+
+    class FakeGS:
+        def __init__(self, _root):
+            self.root = _root
+
+    def fake_validate(_root, code, _project_path):
+        return {"passed": True, "output": "", "return_code": 0, "script": "x.gd", "timed_out": False}
+
+    monkeypatch.setattr("godot_coder.benchmark._load_checkpoint_context", fake_load)
+    monkeypatch.setattr("godot_coder.benchmark.GenerationService", type("FakeGS", (FakeGS,), {"generate": fake_generate}))
+    monkeypatch.setattr("godot_coder.benchmark.validate_code", fake_validate)
+
+    report = run_benchmark(tmp_path, "checkpoints/x.pt", mode="golden")
+    results = report["results"]
+    assert len(results) == len(GOLDEN_TASKS)
+    assert all(item.get("prompt_tokens", 0) > 0 for item in results)
+    assert all("context_truncated" in item for item in results)
+    assert all("kv_cache_possible" in item for item in results)

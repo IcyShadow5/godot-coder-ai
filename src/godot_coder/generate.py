@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import sys
 from pathlib import Path
 
 import torch
@@ -11,6 +12,7 @@ from .checkpoint import load_checkpoint
 from .config import ModelConfig
 from .model import TinyGPT
 from .project import find_project_root, resolve_project_path
+from .provenance import ContextReport, cli_parts, compose_prompt
 from .runtime import resolve_device
 from .sampling import DEFAULT_REPETITION_PENALTY, DEFAULT_TEMPERATURE, DEFAULT_TOP_K, DEFAULT_TOP_P
 from .tokenizer import load_tokenizer
@@ -30,7 +32,25 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", default=None)
     parser.add_argument("--suffix-only", action="store_true", help="Print/write only tokens generated after the prompt")
     parser.add_argument("--device", default="auto")
+    parser.add_argument("--provenance", action="store_true", help="Print the context breakdown (tokens per source) to stderr")
     return parser.parse_args()
+
+
+def _print_provenance(report: ContextReport) -> None:
+    """Print the context breakdown to stderr so stdout stays clean for the
+    completion itself (and --output)."""
+    lines = [
+        f"context: {report.prompt_tokens} tokens "
+        f"(window {report.max_seq_len}, budget {report.prompt_budget})"
+    ]
+    for part in report.parts:
+        suffix = f"  dropped {part.dropped_tokens}" if part.dropped_tokens else ""
+        lines.append(f"  {part.source:<14}{part.tokens:>5} tok {part.pct:>5.1f}%{suffix}")
+    if report.truncated:
+        lines.append(f"  truncated: {report.dropped_tokens} tokens dropped, head preserved")
+    if not report.kv_cache_possible:
+        lines.append("  note: prompt + max_new_tokens exceed the window - sliding-window fallback")
+    print("\n".join(lines), file=sys.stderr)
 
 
 def main() -> None:
@@ -62,7 +82,16 @@ def main() -> None:
     model.eval()
 
     prompt = Path(args.prompt_file).read_text(encoding="utf-8") if args.prompt_file else args.prompt
-    prompt_ids = tokenizer.encode(prompt, add_bos=True)
+    parts = cli_parts(prompt, args.prompt_file)
+    joined, context = compose_prompt(
+        parts,
+        tokenizer,
+        max_seq_len=config.max_seq_len,
+        max_new_tokens=args.max_new_tokens,
+    )
+    if args.provenance:
+        _print_provenance(context)
+    prompt_ids = tokenizer.encode(joined, add_bos=True)
     input_ids = torch.tensor([prompt_ids], dtype=torch.long, device=device)
     generated = model.generate(
         input_ids,

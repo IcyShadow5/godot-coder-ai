@@ -49,6 +49,7 @@ class MetricRecord:
     step: int | None = None
     duration_seconds: float | None = None
     tokens: int | None = None
+    context_tokens: int | None = None
     attempt: int | None = None
     max_attempts: int | None = None
     error: str | None = None
@@ -66,6 +67,8 @@ class MetricRecord:
             result["duration_seconds"] = self.duration_seconds
         if self.tokens is not None:
             result["tokens"] = self.tokens
+        if self.context_tokens is not None:
+            result["context_tokens"] = self.context_tokens
         if self.attempt is not None:
             result["attempt"] = self.attempt
         if self.max_attempts is not None:

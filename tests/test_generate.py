@@ -194,3 +194,18 @@ def test_main_falls_back_to_cwd_when_no_project_root(monkeypatch, tmp_path, caps
     monkeypatch.setattr(generate, "find_project_root", no_root)
     _run_main(monkeypatch, ["--checkpoint", str(checkpoint), "--max-new-tokens", "3"])
     assert "PROMPT_AND_GENERATED" in capsys.readouterr().out
+
+
+def test_parse_args_provenance_flag(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["generate", "--provenance"])
+    assert generate.parse_args().provenance is True
+
+
+def test_main_provenance_prints_context_to_stderr(monkeypatch, tmp_path, capsys) -> None:
+    checkpoint = _install_fakes(monkeypatch, tmp_path)
+    _install_tokenizer(monkeypatch)
+    _run_main(monkeypatch, ["--checkpoint", str(checkpoint), "--max-new-tokens", "5", "--suffix-only", "--provenance"])
+    captured = capsys.readouterr()
+    assert "context:" in captured.err
+    assert "cli_prompt" in captured.err
+    assert "GENERATED_ONLY" in captured.out  # stdout stays the clean completion

@@ -1048,6 +1048,36 @@ function addMessage(role, content, options = {}) {
   return article;
 }
 
+function renderContextPanel(msg, report) {
+  // Context provenance: where the prompt came from and what fit into the
+  // model window. The server sends this as the first SSE event.
+  if (!report || !report.parts) return;
+  const body = msg.querySelector(".message-body");
+  if (!body || body.querySelector(".context-panel")) return;
+  const rows = report.parts.map((part) => `
+      <div class="context-row">
+        <span class="context-source" title="${escapeHtml(part.meta?.file || part.source)}">${escapeHtml(part.source)}</span>
+        <div class="context-bar"><i style="width:${Math.max(0.5, Math.min(100, part.pct)).toFixed(1)}%"></i></div>
+        <span class="context-tokens">${part.tokens} tok${part.dropped_tokens ? ` · -${part.dropped_tokens}` : ""}</span>
+      </div>`).join("");
+  const warning = report.truncated
+    ? `<div class="context-warning">Context trimmed: ${report.dropped_tokens} tokens dropped (head preserved)</div>`
+    : "";
+  const note = !report.kv_cache_possible
+    ? `<div class="context-note">Prompt + generation exceed the window — sliding-window fallback</div>`
+    : "";
+  const details = document.createElement("details");
+  details.className = "context-panel";
+  if (report.truncated || !report.kv_cache_possible) details.open = true;
+  details.innerHTML = `
+    <summary>Context · ${report.prompt_tokens} tokens · ${report.parts.length} source${report.parts.length === 1 ? "" : "s"}${report.truncated ? " · trimmed" : ""}</summary>
+    ${rows}
+    ${warning}
+    ${note}
+  `;
+  body.appendChild(details);
+}
+
 async function generate() {
   const prompt = $("#chat-input").value;
   if (!prompt.trim()) return toast("Enter a prompt first.", "error");
@@ -1056,18 +1086,18 @@ async function generate() {
   const loading = addMessage("assistant", "", { loading: true });
   $("#generate-button").disabled = true;
   try {
-    // Use streaming SSE endpoint
+    // Use streaming SSE endpoint. The server owns the prompt composition
+    // (context provenance: tokens per source, truncation policy), so only
+    // the raw text and the task-format flag are sent.
     const useTaskFormat = $("#task-format")?.checked !== false;
-    const modelPrompt = useTaskFormat
-      ? `# file: chat/generated\n# task: ${prompt}\n`
-      : prompt;
     const response = await fetch("/api/chat/generate-stream", {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         checkpoint: state.activeCheckpoint,
-        prompt: modelPrompt,
+        prompt,
+        task_format: useTaskFormat,
         max_new_tokens: Number($("#max-tokens").value),
         temperature: Number($("#temperature").value),
         top_k: Number($("#top-k").value),
@@ -1096,6 +1126,7 @@ async function generate() {
       );
       buffer = rest;
       for (const parsed of events) {
+        if (parsed.context) renderContextPanel(msg, parsed.context);
         if (parsed.token) pre.textContent += parsed.token;
         if (parsed.done) {
           // Stream finished: swap the raw streamed text for the cleaned

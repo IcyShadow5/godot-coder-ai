@@ -25,6 +25,7 @@ from ..config import ModelConfig
 from ..godot_cli import build_check_command
 from ..model import TinyGPT
 from ..process_control import run_managed_process
+from ..provenance import HEAD_PRESERVING, STRICT, chat_parts, compose_prompt
 from ..metrics import MetricEvent, MetricsCollector
 from ..runtime import mps_available, resolve_device, rocm_available
 from ..sampling import DEFAULT_REPETITION_PENALTY, DEFAULT_TEMPERATURE, DEFAULT_TOP_K, DEFAULT_TOP_P
@@ -726,14 +727,18 @@ class GenerationService:
         top_p: float = DEFAULT_TOP_P,
         repetition_penalty: float = DEFAULT_REPETITION_PENALTY,
         device_name: str = "auto",
+        task_format: bool = False,
+        strict_context: bool = False,
     ) -> Iterator[dict[str, Any]]:
-        """Yield live token deltas, then a done event with the cleaned text.
+        """Yield a context report, then live token deltas, then a done event.
 
-        Each yielded event is ``{"token": "<text delta>"}`` while the model
-        samples (the KV cache stays alive across the whole stream), and the
-        stream ends with ``{"done": True, "text": ..., "tokens": n}``
-        carrying the repetition-collapsed final completion. ``generate`` is a
-        thin wrapper over this stream.
+        The first event is ``{"context": {...}}`` - the provenance report
+        (tokens per source, window usage, what was trimmed). Then
+        ``{"token": "<text delta>"}`` events while the model samples (the KV
+        cache stays alive across the whole stream), and the stream ends with
+        ``{"done": True, "text": ..., "tokens": n}`` carrying the
+        repetition-collapsed final completion. ``generate`` is a thin wrapper
+        over this stream.
         """
         if not prompt:
             raise ValueError("prompt cannot be empty")
@@ -779,7 +784,16 @@ class GenerationService:
                 loaded = LoadedModel(checkpoint, modified_ns, tokenizer, model, device)
                 self._loaded = loaded
 
-            prompt_ids = loaded.tokenizer.encode(prompt, add_bos=True)
+            parts = chat_parts(prompt, task_format)
+            joined, context = compose_prompt(
+                parts,
+                loaded.tokenizer,
+                max_seq_len=loaded.model.config.max_seq_len,
+                max_new_tokens=max_new_tokens,
+                policy=STRICT if strict_context else HEAD_PRESERVING,
+            )
+            yield {"context": context.to_dict()}
+            prompt_ids = loaded.tokenizer.encode(joined, add_bos=True)
             input_ids = torch.tensor([prompt_ids], dtype=torch.long, device=loaded.device)
             # The chat panel already shows the user's prompt; only the
             # completion tokens are decoded and streamed.
@@ -805,7 +819,7 @@ class GenerationService:
                     prev_text = text
             raw_text = loaded.tokenizer.decode(accumulated, skip_special_tokens=True)
             gen_metrics = MetricsCollector(self.project_root / "reports" / "studio_metrics.jsonl")
-            gen_metrics.record(MetricEvent.TOKEN_USAGE, tokens=len(accumulated))
+            gen_metrics.record(MetricEvent.TOKEN_USAGE, tokens=len(accumulated), context_tokens=context.prompt_tokens)
             gen_metrics.record(MetricEvent.GENERATION_COMPLETE if raw_text else MetricEvent.GENERATION_ERROR)
             yield {"done": True, "text": _clean_completion(raw_text), "tokens": len(accumulated)}
 
@@ -820,6 +834,8 @@ class GenerationService:
         top_p: float = DEFAULT_TOP_P,
         repetition_penalty: float = DEFAULT_REPETITION_PENALTY,
         device_name: str = "auto",
+        task_format: bool = False,
+        strict_context: bool = False,
     ) -> str:
         """Generate a full completion; a thin wrapper over the live stream."""
         done_text: str | None = None
@@ -832,6 +848,8 @@ class GenerationService:
             top_p=top_p,
             repetition_penalty=repetition_penalty,
             device_name=device_name,
+            task_format=task_format,
+            strict_context=strict_context,
         ):
             if "done" in event:
                 done_text = event["text"]

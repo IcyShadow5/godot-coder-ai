@@ -33,6 +33,8 @@ def build_chat_router(app: FastAPI) -> APIRouter:
                 top_p=request.top_p,
                 repetition_penalty=request.repetition_penalty,
                 device_name=request.device,
+                task_format=request.task_format,
+                strict_context=request.strict_context,
             )
             return {"text": text, "checkpoint": request.checkpoint}
         except (ValueError, FileNotFoundError, RuntimeError) as exc:
@@ -63,6 +65,8 @@ def build_chat_router(app: FastAPI) -> APIRouter:
                         top_p=request.top_p,
                         repetition_penalty=request.repetition_penalty,
                         device_name=request.device,
+                        task_format=request.task_format,
+                        strict_context=request.strict_context,
                     ):
                         # A disconnected client must not leave the model
                         # generating (and holding the generation lock) until

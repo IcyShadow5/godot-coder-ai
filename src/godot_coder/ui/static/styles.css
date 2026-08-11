@@ -115,6 +115,17 @@ h1 { margin: 4px 0 0; font-size: 25px; letter-spacing: -.035em; }
 .message-tools { display: flex; gap: 8px; margin-top: 10px; }
 .message-tools button, .prompt-chips button { border: 1px solid var(--line); border-radius: 9px; background: rgba(20,52,74,.45); color: var(--muted); padding: 6px 9px; font-size: 11px; cursor: pointer; }
 .message-tools button:hover, .prompt-chips button:hover { color: var(--text); border-color: var(--line-bright); }
+.context-panel { margin-top: 10px; border: 1px solid rgba(130,214,255,.14); border-radius: 10px; background: rgba(4,15,26,.6); padding: 8px 10px; font-size: 11px; }
+.context-panel summary { cursor: pointer; color: var(--muted); letter-spacing: .04em; user-select: none; }
+.context-panel summary:hover { color: var(--text); }
+.context-panel[open] summary { margin-bottom: 8px; }
+.context-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.context-source { flex: 0 0 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #9fd8ea; }
+.context-bar { flex: 1; height: 6px; border-radius: 3px; background: rgba(130,214,255,.10); overflow: hidden; }
+.context-bar i { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, #1e90c8, #6fd6ff); }
+.context-tokens { flex: 0 0 90px; text-align: right; color: var(--muted); }
+.context-warning { margin-top: 7px; padding: 6px 8px; border-radius: 8px; background: rgba(255,193,7,.08); border: 1px solid rgba(255,193,7,.25); color: #ffd57a; }
+.context-note { margin-top: 6px; color: var(--muted); }
 .prompt-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 13px; }
 .composer-wrap { border: 1px solid rgba(120,217,255,.18); border-radius: 18px; background: rgba(2,13,24,.75); box-shadow: 0 -12px 40px rgba(2,9,17,.24), inset 0 1px rgba(255,255,255,.025); }
 .composer-wrap textarea { width: 100%; resize: none; border: 0; outline: 0; padding: 15px 16px 8px; color: var(--text); background: transparent; font-family: "Cascadia Code", Consolas, monospace; font-size: 13px; line-height: 1.5; }

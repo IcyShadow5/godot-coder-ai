@@ -15,6 +15,8 @@ The Studio continues to run locally on `127.0.0.1` and requires no cloud API. Op
 
 Select a checkpoint, enter a prompt and generate a GDScript completion. The output can be checked directly with Godot; confirmed examples can be saved as learning examples. When saving, the target file is backed up first.
 
+Every generation now reports its context provenance: the prompt is composed from named sources (the training task header plus your request), each source is token-counted, and the chat shows the breakdown in a collapsible panel - how much of the checkpoint window the context uses, whether the stream stays on the fast KV-cache path, and what had to give way. Trimming happens before the model runs and keeps the prompt head (your code keeps its structure) while the request tail is cut; before, an oversized prompt was silently dropped from the front by the model fallback. Strict context mode rejects calls that would lose tokens instead of trimming them. The CLI prints the same breakdown with `--provenance`, and benchmark runs carry it per case.
+
 ## Data Lab
 
 A small editor for the local corpus. Read and edit GDScript files, delete entries, create new ones. Filter by data type (all, active training tokens, your raw files, task data, train/val/test split) and search by name. Every edit backs up the original first.

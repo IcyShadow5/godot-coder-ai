@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Iterable
 
 from .checkpoint import load_checkpoint
+from .provenance import PromptPart, compose_prompt
 from .tokenizer import TokenizerLike, load_tokenizer
 from .ui.services import GenerationService, validate_code
 from .golden_tasks import GOLDEN_TASKS
@@ -263,7 +264,8 @@ def run_benchmark(
     mode: str = "auto",
 ) -> dict[str, object]:
     root = Path(project_root).resolve()
-    _, tokenizer, checkpoint_kind = _load_checkpoint_context(root, checkpoint)
+    payload, tokenizer, checkpoint_kind = _load_checkpoint_context(root, checkpoint)
+    model_max_seq = int((payload.get("model_config") or {}).get("max_seq_len") or 0)
     selected_mode = checkpoint_kind if mode == "auto" else mode
     if selected_mode not in {"corpus", "curriculum", "golden", "task"}:
         raise ValueError("mode must be auto, corpus, curriculum, golden, or task")
@@ -322,6 +324,16 @@ def run_benchmark(
                 "first_error": _first_error(validation["output"]),
             }
             item["failure_kind"] = _failure_kind(item["first_error"] if isinstance(item["first_error"], str) else None)
+            if model_max_seq >= 2:
+                _, case_context = compose_prompt(
+                    [PromptPart(str(tier_name), prompt_text, meta={"id": str(case.get("id", ""))})],
+                    tokenizer,
+                    max_seq_len=model_max_seq,
+                    max_new_tokens=case_max_tokens,
+                )
+                item["prompt_tokens"] = case_context.prompt_tokens
+                item["context_truncated"] = case_context.truncated
+                item["kv_cache_possible"] = case_context.kv_cache_possible
             if isinstance(reference, str):
                 item["token_prefix_accuracy"] = _token_prefix_accuracy(tokenizer, suffix, reference)
                 item["reference_exact_match"] = suffix == reference
